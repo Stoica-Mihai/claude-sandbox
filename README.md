@@ -6,9 +6,14 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 
 - Claude Code with `--dangerously-skip-permissions` by default — the container is the sandbox
 - Optional MCP server support via `mcp-config.json`
-- Pre-installed plugins: superpowers, skill-creator, claude-api, document-skills, example-skills, cli-anything
+- Pre-installed plugins: superpowers, skill-creator, claude-api, document-skills, example-skills, cli-anything, cli-anything-go
 - Mounts your project workspace at `/workspace`
 - Host Claude session/auth files mapped into container
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** installed
+- **Claude Code** installed and logged in on the host — the container mounts your auth files (`~/.claude.json` and `~/.claude/.credentials.json`) to authenticate
 
 ## Setup
 
