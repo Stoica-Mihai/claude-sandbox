@@ -1,0 +1,3 @@
+[submodule "plugins/cli-anything-go"]
+	path = plugins/cli-anything-go
+	url = https://github.com/Stoica-Mihai/cli-anything-go.git

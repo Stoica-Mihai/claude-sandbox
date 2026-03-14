@@ -1,0 +1,30 @@
+services:
+  claude-env:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: claude_workspace
+    tty: true
+    stdin_open: true
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+
+    volumes:
+      # Project files
+      - ${WORKSPACE_PATH:-../}:/workspace
+      - ./container-settings.json:/home/claude/.claude/settings.json:ro
+      # Host session/auth files
+      - ${HOME}/.claude.json:/home/claude/.claude.json
+      - ${HOME}/.claude/.credentials.json:/home/claude/.claude/.credentials.json:ro
+
+    environment:
+      - HOME=/home/claude
+
+    working_dir: /workspace
+
+    command: sleep infinity

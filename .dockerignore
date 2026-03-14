@@ -1,0 +1,10 @@
+.git
+.env
+.env.example
+README.md
+LICENSE
+CLAUDE.md
+Makefile
+mcp-config.json
+mcp-config.example.json
+generate-env.sh
