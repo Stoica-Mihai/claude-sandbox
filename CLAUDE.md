@@ -8,7 +8,7 @@ This repository is a Docker-based sandbox for running Claude Code inside a conta
 
 ## Architecture
 
-- **Dockerfile** — Alpine-based image with bash, git, curl, socat, bubblewrap, Go, uv (Python package manager), and Claude Code + plugins pre-installed. Runs as non-root user `claude`.
+- **Dockerfile** — Alpine-based image with bash, git, curl, socat, bubblewrap, Go, uv (Python package manager), OpenSpec, and Claude Code + plugins pre-installed. Runs as non-root user `claude`.
 - **docker-compose.yml** — Defines the `claude-env` service. Maps host Claude session/auth files into the container and injects container-specific settings and MCP config as read-only volumes. Mounts the project workspace at `/workspace`.
 - **container-settings.json** — Claude Code settings for the container environment (plugins, MCP servers, permissions). Mounted read-only at `/home/claude/.claude/settings.json`.
 - **mcp-config.json** — User-provided MCP server definitions (gitignored). See `mcp-config.example.json`.

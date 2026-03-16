@@ -10,7 +10,8 @@ RUN apk add --no-cache \
     libqrencode-tools \
     libstdc++ \
     libgcc \
-    go
+    go \
+    npm
 
 # Create a non-root user with matching host UID (Claude Code refuses --dangerously-skip-permissions as root)
 ARG UID
@@ -24,6 +25,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Install UV
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install OpenSpec (spec-driven planning layer for coding agents)
+RUN npm install -g --prefix /home/claude/.local @fission-ai/openspec@latest
 
 ENV PATH="/home/claude/.local/bin:${PATH}"
 

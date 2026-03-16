@@ -6,6 +6,7 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 
 - Claude Code with `--dangerously-skip-permissions` by default — the container is the sandbox
 - Optional MCP server support via `mcp-config.json`
+- [OpenSpec](https://openspec.dev/) for spec-driven planning
 - Pre-installed plugins: superpowers, skill-creator, claude-api, document-skills, example-skills, cli-anything, cli-anything-go
 - Mounts your project workspace at `/workspace`
 - Host Claude session/auth files mapped into container
