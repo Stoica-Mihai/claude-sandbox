@@ -1,23 +1,23 @@
-FROM alpine:3.23
+FROM debian:bookworm-slim
 
-# Install native dependencies for Alpine/musl compatibility
-RUN apk add --no-cache \
+# Install native dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     curl \
     socat \
     bubblewrap \
-    libqrencode-tools \
-    libstdc++ \
-    libgcc \
-    go \
-    npm
+    qrencode \
+    golang \
+    npm \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user with matching host UID (Claude Code refuses --dangerously-skip-permissions as root)
 ARG UID
 ARG GID
-RUN addgroup -g ${GID} claude && \
-    adduser -D -u ${UID} -G claude claude
+RUN groupadd -g ${GID} claude && \
+    useradd -m -u ${UID} -g claude claude
 USER claude
 
 # Install Claude Code as the non-root user
@@ -30,6 +30,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 RUN npm install -g --prefix /home/claude/.local @fission-ai/openspec@latest
 
 ENV PATH="/home/claude/.local/bin:${PATH}"
+# Openspec telemetry disable
+ENV DO_NOT_TRACK=1
 
 # Copy local plugin
 COPY --chown=claude:claude plugins/cli-anything-go /home/claude/.claude/plugins/marketplaces/cli-anything-go
