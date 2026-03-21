@@ -8,10 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     socat \
     bubblewrap \
     qrencode \
-    golang \
     npm \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.26.1 from official tarball
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Create a non-root user with matching host UID (Claude Code refuses --dangerously-skip-permissions as root)
 ARG UID
