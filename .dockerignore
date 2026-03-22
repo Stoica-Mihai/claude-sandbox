@@ -8,3 +8,5 @@ Makefile
 mcp-config.json
 mcp-config.example.json
 generate-env.sh
+mockups
+openspec

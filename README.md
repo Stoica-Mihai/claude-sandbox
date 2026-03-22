@@ -1,11 +1,19 @@
 # Claude Sandbox
 
-Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an isolated container with pre-configured MCP servers and plugins.
+Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an isolated container with pre-configured MCP servers, plugins, and a web dashboard for session management.
 
 ## Features
 
 - **Debian bookworm-slim** base with Go, uv (Python), npm, and common CLI tools
 - Claude Code with `--dangerously-skip-permissions` by default — the container is the sandbox
+- **Web dashboard** at `:8080` for managing sessions from a browser
+  - View, spawn, and kill Claude Code sessions
+  - Full interactive terminal via xterm.js with WebSocket relay
+  - Single, split, and grid view modes
+  - Session detach/reattach with scrollback replay
+  - Dark/light theme with DaisyUI
+  - Responsive mobile layout with touch input bar
+  - Real-time session updates via Server-Sent Events
 - Pre-configured for **Opus 1M** with high effort, always-thinking, and agent teams enabled
 - Optional MCP server support via `mcp-config.json`
 - [OpenSpec](https://openspec.dev/) for spec-driven planning
@@ -37,7 +45,9 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
    ```bash
    make up
    ```
-   This auto-generates `.env` with your UID/GID and starts the container.
+   This auto-generates `.env` with your UID/GID, builds the dashboard, and starts the container.
+
+4. Open the dashboard at `http://localhost:8080`
 
 ## Usage
 
@@ -62,15 +72,30 @@ To mount a different workspace directory, set `WORKSPACE_PATH` in `.env`:
 WORKSPACE_PATH=/path/to/your/project
 ```
 
+## Dashboard
+
+The web dashboard is available at `http://localhost:8080` after starting the container. It provides:
+
+- **Session list** — sidebar showing all running Claude Code sessions (managed and external)
+- **Terminal** — full xterm.js terminal with WebSocket relay for interactive sessions
+- **Multiple views** — single terminal with tabs, side-by-side split, or grid overview
+- **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory
+- **Mobile support** — responsive layout with slide-out drawer and touch input bar
+- **Theme toggle** — dark/light mode with localStorage persistence
+- **Real-time updates** — SSE pushes session changes to all connected clients
+
+The dashboard has no built-in authentication — it's designed to sit behind an auth proxy.
+
 ## Configuration
 
 | File | Purpose |
 |------|---------|
 | `.env` | Host UID/GID and `WORKSPACE_PATH` (gitignored, auto-generated) |
-| `docker-compose.yml` | Service definition, volume mounts, env passthrough |
+| `docker-compose.yml` | Service definition, volume mounts, port 8080, env passthrough |
 | `container-settings.json` | Claude Code settings (model, plugins, permissions) |
 | `mcp-config.json` | User-provided MCP server definitions (gitignored) |
 | `mcp-config.example.json` | Example MCP server config template |
+| `dashboard/` | Go web dashboard source (built into container image) |
 
 ## License
 

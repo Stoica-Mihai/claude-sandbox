@@ -25,6 +25,9 @@ services:
     environment:
       - HOME=/home/claude
 
+    ports:
+      - "8080:8080"
+
     working_dir: /workspace
 
-    command: sleep infinity
+    command: /home/claude/dashboard-server

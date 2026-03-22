@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layout B — Command Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: oklch(0.72 0.17 162);
+            --accent-glow: oklch(0.72 0.17 162 / 0.15);
+        }
+
+        * { font-family: 'Outfit', sans-serif; }
+        code, .font-mono, .terminal-content { font-family: 'JetBrains Mono', monospace; }
+
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: oklch(0.5 0 0 / 0.2); border-radius: 3px; }
+
+        /* Session tile */
+        .session-tile {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .session-tile::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 0%, var(--accent-glow), transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .session-tile:hover::before { opacity: 1; }
+        .session-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 32px oklch(0 0 0 / 0.3); }
+
+        /* Full-screen terminal overlay */
+        .terminal-overlay {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .terminal-overlay.hidden {
+            opacity: 0;
+            transform: scale(0.98);
+            pointer-events: none;
+        }
+        .terminal-overlay.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .pulse-alive { animation: pulse-dot 2s ease-in-out infinite; }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        .cursor-blink { animation: blink 1s step-end infinite; }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up { animation: fadeUp 0.4s ease-out forwards; opacity: 0; }
+        .fade-up:nth-child(1) { animation-delay: 0.05s; }
+        .fade-up:nth-child(2) { animation-delay: 0.1s; }
+        .fade-up:nth-child(3) { animation-delay: 0.15s; }
+        .fade-up:nth-child(4) { animation-delay: 0.2s; }
+        .fade-up:nth-child(5) { animation-delay: 0.25s; }
+
+        /* Glow ring on active session */
+        .glow-ring {
+            box-shadow: 0 0 0 1px oklch(0.72 0.17 162 / 0.3), 0 0 20px oklch(0.72 0.17 162 / 0.1);
+        }
+
+        /* Grain */
+        .grain::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.012;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+
+        .stat-value { font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body class="grain bg-base-300 h-screen flex flex-col">
+
+    <!-- ==================== HEADER ==================== -->
+    <header class="h-16 bg-base-200/80 backdrop-blur-xl border-b border-base-content/10 flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base-content tracking-tight">Claude Sandbox</h1>
+                    <p class="text-[10px] text-base-content/40 font-mono -mt-0.5">session dashboard</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-6 text-sm">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-alive"></span>
+                    <span class="font-mono stat-value text-base-content/70">3</span>
+                    <span class="text-base-content/40 text-xs">active</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-warning"></span>
+                    <span class="font-mono stat-value text-base-content/70">1</span>
+                    <span class="text-base-content/40 text-xs">external</span>
+                </div>
+            </div>
+
+            <div class="divider divider-horizontal mx-0 h-6"></div>
+
+            <!-- Theme toggle -->
+            <label class="swap swap-rotate btn btn-ghost btn-sm btn-circle">
+                <input type="checkbox" id="themeToggle" />
+                <svg class="swap-off w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                <svg class="swap-on w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+            </label>
+        </div>
+    </header>
+
+    <!-- ==================== MAIN — SESSION GRID VIEW ==================== -->
+    <main id="gridView" class="flex-1 overflow-y-auto p-6">
+
+        <!-- Top action row -->
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h2 class="text-lg font-semibold text-base-content">Sessions</h2>
+                <p class="text-xs text-base-content/40 mt-0.5">Click a session to open its terminal</p>
+            </div>
+            <button class="btn btn-primary gap-2" onclick="document.getElementById('newSessionModal').showModal()">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg>
+                New Session
+            </button>
+        </div>
+
+        <!-- Session grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+
+            <!-- Session tile 1 -->
+            <div class="session-tile fade-up card bg-base-200 border border-base-content/10 cursor-pointer glow-ring" onclick="openTerminal()">
+                <div class="card-body p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-sm">api-service</div>
+                                <div class="font-mono text-[10px] text-base-content/40">/workspace/api-service</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-ghost btn-xs btn-circle text-base-content/30 hover:text-error" title="Kill" onclick="event.stopPropagation()">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Mini terminal preview -->
+                    <div class="mt-3 bg-[#0d1117] rounded-lg p-3 text-[10px] font-mono leading-relaxed text-base-content/50 h-20 overflow-hidden">
+                        <div><span class="text-emerald-400/60">✓</span> Edit internal/handlers/auth.go</div>
+                        <div><span class="text-emerald-400/60">✓</span> Read internal/middleware/jwt.go</div>
+                        <div><span class="text-amber-400/60">⟳</span> Running go test ./...</div>
+                        <div class="mt-1 flex items-center"><span class="text-purple-400/60">❯</span><span class="w-1.5 h-3 bg-emerald-400/50 ml-1 cursor-blink"></span></div>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-3">
+                            <span class="badge badge-sm badge-success gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-100 pulse-alive"></span>
+                                running
+                            </span>
+                            <span class="font-mono text-[10px] text-base-content/30">PID 1842</span>
+                        </div>
+                        <span class="font-mono text-[10px] text-base-content/30">12m</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session tile 2 -->
+            <div class="session-tile fade-up card bg-base-200 border border-base-content/10 cursor-pointer" onclick="openTerminal()">
+                <div class="card-body p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-sm">frontend</div>
+                                <div class="font-mono text-[10px] text-base-content/40">/workspace/frontend</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-ghost btn-xs btn-circle text-base-content/30 hover:text-error" title="Kill" onclick="event.stopPropagation()">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="mt-3 bg-[#0d1117] rounded-lg p-3 text-[10px] font-mono leading-relaxed text-base-content/50 h-20 overflow-hidden">
+                        <div><span class="text-emerald-400/60">✓</span> Read src/components/Nav.tsx</div>
+                        <div><span class="text-emerald-400/60">✓</span> Write src/components/Sidebar.tsx</div>
+                        <div><span class="text-emerald-400/60">✓</span> npm run build — success</div>
+                        <div class="mt-1 flex items-center"><span class="text-purple-400/60">❯</span><span class="w-1.5 h-3 bg-emerald-400/50 ml-1 cursor-blink"></span></div>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-3">
+                            <span class="badge badge-sm badge-success gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-100 pulse-alive"></span>
+                                running
+                            </span>
+                            <span class="font-mono text-[10px] text-base-content/30">PID 2103</span>
+                        </div>
+                        <span class="font-mono text-[10px] text-base-content/30">4m</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session tile 3 -->
+            <div class="session-tile fade-up card bg-base-200 border border-base-content/10 cursor-pointer" onclick="openTerminal()">
+                <div class="card-body p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-sm">infra/terraform</div>
+                                <div class="font-mono text-[10px] text-base-content/40">/workspace/infra/terraform</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-ghost btn-xs btn-circle text-base-content/30 hover:text-error" title="Kill" onclick="event.stopPropagation()">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="mt-3 bg-[#0d1117] rounded-lg p-3 text-[10px] font-mono leading-relaxed text-base-content/50 h-20 overflow-hidden">
+                        <div><span class="text-emerald-400/60">✓</span> Read modules/vpc/main.tf</div>
+                        <div><span class="text-amber-400/60">⟳</span> terraform plan -out=tfplan</div>
+                        <div class="text-base-content/30">  Planning... 12 to add, 3 to change</div>
+                        <div class="mt-1 flex items-center"><span class="text-purple-400/60">❯</span><span class="w-1.5 h-3 bg-emerald-400/50 ml-1 cursor-blink"></span></div>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-3">
+                            <span class="badge badge-sm badge-success gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-100 pulse-alive"></span>
+                                running
+                            </span>
+                            <span class="font-mono text-[10px] text-base-content/30">PID 987</span>
+                        </div>
+                        <span class="font-mono text-[10px] text-base-content/30">31m</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- External session tile -->
+            <div class="session-tile fade-up card bg-base-200 border border-base-content/10 border-dashed opacity-70">
+                <div class="card-body p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-sm">docs</div>
+                                <div class="font-mono text-[10px] text-base-content/40">/workspace/docs</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 bg-base-300/50 rounded-lg p-3 h-20 flex items-center justify-center">
+                        <span class="text-xs text-base-content/30">Detected via docker exec</span>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-3">
+                            <span class="badge badge-sm badge-warning badge-outline gap-1.5">external</span>
+                            <span class="font-mono text-[10px] text-base-content/30">PID 445</span>
+                        </div>
+                        <span class="font-mono text-[10px] text-base-content/30">1h</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New session tile (always last) -->
+            <div class="fade-up card bg-base-200/30 border-2 border-dashed border-base-content/10 cursor-pointer hover:border-primary/40 hover:bg-base-200/50 transition-all" onclick="document.getElementById('newSessionModal').showModal()">
+                <div class="card-body p-5 flex items-center justify-center min-h-[220px]">
+                    <div class="text-center">
+                        <div class="w-12 h-12 rounded-xl bg-base-content/5 flex items-center justify-center mx-auto mb-3">
+                            <svg class="w-6 h-6 text-base-content/30" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg>
+                        </div>
+                        <span class="text-sm text-base-content/40">New Session</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==================== TERMINAL OVERLAY (shown on click) ==================== -->
+    <div id="terminalOverlay" class="terminal-overlay hidden absolute inset-0 top-16 bg-base-300 z-50 flex flex-col">
+
+        <!-- Terminal header -->
+        <div class="h-12 bg-base-200/80 backdrop-blur-xl border-b border-base-content/10 flex items-center justify-between px-5 shrink-0">
+            <div class="flex items-center gap-3">
+                <button class="btn btn-ghost btn-sm gap-2" onclick="closeTerminal()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M15 19l-7-7 7-7"/></svg>
+                    Back
+                </button>
+                <div class="divider divider-horizontal mx-0 h-5"></div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-alive"></span>
+                    <span class="font-semibold text-sm">api-service</span>
+                    <span class="font-mono text-[10px] text-base-content/40">/workspace/api-service</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="font-mono text-[10px] text-base-content/30">PID 1842 &middot; Session a8f3c2 &middot; 120&times;40</span>
+                <button class="btn btn-ghost btn-sm btn-circle text-error/60 hover:text-error" title="Kill session">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Terminal body -->
+        <div class="flex-1 bg-[#0d1117] p-5 overflow-y-auto font-mono text-sm leading-relaxed">
+            <div class="text-emerald-400/80">
+                <span class="text-blue-400">claude</span> <span class="text-base-content/30">~/workspace/api-service</span>
+            </div>
+            <div class="mt-3 text-base-content/70">
+                <span class="text-amber-400/90">⚡</span> <span class="text-base-content/50">Claude Code</span> <span class="text-base-content/30">v2.1.81</span>
+            </div>
+            <div class="mt-1 text-base-content/30 text-xs">
+                Model: opus[1m] &middot; Effort: high &middot; Thinking: always
+            </div>
+            <div class="mt-5 text-base-content/60 text-xs space-y-1.5">
+                <div><span class="text-emerald-400">✓</span> Read <span class="text-blue-300/70">internal/handlers/auth.go</span> <span class="text-base-content/20">(234 lines)</span></div>
+                <div><span class="text-emerald-400">✓</span> Read <span class="text-blue-300/70">internal/middleware/jwt.go</span> <span class="text-base-content/20">(89 lines)</span></div>
+                <div><span class="text-emerald-400">✓</span> Read <span class="text-blue-300/70">internal/models/user.go</span> <span class="text-base-content/20">(45 lines)</span></div>
+                <div class="mt-3 p-3 rounded bg-base-content/5 text-base-content/50">
+                    I'll add a token refresh endpoint to the auth handler. The current implementation only handles login and logout — when the JWT expires, users have to re-authenticate. I'll add a <span class="text-blue-300/70">/api/auth/refresh</span> endpoint that validates the existing token's refresh claim and issues a new access token.
+                </div>
+                <div class="mt-3"><span class="text-emerald-400">✓</span> Edit <span class="text-blue-300/70">internal/handlers/auth.go</span> <span class="text-base-content/30">— added RefreshToken handler</span></div>
+                <div><span class="text-emerald-400">✓</span> Edit <span class="text-blue-300/70">internal/routes/routes.go</span> <span class="text-base-content/30">— registered /api/auth/refresh</span></div>
+                <div><span class="text-amber-400">⟳</span> Running <span class="text-blue-300/70">go test ./internal/handlers/...</span></div>
+                <div class="pl-4 text-base-content/30">
+                    <div>ok  &nbsp; internal/handlers &nbsp; 0.034s</div>
+                    <div>--- PASS: TestRefreshToken (0.01s)</div>
+                    <div>--- PASS: TestRefreshTokenExpired (0.00s)</div>
+                </div>
+                <div><span class="text-emerald-400">✓</span> All tests passing</div>
+            </div>
+            <div class="mt-6 flex items-center gap-1">
+                <span class="text-purple-400/80">❯</span>
+                <span class="w-2 h-5 bg-emerald-400/70 cursor-blink inline-block"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== NEW SESSION MODAL ==================== -->
+    <dialog id="newSessionModal" class="modal">
+        <div class="modal-box bg-base-200 max-w-lg border border-base-content/10">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-lg">New Session</h3>
+                    <p class="text-base-content/50 text-xs">Choose a directory under /workspace</p>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="relative mb-3">
+                <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="text" placeholder="Filter directories..." class="input input-bordered input-sm w-full pl-10 font-mono text-xs bg-base-300" />
+            </div>
+
+            <!-- Breadcrumb -->
+            <div class="flex items-center gap-1.5 text-xs font-mono mb-2 px-1">
+                <svg class="w-3.5 h-3.5 text-base-content/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                <span class="text-primary cursor-pointer hover:underline">/workspace</span>
+            </div>
+
+            <!-- Directory list -->
+            <div class="bg-base-300 rounded-xl border border-base-content/10 overflow-hidden max-h-72 overflow-y-auto">
+                <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-content/5 border-b border-base-content/5 transition-colors">
+                    <input type="radio" name="dir" class="radio radio-primary radio-sm" />
+                    <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span class="text-sm font-mono">api-service</span>
+                    <span class="ml-auto text-[10px] text-base-content/30">4 subdirs</span>
+                </label>
+                <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-content/5 border-b border-base-content/5 transition-colors bg-primary/5 ring-1 ring-primary/20 ring-inset">
+                    <input type="radio" name="dir" class="radio radio-primary radio-sm" checked />
+                    <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span class="text-sm font-mono font-medium">frontend</span>
+                    <span class="ml-auto badge badge-xs badge-primary">selected</span>
+                </label>
+                <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-content/5 border-b border-base-content/5 transition-colors">
+                    <input type="radio" name="dir" class="radio radio-primary radio-sm" />
+                    <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span class="text-sm font-mono">infra</span>
+                    <svg class="w-3 h-3 ml-auto text-base-content/30" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M9 5l7 7-7 7"/></svg>
+                </label>
+                <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-content/5 border-b border-base-content/5 transition-colors">
+                    <input type="radio" name="dir" class="radio radio-primary radio-sm" />
+                    <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span class="text-sm font-mono">docs</span>
+                </label>
+                <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-content/5 transition-colors">
+                    <input type="radio" name="dir" class="radio radio-primary radio-sm" />
+                    <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span class="text-sm font-mono">shared-libs</span>
+                </label>
+            </div>
+
+            <div class="modal-action">
+                <form method="dialog">
+                    <button class="btn btn-ghost">Cancel</button>
+                </form>
+                <button class="btn btn-primary gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    Launch Session
+                </button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script>
+        // Theme toggle
+        const toggle = document.getElementById('themeToggle');
+        toggle.addEventListener('change', () => {
+            document.documentElement.setAttribute('data-theme', toggle.checked ? 'light' : 'dark');
+        });
+
+        // Terminal overlay
+        function openTerminal() {
+            const overlay = document.getElementById('terminalOverlay');
+            overlay.classList.remove('hidden');
+            requestAnimationFrame(() => overlay.classList.add('visible'));
+        }
+        function closeTerminal() {
+            const overlay = document.getElementById('terminalOverlay');
+            overlay.classList.remove('visible');
+            setTimeout(() => overlay.classList.add('hidden'), 350);
+        }
+    </script>
+</body>
+</html>

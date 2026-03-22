@@ -39,6 +39,9 @@ ENV DO_NOT_TRACK=1
 # Enable plugin auto-updates even when the main auto-updater is disabled
 ENV FORCE_AUTOUPDATE_PLUGINS=true
 
+# Pre-install Context7 MCP server (registered via host .claude.json mount)
+RUN npm install -g --prefix /home/claude/.local @upstash/context7-mcp
+
 # Register marketplaces and install plugins
 RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin marketplace add anthropics/skills && \
@@ -55,5 +58,11 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
 
 # Alias for launching Claude with bypass permissions
 RUN echo 'alias claude="claude --dangerously-skip-permissions "' >> /home/claude/.bashrc
+
+# Build the dashboard web server
+COPY --chown=claude:claude dashboard/ /home/claude/dashboard-src/
+RUN cd /home/claude/dashboard-src && \
+    go build -o /home/claude/dashboard-server . && \
+    rm -rf /home/claude/dashboard-src
 
 WORKDIR /workspace

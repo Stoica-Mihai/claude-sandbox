@@ -1,0 +1,200 @@
+/* ===== Fonts ===== */
+body { font-family: 'Outfit', sans-serif; }
+code, .font-mono, .terminal-content { font-family: 'JetBrains Mono', monospace; }
+/* Do NOT set font-family on * or .xterm — xterm.js measures its own character grid internally */
+html, body { height: 100dvh; margin: 0; overflow: hidden; }
+
+/* ===== Mobile sidebar drawer ===== */
+.sidebar-open {
+    transform: translateX(0) !important;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: oklch(0.5 0 0 / 0.25); border-radius: 3px; }
+
+/* ===== Session cards ===== */
+.session-card {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-left: 3px solid transparent;
+}
+.session-card:hover {
+    transform: translateX(3px);
+    border-left-color: oklch(0.7 0.15 160);
+}
+.session-card.active {
+    border-left-color: oklch(0.7 0.15 160);
+    background: oklch(0.25 0.02 160 / 0.3);
+}
+.session-card.in-split {
+    border-left-color: oklch(0.7 0.12 250);
+    background: oklch(0.25 0.02 250 / 0.15);
+}
+
+/* ===== Pulse alive animation ===== */
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+.pulse-alive {
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ===== Cursor blink ===== */
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+.cursor-blink {
+    animation: blink 1s step-end infinite;
+}
+
+/* ===== Stagger-in entrance animation ===== */
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.stagger-in {
+    animation: slideIn 0.25s ease-out forwards;
+    opacity: 0;
+}
+.stagger-in:nth-child(1) { animation-delay: 0.04s; }
+.stagger-in:nth-child(2) { animation-delay: 0.08s; }
+.stagger-in:nth-child(3) { animation-delay: 0.12s; }
+.stagger-in:nth-child(4) { animation-delay: 0.16s; }
+.stagger-in:nth-child(5) { animation-delay: 0.20s; }
+.stagger-in:nth-child(6) { animation-delay: 0.24s; }
+.stagger-in:nth-child(7) { animation-delay: 0.28s; }
+.stagger-in:nth-child(8) { animation-delay: 0.32s; }
+
+/* ===== Grain overlay ===== */
+.grain::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.012;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ===== Split divider ===== */
+.split-divider {
+    width: 5px;
+    cursor: col-resize;
+    position: relative;
+    transition: background 0.15s;
+}
+.split-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 32px;
+    border-radius: 2px;
+    background: oklch(0.5 0 0 / 0.2);
+    transition: background 0.15s, height 0.15s;
+}
+.split-divider:hover {
+    background: oklch(0.7 0.15 160 / 0.1);
+}
+.split-divider:hover::after {
+    background: oklch(0.7 0.15 160 / 0.5);
+    height: 48px;
+}
+
+/* ===== View button active state ===== */
+.view-btn {
+    transition: all 0.15s ease;
+}
+.view-btn.active {
+    background: oklch(0.3 0.02 160 / 0.4);
+    color: oklch(0.85 0.1 160);
+}
+
+/* ===== Terminal pane transitions ===== */
+.terminal-pane {
+    transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Grid card ===== */
+.grid-card {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.grid-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.3);
+}
+
+/* ===== Directory picker ===== */
+.dir-item {
+    transition: all 0.15s ease;
+}
+.dir-item:hover {
+    background: oklch(0.3 0.02 160 / 0.3);
+    padding-left: 1.25rem;
+}
+
+/* ===== Drag hint (for future drag-and-drop) ===== */
+.drag-hint {
+    border: 2px dashed oklch(0.7 0.15 160 / 0.3);
+    background: oklch(0.7 0.15 160 / 0.05);
+    transition: all 0.2s;
+}
+
+/* ===== Light mode adjustments ===== */
+[data-theme="light"] .session-card.active {
+    background: oklch(0.9 0.03 160 / 0.5);
+}
+[data-theme="light"] .session-card.in-split {
+    background: oklch(0.9 0.03 250 / 0.4);
+}
+[data-theme="light"] .session-card:hover {
+    border-left-color: oklch(0.5 0.2 160);
+}
+[data-theme="light"] .view-btn.active {
+    background: oklch(0.9 0.05 160 / 0.6);
+    color: oklch(0.35 0.15 160);
+}
+[data-theme="light"] .split-divider::after {
+    background: oklch(0.5 0 0 / 0.15);
+}
+[data-theme="light"] .split-divider:hover::after {
+    background: oklch(0.5 0.15 160 / 0.4);
+}
+[data-theme="light"] .grid-card:hover {
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.1);
+}
+[data-theme="light"] .dir-item:hover {
+    background: oklch(0.9 0.03 160 / 0.4);
+}
+[data-theme="light"] .grain::after {
+    opacity: 0.005;
+}
+
+/* ===== Pull to refresh ===== */
+#pullIndicator {
+    text-align: center;
+    font-size: 0.8rem;
+    overflow: hidden;
+    height: 0;
+    transition: height 0.2s ease;
+}
+
+/* ===== xterm.js terminal overrides ===== */
+.xterm {
+    height: 100%;
+    padding: 4px;
+}
+.xterm-viewport {
+    overflow-y: auto !important;
+}
+.xterm-viewport::-webkit-scrollbar {
+    width: 5px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+    background: oklch(0.5 0 0 / 0.25);
+    border-radius: 3px;
+}
