@@ -447,16 +447,12 @@ function initPullToRefresh() {
 
 // ===== Keyboard shortcuts (desktop only) =====
 function handleShortcuts(e) {
-    // Only act on Ctrl+key combos (not Alt, not Meta/Cmd)
-    if (!e.ctrlKey || e.altKey || e.metaKey) return;
-
     // Guard: do not fire when a modal dialog is open
     if (document.querySelector('dialog[open]')) return;
 
     // Guard: do not fire when focus is in an input/textarea (non-terminal)
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') {
-        // Allow if it's the xterm helper textarea (terminal has focus)
         if (!document.activeElement.classList.contains('xterm-helper-textarea')) {
             return;
         }
@@ -464,15 +460,15 @@ function handleShortcuts(e) {
 
     const key = e.key;
 
-    // Ctrl+T — Open new session modal
-    if (key === 't') {
+    // Alt+N — Open new session modal
+    if (e.altKey && key === 'n') {
         e.preventDefault();
         openNewSessionModal({});
         return;
     }
 
-    // Ctrl+W — Close current tab
-    if (key === 'w') {
+    // Alt+W — Close current tab
+    if (e.altKey && key === 'w') {
         e.preventDefault();
         if (singleTerminalId) {
             closeSingleTab(singleTerminalId);
@@ -480,15 +476,17 @@ function handleShortcuts(e) {
         return;
     }
 
-    // Ctrl+1 through Ctrl+9 — Switch to tab N
-    const digit = parseInt(key, 10);
-    if (digit >= 1 && digit <= 9) {
-        e.preventDefault();
-        const index = digit - 1;
-        if (index < singleTabs.length) {
-            switchSingleTab(singleTabs[index]);
+    // Alt+1 through Alt+9 — Switch to tab N
+    if (e.altKey) {
+        const digit = parseInt(key, 10);
+        if (digit >= 1 && digit <= 9) {
+            e.preventDefault();
+            const index = digit - 1;
+            if (index < singleTabs.length) {
+                switchSingleTab(singleTabs[index]);
+            }
+            return;
         }
-        return;
     }
 }
 
