@@ -14,6 +14,25 @@ function isMobile() {
     return window.matchMedia('(max-width: 767px)').matches;
 }
 
+// Check if the mobile input bar is actually visible (progressive enhancement check)
+function isMobileViewport() {
+    const el = document.getElementById('mobileInput');
+    return el && el.offsetParent !== null;
+}
+
+// Focus the mobile input field, used after opening/switching sessions on mobile.
+// Delay allows sidebar close animation to finish before focusing.
+function focusMobileInput(delayMs) {
+    if (!isMobileViewport()) return;
+    const input = document.getElementById('mobileInput');
+    if (!input) return;
+    if (delayMs > 0) {
+        setTimeout(() => { input.focus(); }, delayMs);
+    } else {
+        input.focus();
+    }
+}
+
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebarBackdrop');
@@ -101,6 +120,15 @@ function setView(view) {
     viewSplit.classList.toggle('hidden', view !== 'split');
     if (view === 'split') {
         viewSplit.style.display = 'flex';
+
+        // Restore saved split ratio from localStorage (default 50/50)
+        const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
+        const leftPane = viewSplit.querySelector('.terminal-pane:first-child');
+        const rightPane = viewSplit.querySelector('.terminal-pane:last-child');
+        if (leftPane && rightPane) {
+            leftPane.style.flex = `0 0 ${savedRatio}%`;
+            rightPane.style.flex = `0 0 ${100 - savedRatio}%`;
+        }
     } else {
         viewSplit.style.display = '';
     }
@@ -178,6 +206,12 @@ function openSession(terminalId) {
 
     // Update active state on session cards
     updateSessionCardStates();
+
+    // On mobile, auto-focus the input bar so the user can type immediately.
+    // Delay lets the sidebar close animation finish first.
+    if (isMobile()) {
+        focusMobileInput(300);
+    }
 }
 
 function openSessionSingle(terminalId) {
@@ -228,7 +262,12 @@ function switchSingleTab(terminalId) {
     requestAnimationFrame(() => {
         const instance = TerminalManager.get(terminalId);
         if (instance) {
-            instance.term.focus();
+            // On mobile, focus the input bar instead of the terminal
+            if (isMobileViewport()) {
+                focusMobileInput(0);
+            } else {
+                instance.term.focus();
+            }
             TerminalManager.resize(terminalId);
         }
     });
@@ -693,6 +732,19 @@ function initSplitDivider() {
         isDragging = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+
+        // Persist the split ratio to localStorage
+        const splitView = document.getElementById('viewSplit');
+        if (splitView) {
+            const leftPane = splitView.querySelector('.terminal-pane:first-child');
+            if (leftPane) {
+                const match = leftPane.style.flex.match(/([\d.]+)%/);
+                if (match) {
+                    localStorage.setItem('splitRatio', match[1]);
+                }
+            }
+        }
+
         TerminalManager.resizeAll();
     });
 }
@@ -850,6 +902,65 @@ function initPullToRefresh() {
     });
 }
 
+// ===== Keyboard shortcuts (desktop only) =====
+function handleShortcuts(e) {
+    // Only act on Ctrl+key combos (not Alt, not Meta/Cmd)
+    if (!e.ctrlKey || e.altKey || e.metaKey) return;
+
+    // Guard: do not fire when a modal dialog is open
+    if (document.querySelector('dialog[open]')) return;
+
+    // Guard: do not fire when focus is in an input/textarea (non-terminal)
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        // Allow if it's the xterm helper textarea (terminal has focus)
+        if (!document.activeElement.classList.contains('xterm-helper-textarea')) {
+            return;
+        }
+    }
+
+    const key = e.key;
+
+    // Ctrl+T — Open new session modal
+    if (key === 't') {
+        e.preventDefault();
+        openNewSessionModal({});
+        return;
+    }
+
+    // Ctrl+W — Close current tab (single view only)
+    if (key === 'w') {
+        e.preventDefault();
+        if (currentView === 'single' && singleTerminalId) {
+            closeSingleTab(singleTerminalId);
+        }
+        return;
+    }
+
+    // Ctrl+\ — Toggle between single and split view
+    if (key === '\\') {
+        e.preventDefault();
+        if (singleTabs.length < 2 && currentView === 'single') return;
+        if (currentView === 'single') {
+            setView('split');
+        } else if (currentView === 'split') {
+            setView('single');
+        }
+        return;
+    }
+
+    // Ctrl+1 through Ctrl+9 — Switch to tab N
+    const digit = parseInt(key, 10);
+    if (digit >= 1 && digit <= 9) {
+        e.preventDefault();
+        const index = digit - 1;
+        if (currentView === 'single' && index < singleTabs.length) {
+            switchSingleTab(singleTabs[index]);
+        }
+        return;
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     // On mobile, force single view regardless of stored preference
@@ -859,6 +970,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setView(currentView);
     initSplitDivider();
     initPullToRefresh();
+
+    // Register keyboard shortcuts on desktop only
+    if (!isMobile()) {
+        document.addEventListener('keydown', handleShortcuts);
+    }
 
     // When resizing from desktop to mobile, enforce single view and close sidebar
     window.matchMedia('(max-width: 767px)').addEventListener('change', (e) => {
