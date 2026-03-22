@@ -54,12 +54,16 @@ const TerminalManager = {
         // Prevent the browser from intercepting keys that Claude Code needs
         term.attachCustomKeyEventHandler((e) => {
             if (e.type !== 'keydown') return true;
+            // Let Alt+key combos pass through to our shortcut handler (don't send to PTY)
+            if (e.altKey && !e.ctrlKey && !e.metaKey) {
+                return false;
+            }
             // Block browser default for Escape, Ctrl+C, Ctrl+D, etc.
             if (e.key === 'Escape' || (e.ctrlKey && ['c','d','z','l'].includes(e.key))) {
                 e.preventDefault();
                 e.stopPropagation();
             }
-            return true; // always let xterm handle the key
+            return true;
         });
 
         term.open(containerEl);
