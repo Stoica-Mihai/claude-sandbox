@@ -43,6 +43,7 @@ COPY --chown=claude:claude plugins/cli-anything-go /home/claude/.claude/plugins/
 RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin marketplace add anthropics/skills && \
     claude plugin marketplace add HKUDS/CLI-Anything && \
+    claude plugin marketplace add Stoica-Mihai/claude-skills && \
     claude plugin marketplace add /home/claude/.claude/plugins/marketplaces/cli-anything-go && \
     claude plugin install superpowers@claude-plugins-official && \
     claude plugin install skill-creator@claude-plugins-official && \
@@ -51,6 +52,7 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install example-skills@anthropic-agent-skills && \
     claude plugin install cli-anything@cli-anything && \
     claude plugin install cli-anything-go@cli-anything-go && \
+    claude plugin install opsx-ext@claude-skills && \
     find ~/.claude/plugins -name ".git" -type d -exec rm -rf {} + 2>/dev/null; true
 
 # Alias for launching Claude with bypass permissions
