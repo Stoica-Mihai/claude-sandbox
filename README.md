@@ -78,7 +78,7 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 
 - **Session list** — sidebar showing all running Claude Code sessions (managed and external)
 - **Terminal** — full xterm.js terminal with WebSocket relay for interactive sessions
-- **Multiple views** — single terminal with tabs, side-by-side split, or grid overview
+- **Tabbed terminals** — open multiple sessions as tabs, switch between them
 - **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory
 - **Mobile support** — responsive layout with slide-out drawer and touch input bar
 - **Theme toggle** — dark/light mode with localStorage persistence

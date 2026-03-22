@@ -27,7 +27,7 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
 - **`dashboard/broker.go`** — SSE pub/sub event broker.
 - **`dashboard/ringbuffer.go`** — Circular byte buffer for terminal scrollback.
 - **`dashboard/web/`** — Embedded templates and static assets via `go:embed`.
-  - `templates/layout.html` — Full page with sidebar, three view modes (single/split/grid), responsive mobile layout.
+  - `templates/layout.html` — Full page with sidebar, tabbed terminal view, responsive mobile layout.
   - `templates/fragments/sessions.html` — Session list HTMX fragment.
   - `templates/fragments/directory-picker.html` — Directory browser HTMX fragment.
   - `static/js/terminal.js` — xterm.js manager with WebSocket relay.

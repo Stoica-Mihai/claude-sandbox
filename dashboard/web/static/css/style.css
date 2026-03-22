@@ -27,11 +27,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     border-left-color: oklch(0.7 0.15 160);
     background: oklch(0.25 0.02 160 / 0.3);
 }
-.session-card.in-split {
-    border-left-color: oklch(0.7 0.12 250);
-    background: oklch(0.25 0.02 250 / 0.15);
-}
-
 /* ===== Pulse alive animation ===== */
 @keyframes pulse-dot {
     0%, 100% { opacity: 1; }
@@ -78,56 +73,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ===== Split divider ===== */
-.split-divider {
-    width: 5px;
-    cursor: col-resize;
-    position: relative;
-    transition: background 0.15s;
-}
-.split-divider::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 3px;
-    height: 32px;
-    border-radius: 2px;
-    background: oklch(0.5 0 0 / 0.2);
-    transition: background 0.15s, height 0.15s;
-}
-.split-divider:hover {
-    background: oklch(0.7 0.15 160 / 0.1);
-}
-.split-divider:hover::after {
-    background: oklch(0.7 0.15 160 / 0.5);
-    height: 48px;
-}
-
-/* ===== View button active state ===== */
-.view-btn {
-    transition: all 0.15s ease;
-}
-.view-btn.active {
-    background: oklch(0.3 0.02 160 / 0.4);
-    color: oklch(0.85 0.1 160);
-}
-
-/* ===== Terminal pane transitions ===== */
-.terminal-pane {
-    transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ===== Grid card ===== */
-.grid-card {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.grid-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px oklch(0 0 0 / 0.3);
-}
-
 /* ===== Directory picker ===== */
 .dir-item {
     transition: all 0.15s ease;
@@ -148,24 +93,8 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 [data-theme="light"] .session-card.active {
     background: oklch(0.9 0.03 160 / 0.5);
 }
-[data-theme="light"] .session-card.in-split {
-    background: oklch(0.9 0.03 250 / 0.4);
-}
 [data-theme="light"] .session-card:hover {
     border-left-color: oklch(0.5 0.2 160);
-}
-[data-theme="light"] .view-btn.active {
-    background: oklch(0.9 0.05 160 / 0.6);
-    color: oklch(0.35 0.15 160);
-}
-[data-theme="light"] .split-divider::after {
-    background: oklch(0.5 0 0 / 0.15);
-}
-[data-theme="light"] .split-divider:hover::after {
-    background: oklch(0.5 0.15 160 / 0.4);
-}
-[data-theme="light"] .grid-card:hover {
-    box-shadow: 0 8px 24px oklch(0 0 0 / 0.1);
 }
 [data-theme="light"] .dir-item:hover {
     background: oklch(0.9 0.03 160 / 0.4);

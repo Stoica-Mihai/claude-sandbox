@@ -49,19 +49,6 @@
                 <span id="session-badge-text" class="{{if .Sessions}}text-emerald-500 pulse-alive{{end}}"><span class="hidden md:inline">{{len .Sessions}} session{{if ne (len .Sessions) 1}}s{{end}}</span><span class="md:hidden">{{len .Sessions}}</span></span>
             </div>
 
-            <!-- View mode toggle (hidden on mobile — forced to single) -->
-            <div class="join bg-base-300 rounded-lg p-0.5 hidden md:flex">
-                <button class="view-btn active join-item btn btn-ghost btn-xs px-2" data-view="single" onclick="setView('single')" title="Single terminal">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                </button>
-                <button class="view-btn join-item btn btn-ghost btn-xs px-2" data-view="split" onclick="setView('split')" title="Split view">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-                </button>
-                <button class="view-btn join-item btn btn-ghost btn-xs px-2" data-view="grid" onclick="setView('grid')" title="Grid overview">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                </button>
-            </div>
-
             <label class="swap swap-rotate btn btn-ghost btn-sm btn-circle" id="themeToggleLabel">
                 <input type="checkbox" id="themeToggle" />
                 <svg class="swap-off w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -90,11 +77,6 @@
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg>
                     New
                 </button>
-            </div>
-
-            <!-- Tip for split mode -->
-            <div id="splitHint" class="hidden mx-3 mb-2 px-3 py-2 rounded-lg bg-info/10 border border-info/20 text-[10px] text-info">
-                Click a session to open left. Right-click or Shift+click for right pane.
             </div>
 
             <div id="session-list" class="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5" hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML">
@@ -143,12 +125,8 @@
                                 <span>Open a session from the sidebar</span>
                             </div>
                             <div class="flex items-center gap-3 text-xs text-base-content/40">
-                                <kbd class="kbd kbd-xs bg-base-200 border-base-content/10">Shift+Click</kbd>
-                                <span>Open in split view right pane</span>
-                            </div>
-                            <div class="flex items-center gap-3 text-xs text-base-content/40">
-                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-                                <span>Switch between single, split, and grid views</span>
+                                <kbd class="kbd kbd-xs bg-base-200 border-base-content/10">Ctrl+T</kbd>
+                                <span>Open a new session</span>
                             </div>
                         </div>
                         <!-- Mobile instructions -->
@@ -218,70 +196,6 @@
                     <div class="flex items-center gap-4">
                         <span id="singleStatusRight"></span>
                     </div>
-                </div>
-            </div>
-
-            <!-- ===== SPLIT TERMINAL VIEW ===== -->
-            <div id="viewSplit" class="flex-1 hidden flex-row">
-                <!-- Left pane -->
-                <div class="terminal-pane flex-1 flex flex-col min-w-0 border-r border-base-content/5">
-                    <div class="h-9 bg-base-200 border-b border-base-content/15 flex items-center justify-between px-3 shrink-0">
-                        <div class="flex items-center gap-2">
-                            <span id="splitLeftDot" class="w-1.5 h-1.5 rounded-full bg-base-content/20"></span>
-                            <span id="splitLeftLabel" class="font-mono text-xs text-base-content/80">Left pane</span>
-                        </div>
-                        <div class="flex items-center gap-1">
-                            <button class="kbd kbd-xs bg-base-content/5 border-base-content/10 text-base-content/40 hover:bg-base-content/10 hover:text-base-content/80 transition-all cursor-pointer font-mono text-[10px]" onclick="sendKeyToPane('left', 27)" title="Send Escape">Esc</button>
-                            <button class="kbd kbd-xs bg-base-content/5 border-base-content/10 text-base-content/40 hover:bg-base-content/10 hover:text-base-content/80 transition-all cursor-pointer font-mono text-[10px]" onclick="sendKeyToPane('left', 3)" title="Send Ctrl+C">^C</button>
-                            <button class="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100" title="Maximize" onclick="maximizeSplitPane('left')">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-                            </button>
-                            <button class="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100" title="Close pane" onclick="closeSplitPane('left')">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="splitLeftTerminal" class="flex-1 bg-[#0d1117] overflow-hidden">
-                    </div>
-                    <div class="h-6 bg-base-200 border-t border-base-content/15 flex items-center justify-between px-3 text-[9px] font-mono text-base-content/50 shrink-0">
-                        <span id="splitLeftStatus">No session</span>
-                        <span id="splitLeftDims"></span>
-                    </div>
-                </div>
-
-                <!-- Split divider -->
-                <div id="splitDivider" class="split-divider bg-base-content/5 shrink-0"></div>
-
-                <!-- Right pane -->
-                <div class="terminal-pane flex-1 flex flex-col min-w-0">
-                    <div class="h-9 bg-base-200 border-b border-base-content/15 flex items-center justify-between px-3 shrink-0">
-                        <div class="flex items-center gap-2">
-                            <span id="splitRightDot" class="w-1.5 h-1.5 rounded-full bg-base-content/20"></span>
-                            <span id="splitRightLabel" class="font-mono text-xs text-base-content/80">Right pane</span>
-                        </div>
-                        <div class="flex items-center gap-1">
-                            <button class="kbd kbd-xs bg-base-content/5 border-base-content/10 text-base-content/40 hover:bg-base-content/10 hover:text-base-content/80 transition-all cursor-pointer font-mono text-[10px]" onclick="sendKeyToPane('right', 27)" title="Send Escape">Esc</button>
-                            <button class="kbd kbd-xs bg-base-content/5 border-base-content/10 text-base-content/40 hover:bg-base-content/10 hover:text-base-content/80 transition-all cursor-pointer font-mono text-[10px]" onclick="sendKeyToPane('right', 3)" title="Send Ctrl+C">^C</button>
-                            <button class="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100" title="Maximize" onclick="maximizeSplitPane('right')">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-                            </button>
-                            <button class="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100" title="Close pane" onclick="closeSplitPane('right')">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="splitRightTerminal" class="flex-1 bg-[#0d1117] overflow-hidden">
-                    </div>
-                    <div class="h-6 bg-base-200 border-t border-base-content/15 flex items-center justify-between px-3 text-[9px] font-mono text-base-content/50 shrink-0">
-                        <span id="splitRightStatus">No session</span>
-                        <span id="splitRightDims"></span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ===== GRID VIEW ===== -->
-            <div id="viewGrid" class="flex-1 hidden overflow-y-auto p-5">
-                <div id="gridContainer" class="grid grid-cols-2 gap-4">
                 </div>
             </div>
 

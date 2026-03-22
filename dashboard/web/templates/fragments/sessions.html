@@ -5,7 +5,7 @@
 <div class="session-card rounded-lg p-3 cursor-pointer stagger-in group select-none{{if .External}} opacity-60{{end}}"
      data-terminal-id="{{.TerminalID}}"
      data-session="{{.DirName}}"
-     {{if not .External}}oncontextmenu="openSessionRight('{{.TerminalID}}', event)"{{end}}>
+>
     <div class="flex items-center justify-between mb-1.5">
         <div class="flex items-center gap-2">
             {{if .External}}
