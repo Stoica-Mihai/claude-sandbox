@@ -175,29 +175,38 @@
 
                 <!-- Mobile input bar (visible only on mobile when a terminal is open) -->
                 <div id="mobileInputBar" class="md:hidden hidden bg-[#161b22] border-t border-white/10 shrink-0">
-                    <div class="flex items-center gap-1 px-2 py-1.5">
-                        <!-- Control buttons -->
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSend(27)">Esc</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSend(3)">^C</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSend(127)">&#x232B;</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSendArrow('D')">&#x2190;</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSendArrow('C')">&#x2192;</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSendArrow('A')">&#x2191;</button>
-                        <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-[11px] px-1.5 shrink-0" onclick="mobileInputSendArrow('B')">&#x2193;</button>
-                        <!-- Text input with clear button -->
+                    <!-- Row 1: Text input + send button -->
+                    <div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
                         <div class="flex-1 min-w-0 relative">
                             <input id="mobileInput" type="text"
-                                   class="w-full bg-white/10 border border-white/15 rounded px-2 pr-7 py-1 text-white text-sm font-mono placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
+                                   class="w-full bg-white/10 border border-white/15 rounded-lg px-3 pr-8 py-2 text-white text-sm font-mono placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
                                    placeholder="Type here..."
                                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                    onkeydown="mobileInputKeydown(event)" oninput="mobileInputToggleClear()" />
-                            <button id="mobileInputClear" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-white/30 active:text-white/60 hidden" onclick="mobileInputClearText()">
+                            <button id="mobileInputClear" class="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 active:text-white/60 hidden" onclick="mobileInputClearText()">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
-                        <button class="btn btn-xs btn-primary shrink-0 px-3" onclick="mobileInputSubmit()">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h14"/></svg>
+                        <button class="btn btn-sm btn-primary shrink-0 px-4 rounded-lg" onclick="mobileInputSubmit()">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h14"/></svg>
                         </button>
+                    </div>
+                    <!-- Row 2: Control buttons -->
+                    <div class="flex items-center justify-between px-2 pb-2 pt-0.5">
+                        <!-- Signal buttons -->
+                        <div class="flex items-center gap-1.5">
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(27)">Esc</button>
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(3)">^C</button>
+                        </div>
+                        <!-- Editing -->
+                        <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(127)">&#x232B;</button>
+                        <!-- Navigation arrows -->
+                        <div class="flex items-center gap-1.5">
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('D')">&#x2190;</button>
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('C')">&#x2192;</button>
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('A')">&#x2191;</button>
+                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('B')">&#x2193;</button>
+                        </div>
                     </div>
                 </div>
 

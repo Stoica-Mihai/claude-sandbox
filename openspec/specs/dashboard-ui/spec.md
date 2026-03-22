@@ -76,19 +76,23 @@ On desktop (>=768px), a control bar SHALL appear below the tab bar with `Esc`, `
 - **THEN** the system SHALL send byte `0x1b` to the PTY and Claude Code SHALL dismiss the current screen, identical to pressing the Escape key in a native terminal
 
 ### Requirement: Mobile input bar
-On mobile (<768px), the xterm textarea SHALL be set to readonly to prevent the mobile keyboard from focusing it directly (which causes broken IME composition). Instead, a visible input bar SHALL appear at the bottom of the terminal area with: `Esc` (byte 27), `^C` (byte 3), `⌫` backspace (byte 127), `←` `→` `↑` `↓` arrow keys (ANSI escape sequences), a text input field, and a send button. The text input SHALL have `autocomplete`, `autocorrect`, `autocapitalize` off and `spellcheck` false. Typing in the input and pressing Enter (or tapping send) SHALL send the text followed by `\r` to the PTY via WebSocket and clear the input. The input SHALL have a clear (X) button that appears when text is present. The mobile input bar SHALL be hidden when no terminal is open.
+On mobile (<768px), the mobile input bar SHALL be split into two rows stacked vertically:
 
-#### Scenario: Type and send on mobile
-- **WHEN** the user types text in the mobile input field and presses Enter or taps the send button
-- **THEN** the text followed by a carriage return SHALL be sent as binary to the PTY WebSocket, the input SHALL be cleared, and focus SHALL remain on the input field
+**Row 1 (top):** Full-width text input field with clear button (X) and send button. The input SHALL occupy the maximum available width for comfortable typing.
 
-#### Scenario: Control buttons on mobile
-- **WHEN** the user taps Esc, ^C, ⌫, or arrow buttons in the mobile input bar
-- **THEN** the corresponding byte or escape sequence SHALL be sent directly to the PTY, enabling navigation of Claude Code menus (e.g., /usage config tabs with ← →), deleting characters in interactive search fields (⌫), and dismissing screens (Esc)
+**Row 2 (bottom):** Control buttons spread across the full width with adequate spacing for touch targets. Buttons SHALL be grouped logically: signal buttons (Esc, ^C) on the left, editing (⌫) in the middle, navigation arrows (← → ↑ ↓) on the right. Each button SHALL have a minimum tap target of 36px height for comfortable touch interaction.
 
-#### Scenario: Mobile keyboard does not focus xterm textarea
-- **WHEN** the user taps the terminal area on mobile
-- **THEN** the xterm textarea SHALL NOT gain focus (readonly + pointer-events none), preventing the mobile keyboard from appearing with broken IME composition. All input goes through the visible input bar.
+#### Scenario: Two-row mobile input layout
+- **WHEN** a terminal is open on a mobile viewport (<768px)
+- **THEN** the mobile input bar SHALL display as two rows: the text input + send button on top, and the control buttons spread across the bottom row with visual grouping
+
+#### Scenario: Input field has full width
+- **WHEN** the mobile input bar is visible
+- **THEN** the text input field SHALL span the full width of the bar (minus the send button), giving the user ample space to type and see their input
+
+#### Scenario: Touch-friendly button sizing
+- **WHEN** the user taps control buttons on the bottom row
+- **THEN** each button SHALL have adequate spacing and size (minimum 36px height) to prevent accidental mis-taps on adjacent buttons
 
 ### Requirement: Interactive terminal view
 The dashboard SHALL embed xterm.js terminals that connect to sessions via native WebSocket (not HTMX SSE). Terminals SHALL be resizable and support the full Claude Code TUI. In split mode, each pane SHALL have its own independent xterm.js instance and WebSocket connection.
