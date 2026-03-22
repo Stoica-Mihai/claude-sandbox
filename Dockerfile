@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qrencode \
     npm \
     ca-certificates \
+    gcc \
+    libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go 1.26.1 from official tarball

@@ -18,6 +18,5 @@
     "cli-anything-go@claude-skills": true,
     "opsx-ext@claude-skills": true
   },
-  "mcpServers": {},
   "skipDangerousModePermissionPrompt": true
 }
