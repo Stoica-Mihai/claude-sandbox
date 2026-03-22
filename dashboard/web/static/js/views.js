@@ -417,9 +417,10 @@ function initPullToRefresh() {
     let pulling = false;
 
     body.addEventListener('touchstart', (e) => {
-        // Don't activate inside terminals or when a dialog/modal is open
+        // Don't activate inside terminals, open dialogs, or the sidebar drawer
         if (e.target.closest('.xterm') || e.target.closest('#singleTerminal')) return;
         if (document.querySelector('dialog[open]')) return;
+        if (e.target.closest('#sidebar')) return;
         startY = e.touches[0].clientY;
         pulling = true;
     }, { passive: true });
