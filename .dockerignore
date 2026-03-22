@@ -10,3 +10,8 @@ mcp-config.example.json
 generate-env.sh
 mockups
 openspec
+node_modules
+package.json
+package-lock.json
+automation-recommendations.md
+.claude
