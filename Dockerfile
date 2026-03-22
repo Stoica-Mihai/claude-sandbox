@@ -36,7 +36,10 @@ ENV PATH="/home/claude/.local/bin:${PATH}"
 # Openspec telemetry disable
 ENV DO_NOT_TRACK=1
 
-# Register marketplaces, install plugins, then clean up git history
+# Enable plugin auto-updates even when the main auto-updater is disabled
+ENV FORCE_AUTOUPDATE_PLUGINS=true
+
+# Register marketplaces and install plugins
 RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin marketplace add anthropics/skills && \
     claude plugin marketplace add HKUDS/CLI-Anything && \
@@ -48,8 +51,7 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install example-skills@anthropic-agent-skills && \
     claude plugin install cli-anything@cli-anything && \
     claude plugin install cli-anything-go@claude-skills && \
-    claude plugin install opsx-ext@claude-skills && \
-    find ~/.claude/plugins -name ".git" -type d -exec rm -rf {} + 2>/dev/null; true
+    claude plugin install opsx-ext@claude-skills
 
 # Alias for launching Claude with bypass permissions
 RUN echo 'alias claude="claude --dangerously-skip-permissions "' >> /home/claude/.bashrc
