@@ -15,7 +15,7 @@
     "document-skills@anthropic-agent-skills": true,
     "example-skills@anthropic-agent-skills": true,
     "cli-anything@cli-anything": true,
-    "cli-anything-go@cli-anything-go": true,
+    "cli-anything-go@claude-skills": true,
     "opsx-ext@claude-skills": true
   },
   "mcpServers": {},

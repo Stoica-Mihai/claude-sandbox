@@ -38,6 +38,7 @@ The container comes with these Claude Code plugins pre-installed:
 - `superpowers`, `skill-creator` (from claude-plugins-official)
 - `claude-api`, `document-skills`, `example-skills` (from anthropic-agent-skills)
 - `cli-anything` (from CLI-Anything)
+- `opsx-ext`, `cli-anything-go` (from claude-skills)
 
 ## Notes
 
