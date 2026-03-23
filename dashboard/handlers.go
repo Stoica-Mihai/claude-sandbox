@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"claude-dashboard/web"
 
@@ -277,8 +278,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("websocket attached", "session", sessionName)
-
 	// Spawn tmux attach with an ephemeral PTY.
 	cmd := exec.Command("tmux", "attach", "-t", sessionName)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
@@ -294,11 +293,29 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// done is closed when the attach process exits (session ended or killed).
-	done := make(chan struct{})
+	slog.Info("websocket attached", "session", sessionName)
+
+	// closed is signalled when either the attach process exits or the WebSocket disconnects.
+	closed := make(chan struct{})
+	closeOnce := sync.Once{}
+	cleanup := func(reason string) {
+		closeOnce.Do(func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = ptmx.Close()
+			_ = conn.Close()
+			close(closed)
+			slog.Info("websocket detached", "session", sessionName, "reason", reason)
+		})
+	}
+
+	// Wait for the attach process to exit.
 	go func() {
 		_ = cmd.Wait()
-		close(done)
+		cleanup("process exited")
+		s.sm.invalidateCache()
+		s.broker.Publish()
 	}()
 
 	// PTY → WebSocket relay goroutine.
@@ -312,11 +329,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 						"session", sessionName,
 						"error", writeErr,
 					)
+					cleanup("ws write error")
 					return
 				}
 			}
 			if readErr != nil {
-				// PTY closed — attach process exited.
 				slog.Debug("attach pty read ended", "session", sessionName)
 				return
 			}
@@ -325,17 +342,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// WebSocket → PTY relay goroutine.
 	go func() {
-		defer func() {
-			// On WS disconnect, kill the attach process and close the PTY.
-			// The tmux session itself continues running.
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			_ = ptmx.Close()
-			_ = conn.Close()
-			slog.Info("websocket detached", "session", sessionName)
-		}()
-
 		for {
 			msgType, data, readErr := conn.ReadMessage()
 			if readErr != nil {
@@ -345,19 +351,18 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				) {
 					slog.Debug("websocket read error", "session", sessionName, "error", readErr)
 				}
+				cleanup("client disconnected")
 				return
 			}
 
-			// Check if the attach process has exited.
 			select {
-			case <-done:
+			case <-closed:
 				return
 			default:
 			}
 
 			switch msgType {
 			case websocket.TextMessage:
-				// JSON control message (e.g., resize).
 				var msg resizeMessage
 				if err := json.Unmarshal(data, &msg); err != nil {
 					slog.Debug("invalid control message", "session", sessionName, "error", err)
@@ -372,7 +377,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case websocket.BinaryMessage:
-				// Terminal input data — write directly to attach PTY stdin.
 				if _, err := ptmx.Write(data); err != nil {
 					slog.Debug("pty write failed", "session", sessionName, "error", err)
 					return
@@ -381,23 +385,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Block until the attach process exits or the HTTP context is cancelled.
-	select {
-	case <-done:
-		// Attach process exited (tmux session ended).
-		closeMsg := websocket.FormatCloseMessage(
-			websocket.CloseNormalClosure,
-			"session ended",
-		)
-		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
-		_ = ptmx.Close()
-		_ = conn.Close()
-		// Publish to update the session list (session may have exited).
-		s.sm.invalidateCache()
-		s.broker.Publish()
-	case <-r.Context().Done():
-		// HTTP context cancelled — cleanup handled by defer in WS→PTY goroutine.
-	}
+	// Block until fully cleaned up. No reliance on r.Context().
+	<-closed
 }
 
 // ListDirectoriesFlat returns the full absolute path for a workspace-relative
