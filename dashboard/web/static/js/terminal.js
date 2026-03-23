@@ -73,14 +73,6 @@ const TerminalManager = {
         // We re-focus it immediately via the textarea's own blur listener.
         const textarea = containerEl.querySelector('.xterm-helper-textarea');
         if (textarea) {
-            // On mobile, prevent the xterm textarea from gaining focus
-            // (which triggers the mobile keyboard with broken IME composition).
-            // Instead, a visible input bar handles all mobile input.
-            if (window.matchMedia('(max-width: 767px)').matches) {
-                textarea.setAttribute('readonly', 'true');
-                textarea.style.pointerEvents = 'none';
-            }
-
             let lastKeyEscape = false;
             textarea.addEventListener('keydown', (e) => {
                 lastKeyEscape = (e.key === 'Escape');
