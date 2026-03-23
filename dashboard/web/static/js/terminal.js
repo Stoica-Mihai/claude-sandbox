@@ -130,6 +130,11 @@ const TerminalManager = {
                 const encoder = new TextEncoder();
                 ws.send(encoder.encode(data));
             }
+            // On mobile, dismiss keyboard after Enter so the user can see output
+            if (data === '\r' && window.matchMedia('(max-width: 767px)').matches) {
+                const ta = containerEl.querySelector('.xterm-helper-textarea');
+                if (ta) setTimeout(() => ta.blur(), 50);
+            }
         });
 
         // Handle terminal resize
