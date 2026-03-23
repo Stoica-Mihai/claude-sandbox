@@ -360,9 +360,6 @@ document.addEventListener('click', (e) => {
     const terminalId = card.dataset.terminalId;
     if (!terminalId) return;
 
-    // External sessions are not clickable
-    if (card.classList.contains('opacity-60')) return;
-
     // Regular click: open in single view
     openSession(terminalId);
 });

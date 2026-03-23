@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -119,7 +120,7 @@ func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) 
 	buf.WriteTo(w)
 }
 
-// handleSpawn creates a new Claude Code session from the POSTed form data.
+// handleSpawn creates a new Claude Code session inside a tmux session.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	cwd := r.FormValue("cwd")
 	if cwd == "" {
@@ -127,29 +128,27 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ms, err := s.sm.Spawn(cwd)
+	sessionName, err := s.sm.Spawn(cwd)
 	if err != nil {
 		slog.Error("failed to spawn session", "cwd", cwd, "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Return the updated sessions fragment. The HTMX client will swap it in.
-	// Also set a custom header so the client JS knows the new terminal ID.
-	w.Header().Set("X-Terminal-Id", ms.TerminalID)
+	w.Header().Set("X-Terminal-Id", sessionName)
 	s.handleSessionsFragment(w, r)
 }
 
-// handleKill terminates a managed session.
+// handleKill terminates a tmux session.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
-	terminalID := r.PathValue("terminalId")
-	if terminalID == "" {
-		http.Error(w, "missing terminalId", http.StatusBadRequest)
+	sessionName := r.PathValue("terminalId")
+	if sessionName == "" {
+		http.Error(w, "missing session name", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.sm.Kill(terminalID); err != nil {
-		slog.Error("failed to kill session", "terminalId", terminalID, "error", err)
+	if err := s.sm.Kill(sessionName); err != nil {
+		slog.Error("failed to kill session", "session", sessionName, "error", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -255,82 +254,103 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleWebSocket upgrades the HTTP connection to a WebSocket and relays
-// bidirectional data between the browser terminal and the PTY. When the
-// WebSocket disconnects, the PTY continues running (detached mode). When a
-// new WebSocket connects, scrollback is replayed.
+// bidirectional data between the browser terminal and a tmux attach process.
+// Each WebSocket connection gets its own ephemeral `tmux attach` PTY.
+// When the WebSocket disconnects, the attach process is killed but the
+// tmux session continues running.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	terminalID := r.PathValue("terminalId")
-	if terminalID == "" {
-		http.Error(w, "missing terminalId", http.StatusBadRequest)
+	sessionName := r.PathValue("terminalId")
+	if sessionName == "" {
+		http.Error(w, "missing session name", http.StatusBadRequest)
 		return
 	}
 
-	ms := s.sm.Get(terminalID)
-	if ms == nil {
+	// Verify the tmux session exists before upgrading.
+	if !s.sm.sessionExists(sessionName) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Error("websocket upgrade failed", "terminalId", terminalID, "error", err)
+		slog.Error("websocket upgrade failed", "session", sessionName, "error", err)
 		return
 	}
 
-	slog.Info("websocket attached", "terminalId", terminalID)
+	slog.Info("websocket attached", "session", sessionName)
 
-	// Detach any previously attached WebSocket.
-	ms.wsMu.Lock()
-	if ms.wsConn != nil {
-		_ = ms.wsConn.Close()
+	// Spawn tmux attach with an ephemeral PTY.
+	cmd := exec.Command("tmux", "attach", "-t", sessionName)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 120})
+	if err != nil {
+		slog.Error("failed to start tmux attach", "session", sessionName, "error", err)
+		closeMsg := websocket.FormatCloseMessage(
+			websocket.CloseInternalServerErr,
+			"failed to attach to session",
+		)
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		_ = conn.Close()
+		return
 	}
-	ms.wsConn = conn
-	ms.wsMu.Unlock()
 
-	// Replay scrollback to the new connection.
-	scrollback := ms.Scrollback.Bytes()
-	if len(scrollback) > 0 {
-		if err := conn.WriteMessage(websocket.BinaryMessage, scrollback); err != nil {
-			slog.Error("scrollback replay failed", "terminalId", terminalID, "error", err)
-			ms.wsMu.Lock()
-			if ms.wsConn == conn {
-				ms.wsConn = nil
+	// done is closed when the attach process exits (session ended or killed).
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+
+	// PTY → WebSocket relay goroutine.
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := ptmx.Read(buf)
+			if n > 0 {
+				if writeErr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+					slog.Debug("websocket write error",
+						"session", sessionName,
+						"error", writeErr,
+					)
+					return
+				}
 			}
-			ms.wsMu.Unlock()
-			_ = conn.Close()
-			return
+			if readErr != nil {
+				// PTY closed — attach process exited.
+				slog.Debug("attach pty read ended", "session", sessionName)
+				return
+			}
 		}
-	}
+	}()
 
-	// Read from WebSocket → write to PTY.
-	// This goroutine runs until the WebSocket disconnects or the process exits.
+	// WebSocket → PTY relay goroutine.
 	go func() {
 		defer func() {
-			// On WS disconnect, detach but keep PTY alive.
-			ms.wsMu.Lock()
-			if ms.wsConn == conn {
-				ms.wsConn = nil
+			// On WS disconnect, kill the attach process and close the PTY.
+			// The tmux session itself continues running.
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
 			}
-			ms.wsMu.Unlock()
+			_ = ptmx.Close()
 			_ = conn.Close()
-			slog.Info("websocket detached", "terminalId", terminalID)
+			slog.Info("websocket detached", "session", sessionName)
 		}()
 
 		for {
-			msgType, data, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err,
+			msgType, data, readErr := conn.ReadMessage()
+			if readErr != nil {
+				if websocket.IsUnexpectedCloseError(readErr,
 					websocket.CloseGoingAway,
 					websocket.CloseNormalClosure,
 				) {
-					slog.Debug("websocket read error", "terminalId", terminalID, "error", err)
+					slog.Debug("websocket read error", "session", sessionName, "error", readErr)
 				}
 				return
 			}
 
-			// Check if the process has exited.
+			// Check if the attach process has exited.
 			select {
-			case <-ms.done:
+			case <-done:
 				return
 			default:
 			}
@@ -340,45 +360,43 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				// JSON control message (e.g., resize).
 				var msg resizeMessage
 				if err := json.Unmarshal(data, &msg); err != nil {
-					slog.Debug("invalid control message", "terminalId", terminalID, "error", err)
+					slog.Debug("invalid control message", "session", sessionName, "error", err)
 					continue
 				}
 				if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
-					if err := pty.Setsize(ms.PTY, &pty.Winsize{
+					if err := pty.Setsize(ptmx, &pty.Winsize{
 						Rows: msg.Rows,
 						Cols: msg.Cols,
 					}); err != nil {
-						slog.Debug("pty resize failed", "terminalId", terminalID, "error", err)
+						slog.Debug("pty resize failed", "session", sessionName, "error", err)
 					}
 				}
 			case websocket.BinaryMessage:
-				// Terminal input data — write directly to PTY stdin.
-				if _, err := ms.PTY.Write(data); err != nil {
-					slog.Debug("pty write failed", "terminalId", terminalID, "error", err)
+				// Terminal input data — write directly to attach PTY stdin.
+				if _, err := ptmx.Write(data); err != nil {
+					slog.Debug("pty write failed", "session", sessionName, "error", err)
 					return
 				}
 			}
 		}
 	}()
 
-	// Block until the process exits or the connection is replaced.
-	// The PTY→WS relay is handled by readPTY in session.go.
+	// Block until the attach process exits or the HTTP context is cancelled.
 	select {
-	case <-ms.done:
-		// Process exited — close this WebSocket if still attached.
-		ms.wsMu.Lock()
-		if ms.wsConn == conn {
-			closeMsg := websocket.FormatCloseMessage(
-				websocket.CloseNormalClosure,
-				"process exited",
-			)
-			_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
-			ms.wsConn = nil
-		}
-		ms.wsMu.Unlock()
+	case <-done:
+		// Attach process exited (tmux session ended).
+		closeMsg := websocket.FormatCloseMessage(
+			websocket.CloseNormalClosure,
+			"session ended",
+		)
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		_ = ptmx.Close()
 		_ = conn.Close()
+		// Publish to update the session list (session may have exited).
+		s.sm.invalidateCache()
+		s.broker.Publish()
 	case <-r.Context().Done():
-		// HTTP context cancelled.
+		// HTTP context cancelled — cleanup handled by defer in WS→PTY goroutine.
 	}
 }
 

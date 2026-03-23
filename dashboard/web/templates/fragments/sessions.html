@@ -2,42 +2,36 @@
 <span id="session-count" class="hidden">{{len .Sessions}}</span>
 {{if .Sessions}}
 {{range .Sessions}}
-<div class="session-card rounded-lg p-3 cursor-pointer stagger-in group select-none{{if .External}} opacity-60{{end}}"
-     data-terminal-id="{{.TerminalID}}"
+<div class="session-card rounded-lg p-3 cursor-pointer stagger-in group select-none"
+     data-terminal-id="{{.Name}}"
      data-session="{{.DirName}}"
 >
     <div class="flex items-center justify-between mb-1.5">
         <div class="flex items-center gap-2">
-            {{if .External}}
-            <span class="w-2 h-2 rounded-full bg-warning"></span>
-            {{else if .Alive}}
+            {{if .Alive}}
             <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-alive"></span>
             {{else}}
             <span class="w-2 h-2 rounded-full bg-base-content/20"></span>
             {{end}}
-            <span class="font-mono text-xs text-base-content/70">PID {{.PID}}</span>
+            <span class="font-mono text-xs text-base-content/70">{{.Name}}</span>
         </div>
         <span class="text-[10px] text-base-content/40 font-mono">{{.Duration}}</span>
     </div>
     <div class="font-medium text-sm text-base-content truncate">{{.CWD}}</div>
     <div class="flex items-center justify-between mt-2">
-        {{if .External}}
-        <span class="text-[10px] text-warning/60 font-mono">external</span>
-        {{else if .Alive}}
+        {{if .Alive}}
         <span class="text-[10px] text-emerald-500/60 font-mono">active</span>
         {{else}}
         <span class="text-[10px] text-base-content/30 font-mono">stopped</span>
         {{end}}
-        {{if .Managed}}
         <button class="btn btn-ghost btn-sm text-error/70 hover:text-error hover:bg-error/10 opacity-0 group-hover:opacity-100 transition-all"
                 title="Kill session"
-                hx-delete="/api/sessions/{{.TerminalID}}"
+                hx-delete="/api/sessions/{{.Name}}"
                 hx-target="#session-list"
                 hx-swap="innerHTML"
-                onclick="event.stopPropagation(); cleanupKilledSession('{{.TerminalID}}')">
+                onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
-        {{end}}
     </div>
 </div>
 {{end}}

@@ -3,421 +3,276 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"github.com/creack/pty"
-	"github.com/gorilla/websocket"
 )
 
 const (
-	// scrollbackCapacity is the number of bytes retained for terminal replay.
-	scrollbackCapacity = 10000
+	// sessionPrefix identifies dashboard-relevant tmux sessions.
+	sessionPrefix = "claude-"
 	// workspaceRoot is the base directory users may spawn sessions in.
 	workspaceRoot = "/workspace"
+	// cacheTTL is how long tmux list-sessions results are cached.
+	cacheTTL = 2 * time.Second
+	// pollInterval is how often the background poller checks for session changes.
+	pollInterval = 5 * time.Second
+	// maxSpawnRetries is the number of retries on tmux session name collision.
+	maxSpawnRetries = 3
 )
 
-// ManagedSession represents a Claude Code session spawned by the dashboard
-// with a PTY attached.
-type ManagedSession struct {
-	TerminalID string
-	PID        int
-	Cmd        *exec.Cmd
-	PTY        *os.File
-	CWD        string
-	StartedAt  time.Time
-	Scrollback *RingBuffer
-
-	wsConn *websocket.Conn
-	wsMu   sync.Mutex
-
-	done chan struct{} // closed when process exits
-}
-
-// DetectedSession represents a Claude Code session discovered from the
-// ~/.claude/sessions/ directory.
-type DetectedSession struct {
-	PID       int
-	SessionID string
+// DisplaySession is the view used by templates. All sessions are tmux sessions.
+type DisplaySession struct {
+	Name      string // tmux session name (e.g. "claude-a1b2c3d4")
 	CWD       string
-	StartedAt time.Time
+	DirName   string
+	CreatedAt time.Time
+	Duration  string
 	Alive     bool
 }
 
-// DisplaySession is the merged view used by templates. It combines managed
-// (dashboard-spawned) and detected (file-discovered) session information.
-type DisplaySession struct {
-	TerminalID string
-	PID        int
-	SessionID  string
-	CWD        string
-	DirName    string
-	StartedAt  time.Time
-	Duration   string
-	Alive      bool
-	Managed    bool
-	External   bool
-}
-
-// SessionManager tracks all managed PTY sessions and discovers external
-// sessions from ~/.claude/sessions/*.json files.
+// SessionManager discovers tmux sessions and provides spawn/kill operations.
 type SessionManager struct {
-	mu      sync.RWMutex
-	managed map[string]*ManagedSession
-	broker  *Broker
+	mu        sync.RWMutex
+	cached    []DisplaySession
+	cachedAt  time.Time
+	cachedRaw string // raw tmux output for change detection
+	broker    *Broker
+	stopPoll  chan struct{}
 }
 
-// NewSessionManager creates a SessionManager wired to the given SSE broker.
+// NewSessionManager creates a SessionManager wired to the given SSE broker
+// and starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
-	return &SessionManager{
-		managed: make(map[string]*ManagedSession),
-		broker:  broker,
+	sm := &SessionManager{
+		broker:   broker,
+		stopPoll: make(chan struct{}),
 	}
+	go sm.pollLoop()
+	return sm
 }
 
-// sessionFileData matches the JSON structure written by Claude Code.
-type sessionFileData struct {
-	PID       int    `json:"pid"`
-	SessionID string `json:"sessionId"`
-	CWD       string `json:"cwd"`
-	StartedAt int64  `json:"startedAt"` // milliseconds since epoch
-}
-
-// ListSessions merges managed sessions with those detected from disk and
-// returns a unified list sorted by StartedAt descending (newest first).
+// ListSessions returns all claude-prefixed tmux sessions, using cache if fresh.
 func (sm *SessionManager) ListSessions() []DisplaySession {
 	sm.mu.RLock()
-	managedCopy := make(map[string]*ManagedSession, len(sm.managed))
-	for k, v := range sm.managed {
-		managedCopy[k] = v
+	if time.Since(sm.cachedAt) < cacheTTL {
+		result := make([]DisplaySession, len(sm.cached))
+		copy(result, sm.cached)
+		sm.mu.RUnlock()
+		return result
 	}
 	sm.mu.RUnlock()
 
-	// Build a set of managed PIDs for dedup.
-	managedPIDs := make(map[int]string) // pid → terminalId
-	for tid, ms := range managedCopy {
-		managedPIDs[ms.PID] = tid
-	}
+	return sm.refreshSessions()
+}
 
-	// Read detected sessions from disk.
-	detected := discoverSessions()
+// refreshSessions queries tmux and updates the cache. Returns the new list.
+func (sm *SessionManager) refreshSessions() []DisplaySession {
+	sessions := discoverTmuxSessions()
 
-	// Merge: detected sessions that match a managed PID get merged.
-	detectedByPID := make(map[int]*DetectedSession, len(detected))
-	for i := range detected {
-		detectedByPID[detected[i].PID] = &detected[i]
-	}
-
-	var sessions []DisplaySession
-	now := time.Now()
-
-	// Add all managed sessions.
-	for _, ms := range managedCopy {
-		ds := DisplaySession{
-			TerminalID: ms.TerminalID,
-			PID:        ms.PID,
-			CWD:        ms.CWD,
-			DirName:    filepath.Base(ms.CWD),
-			StartedAt:  ms.StartedAt,
-			Duration:   humanDuration(now.Sub(ms.StartedAt)),
-			Alive:      isProcessAlive(ms.PID),
-			Managed:    true,
-			External:   false,
-		}
-		// Merge sessionId from detected file if available.
-		if det, ok := detectedByPID[ms.PID]; ok {
-			ds.SessionID = det.SessionID
-		}
-		sessions = append(sessions, ds)
-	}
-
-	// Add detected sessions that are NOT managed.
-	for _, det := range detected {
-		if _, managed := managedPIDs[det.PID]; managed {
-			continue // already merged above
-		}
-		sessions = append(sessions, DisplaySession{
-			PID:       det.PID,
-			SessionID: det.SessionID,
-			CWD:       det.CWD,
-			DirName:   filepath.Base(det.CWD),
-			StartedAt: det.StartedAt,
-			Duration:  humanDuration(now.Sub(det.StartedAt)),
-			Alive:     det.Alive,
-			Managed:   false,
-			External:  true,
-		})
-	}
-
-	// Sort by StartedAt descending.
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].StartedAt.After(sessions[j].StartedAt)
-	})
+	sm.mu.Lock()
+	sm.cached = sessions
+	sm.cachedAt = time.Now()
+	sm.mu.Unlock()
 
 	return sessions
 }
 
-// Spawn creates a new Claude Code session in the given working directory.
-// It allocates a PTY, starts the process, and begins reading output into
-// the scrollback ring buffer. Returns the new managed session.
-func (sm *SessionManager) Spawn(cwd string) (*ManagedSession, error) {
-	// Validate the working directory.
+// invalidateCache forces the next ListSessions call to query tmux.
+func (sm *SessionManager) invalidateCache() {
+	sm.mu.Lock()
+	sm.cachedAt = time.Time{}
+	sm.mu.Unlock()
+}
+
+// Spawn creates a new Claude Code session inside a tmux session.
+func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	absPath, err := filepath.Abs(cwd)
 	if err != nil {
-		return nil, fmt.Errorf("invalid path: %w", err)
+		return "", fmt.Errorf("invalid path: %w", err)
 	}
 	if !strings.HasPrefix(absPath, workspaceRoot) {
-		return nil, fmt.Errorf("directory must be under %s", workspaceRoot)
+		return "", fmt.Errorf("directory must be under %s", workspaceRoot)
 	}
 	info, err := os.Stat(absPath)
 	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("directory does not exist: %s", absPath)
+		return "", fmt.Errorf("directory does not exist: %s", absPath)
 	}
 
-	// Find the claude binary.
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
 		claudePath = "claude"
 	}
 
-	terminalID := generateTerminalID()
+	var sessionName string
+	for i := 0; i < maxSpawnRetries; i++ {
+		sessionName = generateSessionName()
+		cmd := exec.Command("tmux", "new-session",
+			"-d",
+			"-s", sessionName,
+			"-c", absPath,
+			"--", claudePath, "--dangerously-skip-permissions",
+		)
+		cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
-	cmd := exec.Command(claudePath, "--dangerously-skip-permissions")
-	cmd.Dir = absPath
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+		if err := cmd.Run(); err != nil {
+			slog.Warn("tmux new-session failed, retrying",
+				"session", sessionName,
+				"attempt", i+1,
+				"error", err,
+			)
+			continue
+		}
 
-	// Start with a large initial size so Claude Code renders its banner
-	// correctly before xterm.js connects and sends the real dimensions.
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 120})
-	if err != nil {
-		return nil, fmt.Errorf("failed to start PTY: %w", err)
+		slog.Info("spawned tmux session",
+			"session", sessionName,
+			"cwd", absPath,
+		)
+		sm.invalidateCache()
+		sm.broker.Publish()
+		return sessionName, nil
 	}
 
-	ms := &ManagedSession{
-		TerminalID: terminalID,
-		PID:        cmd.Process.Pid,
-		Cmd:        cmd,
-		PTY:        ptmx,
-		CWD:        absPath,
-		StartedAt:  time.Now(),
-		Scrollback: NewRingBuffer(scrollbackCapacity),
-		done:       make(chan struct{}),
-	}
-
-	sm.mu.Lock()
-	sm.managed[terminalID] = ms
-	sm.mu.Unlock()
-
-	slog.Info("spawned session",
-		"terminalId", terminalID,
-		"pid", ms.PID,
-		"cwd", absPath,
-	)
-
-	// Start the PTY output reader goroutine.
-	go sm.readPTY(ms)
-
-	// Start a goroutine that waits for the process to exit.
-	go sm.waitProcess(ms)
-
-	sm.broker.Publish()
-	return ms, nil
+	return "", fmt.Errorf("failed to create tmux session after %d attempts", maxSpawnRetries)
 }
 
-// Kill terminates a managed session by terminal ID.
-func (sm *SessionManager) Kill(terminalID string) error {
-	sm.mu.Lock()
-	ms, ok := sm.managed[terminalID]
-	if !ok {
-		sm.mu.Unlock()
-		return fmt.Errorf("session not found: %s", terminalID)
-	}
-	delete(sm.managed, terminalID)
-	sm.mu.Unlock()
-
-	slog.Info("killing session", "terminalId", terminalID, "pid", ms.PID)
-
-	// Send SIGTERM to the process.
-	if ms.Cmd.Process != nil {
-		_ = ms.Cmd.Process.Signal(syscall.SIGTERM)
+// Kill terminates a tmux session by name.
+func (sm *SessionManager) Kill(sessionName string) error {
+	if !sm.sessionExists(sessionName) {
+		return fmt.Errorf("session not found: %s", sessionName)
 	}
 
-	// Close the PTY (this will also cause the read goroutine to exit).
-	_ = ms.PTY.Close()
-
-	// Close any attached WebSocket.
-	ms.wsMu.Lock()
-	if ms.wsConn != nil {
-		_ = ms.wsConn.Close()
-		ms.wsConn = nil
+	cmd := exec.Command("tmux", "kill-session", "-t", sessionName)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to kill session %s: %w", sessionName, err)
 	}
-	ms.wsMu.Unlock()
 
+	slog.Info("killed tmux session", "session", sessionName)
+	sm.invalidateCache()
 	sm.broker.Publish()
 	return nil
 }
 
-// Get returns a managed session by terminal ID, or nil if not found.
-func (sm *SessionManager) Get(terminalID string) *ManagedSession {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.managed[terminalID]
+// sessionExists checks if a tmux session with the given name exists.
+func (sm *SessionManager) sessionExists(name string) bool {
+	cmd := exec.Command("tmux", "has-session", "-t", name)
+	return cmd.Run() == nil
 }
 
-// Shutdown terminates all managed sessions. Called during server shutdown.
+// Shutdown stops the polling goroutine. tmux sessions are NOT killed —
+// they persist for reconnection after dashboard restart.
 func (sm *SessionManager) Shutdown() {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	for id, ms := range sm.managed {
-		slog.Info("shutting down session", "terminalId", id, "pid", ms.PID)
-		if ms.Cmd.Process != nil {
-			_ = ms.Cmd.Process.Signal(syscall.SIGTERM)
-		}
-		_ = ms.PTY.Close()
-		ms.wsMu.Lock()
-		if ms.wsConn != nil {
-			_ = ms.wsConn.Close()
-			ms.wsConn = nil
-		}
-		ms.wsMu.Unlock()
-	}
-	sm.managed = make(map[string]*ManagedSession)
+	close(sm.stopPoll)
+	slog.Info("session manager shut down (tmux sessions preserved)")
 }
 
-// readPTY continuously reads from the PTY and writes to the scrollback buffer
-// and to any attached WebSocket. This goroutine runs for the lifetime of the
-// PTY (even if no WebSocket is attached).
-func (sm *SessionManager) readPTY(ms *ManagedSession) {
-	buf := make([]byte, 4096)
+// pollLoop periodically checks tmux for session changes and publishes SSE
+// events when the session list changes.
+func (sm *SessionManager) pollLoop() {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
 	for {
-		n, err := ms.PTY.Read(buf)
-		if n > 0 {
-			data := buf[:n]
+		select {
+		case <-ticker.C:
+			raw := rawTmuxOutput()
 
-			// Always write to scrollback.
-			ms.Scrollback.Write(data)
+			sm.mu.RLock()
+			changed := raw != sm.cachedRaw
+			sm.mu.RUnlock()
 
-			// Forward to WebSocket if attached.
-			ms.wsMu.Lock()
-			if ms.wsConn != nil {
-				writeErr := ms.wsConn.WriteMessage(websocket.BinaryMessage, data)
-				if writeErr != nil {
-					slog.Debug("websocket write error, detaching",
-						"terminalId", ms.TerminalID,
-						"error", writeErr,
-					)
-					_ = ms.wsConn.Close()
-					ms.wsConn = nil
-				}
+			if changed {
+				sessions := parseTmuxOutput(raw)
+
+				sm.mu.Lock()
+				sm.cached = sessions
+				sm.cachedAt = time.Now()
+				sm.cachedRaw = raw
+				sm.mu.Unlock()
+
+				sm.broker.Publish()
 			}
-			ms.wsMu.Unlock()
-		}
-		if err != nil {
-			slog.Debug("pty read ended", "terminalId", ms.TerminalID, "error", err)
+		case <-sm.stopPoll:
 			return
 		}
 	}
 }
 
-// waitProcess waits for the process to exit, then closes the done channel
-// and notifies subscribers.
-func (sm *SessionManager) waitProcess(ms *ManagedSession) {
-	_ = ms.Cmd.Wait()
-	close(ms.done)
-	slog.Info("session process exited", "terminalId", ms.TerminalID, "pid", ms.PID)
-
-	// Close the WebSocket with a close frame if still attached.
-	ms.wsMu.Lock()
-	if ms.wsConn != nil {
-		closeMsg := websocket.FormatCloseMessage(
-			websocket.CloseNormalClosure,
-			"process exited",
-		)
-		_ = ms.wsConn.WriteMessage(websocket.CloseMessage, closeMsg)
-		_ = ms.wsConn.Close()
-		ms.wsConn = nil
-	}
-	ms.wsMu.Unlock()
-
-	// Remove from managed map.
-	sm.mu.Lock()
-	delete(sm.managed, ms.TerminalID)
-	sm.mu.Unlock()
-
-	sm.broker.Publish()
+// discoverTmuxSessions queries tmux and returns all claude-prefixed sessions.
+func discoverTmuxSessions() []DisplaySession {
+	raw := rawTmuxOutput()
+	return parseTmuxOutput(raw)
 }
 
-// discoverSessions reads all session files from ~/.claude/sessions/.
-func discoverSessions() []DetectedSession {
-	home, err := os.UserHomeDir()
+// rawTmuxOutput runs tmux list-sessions and returns the raw stdout string.
+func rawTmuxOutput() string {
+	cmd := exec.Command("tmux", "list-sessions",
+		"-F", "#{session_name}|#{session_created}|#{pane_current_path}",
+	)
+	out, err := cmd.Output()
 	if err != nil {
-		slog.Warn("cannot determine home directory", "error", err)
+		// tmux not running or no sessions — not an error.
+		return ""
+	}
+	return string(out)
+}
+
+// parseTmuxOutput parses raw tmux list-sessions output into DisplaySessions.
+func parseTmuxOutput(raw string) []DisplaySession {
+	if raw == "" {
 		return nil
 	}
 
-	sessDir := filepath.Join(home, ".claude", "sessions")
-	entries, err := os.ReadDir(sessDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		slog.Warn("failed to read sessions directory", "path", sessDir, "error", err)
-		return nil
-	}
+	now := time.Now()
+	var sessions []DisplaySession
 
-	var sessions []DetectedSession
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(sessDir, entry.Name()))
-		if err != nil {
-			slog.Warn("failed to read session file", "name", entry.Name(), "error", err)
+		name := parts[0]
+		if !strings.HasPrefix(name, sessionPrefix) {
 			continue
 		}
 
-		var sf sessionFileData
-		if err := json.Unmarshal(data, &sf); err != nil {
-			slog.Warn("malformed session file", "name", entry.Name(), "error", err)
-			continue
-		}
+		created, _ := strconv.ParseInt(parts[1], 10, 64)
+		cwd := parts[2]
+		createdAt := time.Unix(created, 0)
 
-		sessions = append(sessions, DetectedSession{
-			PID:       sf.PID,
-			SessionID: sf.SessionID,
-			CWD:       sf.CWD,
-			StartedAt: time.UnixMilli(sf.StartedAt),
-			Alive:     isProcessAlive(sf.PID),
+		sessions = append(sessions, DisplaySession{
+			Name:      name,
+			CWD:       cwd,
+			DirName:   filepath.Base(cwd),
+			CreatedAt: createdAt,
+			Duration:  humanDuration(now.Sub(createdAt)),
+			Alive:     true,
 		})
 	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
+	})
 
 	return sessions
 }
 
-// isProcessAlive checks whether a process with the given PID exists.
-func isProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
-}
-
-// generateTerminalID creates a random 16-character hex terminal identifier.
-func generateTerminalID() string {
-	buf := make([]byte, 8)
+// generateSessionName creates a tmux session name like "claude-a1b2c3d4".
+func generateSessionName() string {
+	buf := make([]byte, 4)
 	rand.Read(buf)
-	return hex.EncodeToString(buf)
+	return sessionPrefix + hex.EncodeToString(buf)
 }
 
 // humanDuration formats a duration into a human-readable string like "2h 15m"

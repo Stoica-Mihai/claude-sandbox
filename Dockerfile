@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     socat \
+    tmux \
     bubblewrap \
     qrencode \
     npm \
@@ -13,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# UTF-8 locale for Unicode rendering (Claude Code banner, box-drawing chars)
+ENV LANG=C.UTF-8
 
 # Install Go 1.26.1 from official tarball
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
@@ -24,6 +28,9 @@ ARG GID
 RUN groupadd -g ${GID} claude && \
     useradd -m -u ${UID} -g claude claude
 USER claude
+
+# tmux configuration (no status bar, large scrollback, latest window-size for multi-client)
+COPY --chown=claude:claude tmux.conf /home/claude/.tmux.conf
 
 # Install Claude Code as the non-root user
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -58,8 +65,16 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install cli-anything-go@claude-skills && \
     claude plugin install opsx-ext@claude-skills
 
-# Alias for launching Claude with bypass permissions
-RUN echo 'alias claude="claude --dangerously-skip-permissions "' >> /home/claude/.bashrc
+# Shell function: wraps every `claude` invocation in a tmux session for dashboard visibility
+RUN cat >> /home/claude/.bashrc <<'BASHEOF'
+claude() {
+  local claude_bin
+  claude_bin=$(command -v claude)
+  local session_name="claude-$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')"
+  tmux new-session -d -s "$session_name" -- "$claude_bin" --dangerously-skip-permissions "$@"
+  TMUX= tmux attach -t "$session_name"
+}
+BASHEOF
 
 # Build the dashboard web server
 COPY --chown=claude:claude dashboard/ /home/claude/dashboard-src/

@@ -1,9 +1,5 @@
-# session-api Specification
+## MODIFIED Requirements
 
-## Purpose
-HTTP API for managing Claude Code sessions — listing, spawning, killing, and browsing directories.
-
-## Requirements
 ### Requirement: List active Claude Code sessions across all directories
 The system SHALL expose an endpoint that returns all currently running Claude Code sessions inside the container, regardless of which working directory they were started in. Session discovery SHALL run `tmux list-sessions` and filter to sessions with the `claude-` name prefix. The endpoint SHALL return session name, working directory, creation time, and whether a dashboard WebSocket is currently attached.
 
@@ -52,17 +48,12 @@ The system SHALL expose an endpoint to terminate a running session by its tmux s
 - **WHEN** a DELETE request is made to `/api/sessions/:sessionName` for a session name that does not exist in tmux
 - **THEN** the system SHALL respond with HTTP 404
 
-### Requirement: List directories under /workspace
-The system SHALL expose an endpoint to browse directories inside `/workspace` for use by the directory picker when spawning new sessions.
+## REMOVED Requirements
 
-#### Scenario: List top-level workspace directories
-- **WHEN** a GET request is made to `/api/directories`
-- **THEN** the response SHALL render directory names directly under `/workspace`
+### Requirement: Merge managed and detected sessions
+**Reason**: Replaced by unified tmux session model. There is no longer a distinction between managed and detected sessions — all sessions are tmux sessions discovered via `tmux list-sessions`.
+**Migration**: All session discovery goes through `tmux list-sessions` with `claude-` prefix filtering. The in-memory managed map and `~/.claude/sessions/*.json` file scanning are removed.
 
-#### Scenario: List subdirectories
-- **WHEN** a GET request is made to `/api/directories?path=subdir`
-- **THEN** the response SHALL render directory names inside `/workspace/subdir`
-
-#### Scenario: Path traversal attempt
-- **WHEN** a GET request is made to `/api/directories?path=../../etc`
-- **THEN** the system SHALL respond with HTTP 400 and reject the request
+### Requirement: Session discovery — global scope via ~/.claude/sessions/
+**Reason**: Replaced by tmux-based session discovery. The `~/.claude/sessions/*.json` files are no longer read.
+**Migration**: Use `tmux list-sessions -F` for session discovery instead.

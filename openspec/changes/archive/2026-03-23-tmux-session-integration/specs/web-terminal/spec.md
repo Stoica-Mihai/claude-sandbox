@@ -1,9 +1,5 @@
-# web-terminal Specification
+## MODIFIED Requirements
 
-## Purpose
-WebSocket-based terminal relay connecting browser xterm.js to Claude Code sessions via tmux attach.
-
-## Requirements
 ### Requirement: WebSocket-based terminal connection
 The system SHALL provide a WebSocket endpoint (served by the Go backend via `gorilla/websocket`) that connects a browser-based xterm.js terminal to a tmux session running Claude Code. When a WebSocket connection is made, the server SHALL spawn `tmux attach -t <sessionName>` with a PTY via `pty.StartWithSize` and relay bidirectional data between the xterm.js client and the attach PTY with no transformation, preserving all escape sequences, colors, and control characters. The attach PTY is ephemeral — it is created on WebSocket connect and destroyed on disconnect.
 
@@ -48,14 +44,3 @@ The system SHALL handle session end gracefully. When the Claude Code process exi
 #### Scenario: Reattach to a session
 - **WHEN** a new WebSocket connection is made to `/ws/terminal/:sessionName` for a still-running tmux session
 - **THEN** the server SHALL spawn a new `tmux attach` process with a new PTY, and tmux SHALL replay the current pane content to the client
-
-### Requirement: Full Claude Code TUI support
-The attach PTY SHALL be configured to fully support Claude Code's interactive features including slash commands with autocomplete, keyboard shortcuts, colored output, and the thinking/streaming display. The attach PTY SHALL be spawned with `pty.StartWithSize` using a large initial size (120x50) so Claude Code renders its banner and UI correctly before xterm.js connects and sends the actual terminal dimensions. Using a small default (e.g., 80x24) causes Claude Code to render for the small size, and the cursor position becomes incorrect after resize.
-
-#### Scenario: Slash command autocomplete
-- **WHEN** the user types `/` followed by a partial command in the web terminal
-- **THEN** Claude Code's autocomplete SHALL appear and function identically to a native terminal
-
-#### Scenario: Keyboard shortcuts
-- **WHEN** the user presses Claude Code keyboard shortcuts (e.g., Escape to cancel, Ctrl+C to interrupt)
-- **THEN** the shortcuts SHALL be forwarded to the PTY and behave identically to a native terminal

@@ -4,19 +4,23 @@
 TBD - created by archiving change web-dashboard. Update Purpose after archive.
 ## Requirements
 ### Requirement: Sidebar session list with SSE real-time updates
-The dashboard SHALL display a persistent left sidebar listing all Claude Code sessions (both managed terminal sessions and detected running processes). The sidebar SHALL remain visible in all view modes. The list SHALL auto-update via Server-Sent Events — when session state changes, the server SHALL push an SSE event that triggers HTMX to re-fetch and swap the session list HTML fragment. Each entry SHALL show the session's working directory, process ID, start time, duration, and status as subtle monospace text (not badge pills). Status indicators: emerald "active" for running managed sessions, warning "external" for detected-only, dim "stopped" for dead. A status dot at the top of each card provides visual state at a glance. Managed sessions SHALL have a left border accent (emerald for active, blue for split-right). External sessions (detected via `~/.claude/sessions/`) SHALL appear dimmed.
+The dashboard SHALL display a persistent left sidebar listing all Claude Code sessions (discovered via tmux). The sidebar SHALL remain visible in all view modes. The list SHALL auto-update via Server-Sent Events — when session state changes, the server SHALL push an SSE event that triggers HTMX to re-fetch and swap the session list HTML fragment. Each entry SHALL show the session's working directory, tmux session name, start time, duration, and status as subtle monospace text. Status indicators: emerald dot and "active" label for running sessions, dim dot and "stopped" label for dead sessions. All sessions SHALL have uniform styling — there is no "external" or "managed" distinction.
 
 #### Scenario: Dashboard loads with active sessions
-- **WHEN** the user opens the dashboard and sessions are running
-- **THEN** the sidebar SHALL render all sessions with directory, PID, duration, and subtle text status (emerald "active" for alive, warning "external" for detected-only)
+- **WHEN** the user opens the dashboard and tmux sessions are running
+- **THEN** the sidebar SHALL render all sessions with directory, session name, duration, and emerald "active" status
 
 #### Scenario: Dashboard loads with no sessions
-- **WHEN** the user opens the dashboard and no sessions exist
+- **WHEN** the user opens the dashboard and no tmux sessions exist
 - **THEN** the sidebar SHALL display an empty state prompting to create a new session
 
 #### Scenario: Session status updates via SSE
 - **WHEN** a session is spawned, killed, or exits while the dashboard is open
 - **THEN** the server SHALL push an SSE `update` event, HTMX SHALL trigger a fetch of the session list fragment, and swap the updated HTML into the sidebar without a full page reload
+
+#### Scenario: Click any session to open terminal
+- **WHEN** the user clicks on any session card in the sidebar
+- **THEN** an xterm.js terminal SHALL initialize and connect to that session's WebSocket endpoint, displaying the current terminal state via tmux's pane replay. There SHALL be no dimmed or non-interactive session entries.
 
 ### Requirement: Three view modes — Single, Split, Grid
 The dashboard SHALL support three view modes for the main content area, toggled via icon buttons in the header. The current view mode SHALL persist in localStorage.
@@ -51,7 +55,7 @@ The dashboard SHALL support three view modes for the main content area, toggled 
 
 #### Scenario: Grid overview
 - **WHEN** the grid view mode is active
-- **THEN** the main area SHALL display all sessions as cards in a responsive grid (2 columns on medium screens, scaling with viewport). Each card SHALL show the session name, PID, duration, status badge, and a mini terminal preview showing recent output. Clicking a card SHALL switch to single view and open that session's terminal. External sessions SHALL display a placeholder instead of a terminal preview.
+- **THEN** the main area SHALL display all sessions as cards in a responsive grid (2 columns on medium screens, scaling with viewport). Each card SHALL show the session name, PID, duration, status badge, and a mini terminal preview showing recent output. Clicking a card SHALL switch to single view and open that session's terminal.
 
 ### Requirement: Spawn new session via HTMX
 The dashboard SHALL provide a "New" button in the sidebar header and a "+" placeholder card in grid view to spawn a new Claude Code session. A DaisyUI modal SHALL present a directory picker for selecting a directory under `/workspace`.
@@ -110,11 +114,11 @@ The dashboard SHALL embed xterm.js terminals that connect to sessions via native
 - **THEN** both terminal panes SHALL resize and both xterm.js instances SHALL re-fit and send updated dimensions to the server
 
 ### Requirement: Kill session from UI
-The dashboard SHALL allow users to terminate a session from the sidebar (kill button visible on hover, `btn-sm` size with `w-4 h-4` icon for visibility) or from the terminal pane header (close button).
+The dashboard SHALL allow users to terminate any session from the sidebar. The kill button SHALL appear on hover for all sessions (not just dashboard-spawned ones). Clicking the kill button SHALL send a DELETE request which runs `tmux kill-session` on the server.
 
 #### Scenario: Kill a running session
-- **WHEN** the user clicks the kill button on a session entry or pane header
-- **THEN** HTMX SHALL send a DELETE request, the server SHALL terminate the session, push an SSE update event, all connected clients SHALL receive the updated session list, AND the terminal tab/view SHALL be cleaned up (xterm instance destroyed, tab bar cleared, welcome screen shown if no remaining tabs)
+- **WHEN** the user clicks the kill button on any session entry
+- **THEN** HTMX SHALL send a DELETE request, the server SHALL terminate the tmux session, push an SSE update event, all connected clients SHALL receive the updated session list, AND the terminal tab/view SHALL be cleaned up (xterm instance destroyed, tab bar cleared, welcome screen shown if no remaining tabs)
 
 ### Requirement: Dark/light theme toggle
 The dashboard SHALL support dark and light themes using DaisyUI's `data-theme` attribute. The toggle SHALL appear in the header. The user's preference SHALL persist in localStorage.

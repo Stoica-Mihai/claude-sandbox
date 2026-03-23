@@ -22,10 +22,9 @@ This repository is a Docker-based sandbox for running Claude Code inside a conta
 A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude Code sessions.
 
 - **`dashboard/main.go`** — Entry point, HTTP server on `:8080`, graceful shutdown.
-- **`dashboard/session.go`** — Session manager: PTY spawning via `creack/pty`, session discovery from `~/.claude/sessions/*.json`, scrollback ring buffer for reattach.
-- **`dashboard/handlers.go`** — HTTP handlers, SSE streaming, WebSocket terminal relay.
+- **`dashboard/session.go`** — Session manager: tmux-based session lifecycle (spawn, kill, discover via `tmux list-sessions`), cached session list with background polling.
+- **`dashboard/handlers.go`** — HTTP handlers, SSE streaming, WebSocket terminal relay via ephemeral `tmux attach` PTY per connection.
 - **`dashboard/broker.go`** — SSE pub/sub event broker.
-- **`dashboard/ringbuffer.go`** — Circular byte buffer for terminal scrollback.
 - **`dashboard/web/`** — Embedded templates and static assets via `go:embed`.
   - `templates/layout.html` — Full page with sidebar, tabbed terminal view, responsive mobile layout.
   - `templates/fragments/sessions.html` — Session list HTMX fragment.
@@ -38,13 +37,14 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
 
 ### Key implementation details
 
-- Sessions are discovered globally from `~/.claude/sessions/*.json` (not project-scoped).
-- PTYs are spawned with `pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 120})` to avoid cursor positioning issues.
+- All sessions run inside tmux. The dashboard spawns `tmux new-session -d -s claude-<hex>` and discovers sessions via `tmux list-sessions -F`. There is no managed vs external distinction — all tmux sessions with the `claude-` prefix are equal.
+- WebSocket connections spawn an ephemeral `tmux attach -t <name>` process with a PTY. The PTY is destroyed on disconnect; the tmux session persists. Sessions survive dashboard restarts.
 - Terminal input is sent as WebSocket BinaryMessage (TextMessage is reserved for JSON control like resize).
 - CSS font rules must use `body` selector, NOT `*` — the universal selector breaks xterm.js character grid measurement.
 - On mobile, the xterm textarea is set readonly; a visible input bar handles all input to avoid broken IME composition.
-- The `claude` command is called via `exec.LookPath("claude")` with `--dangerously-skip-permissions` flag (shell aliases don't work with `os/exec`).
-- `TERM=xterm-256color` is set in spawned process environment.
+- The `claude` shell function (in `.bashrc`) wraps every CLI invocation in a tmux session, making it visible in the dashboard. Uses `command -v claude` to resolve the binary path and `TMUX=` to avoid nesting warnings.
+- `tmux.conf` sets `window-size latest` so multi-client resize uses the most recently active client's dimensions.
+- A background polling goroutine checks `tmux list-sessions` every 5 seconds and publishes SSE events when the session list changes.
 
 ## Common Commands
 
@@ -55,7 +55,7 @@ make claude   # Run Claude Code in the container
 make down     # Stop the container
 ```
 
-The `claude` alias (defined in Dockerfile) expands to `claude --dangerously-skip-permissions` — the container itself is the sandbox.
+The `claude` shell function (defined in Dockerfile) wraps `claude --dangerously-skip-permissions` inside a tmux session — every invocation is visible in the dashboard. The container itself is the sandbox.
 
 The dashboard is available at `http://localhost:8080` after `make up`.
 
