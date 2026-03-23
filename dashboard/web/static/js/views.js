@@ -113,6 +113,14 @@ function switchSingleTab(terminalId) {
     const wrapper = document.getElementById('singleTerminal');
     if (!wrapper) return;
 
+    // Reset scroll mode when switching tabs
+    mobileScrollActive = false;
+    const scrollBtn = document.getElementById('mobileScrollBtn');
+    if (scrollBtn) {
+        scrollBtn.classList.remove('bg-emerald-500/30', 'text-emerald-400', 'border-emerald-500/50');
+        scrollBtn.classList.add('bg-white/10', 'text-white/50');
+    }
+
     // Hide all tab containers, show the selected one
     singleTabs.forEach(id => {
         const el = document.getElementById('singleTab-' + id);
@@ -188,6 +196,36 @@ function updateSingleWelcome(hasTerminal) {
     if (mobileInput) mobileInput.classList.toggle('hidden', !hasTerminal);
 }
 
+// ===== Mobile scroll mode (tmux copy mode) =====
+let mobileScrollActive = false;
+
+function mobileToggleScrollMode() {
+    if (!singleTerminalId) return;
+    const inst = TerminalManager.get(singleTerminalId);
+    if (!inst?.ws || inst.ws.readyState !== WebSocket.OPEN) return;
+
+    const encoder = new TextEncoder();
+    const btn = document.getElementById('mobileScrollBtn');
+
+    if (!mobileScrollActive) {
+        // Enter tmux copy mode: Ctrl+B [
+        inst.ws.send(encoder.encode('\x02['));
+        mobileScrollActive = true;
+        if (btn) {
+            btn.classList.remove('bg-white/10', 'text-white/50');
+            btn.classList.add('bg-emerald-500/30', 'text-emerald-400', 'border-emerald-500/50');
+        }
+    } else {
+        // Exit tmux copy mode: q
+        inst.ws.send(encoder.encode('q'));
+        mobileScrollActive = false;
+        if (btn) {
+            btn.classList.remove('bg-emerald-500/30', 'text-emerald-400', 'border-emerald-500/50');
+            btn.classList.add('bg-white/10', 'text-white/50');
+        }
+    }
+}
+
 // ===== Mobile input bar =====
 // Send a single control byte to the active terminal
 function mobileInputSend(charCode) {
@@ -200,12 +238,19 @@ function mobileInputSend(charCode) {
 }
 
 // Send an arrow key escape sequence (\x1b[A, \x1b[B, etc.)
+// In scroll mode, up/down send Page Up/Down instead for faster navigation.
 function mobileInputSendArrow(code) {
     if (!singleTerminalId) return;
     const inst = TerminalManager.get(singleTerminalId);
     if (inst?.ws?.readyState === WebSocket.OPEN) {
         const encoder = new TextEncoder();
-        inst.ws.send(encoder.encode('\x1b[' + code));
+        if (mobileScrollActive && (code === 'A' || code === 'B')) {
+            // Page Up = \x1b[5~, Page Down = \x1b[6~
+            const pageCode = code === 'A' ? '5' : '6';
+            inst.ws.send(encoder.encode('\x1b[' + pageCode + '~'));
+        } else {
+            inst.ws.send(encoder.encode('\x1b[' + code));
+        }
         inst.term?.scrollToBottom();
     }
 }
