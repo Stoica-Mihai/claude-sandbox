@@ -1,6 +1,24 @@
+# ── Builder stage: compile the Go dashboard binary ──
+FROM debian:bookworm-slim AS builder
+
+# Install Go 1.26.1 and build toolchain
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libc6-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+COPY dashboard/ /src/dashboard/
+RUN cd /src/dashboard && go build -o /dashboard-server .
+
+# ── Runtime stage ──
 FROM debian:bookworm-slim
 
-# Install native dependencies
+# Runtime packages — gcc/libc6-dev needed for Go race detector (go test -race uses CGO)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
@@ -15,12 +33,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# UTF-8 locale for Unicode rendering (Claude Code banner, box-drawing chars)
-ENV LANG=C.UTF-8
-
-# Install Go 1.26.1 from official tarball
+# Go toolchain — needed for dev workflow (make dev) and go test -race
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# UTF-8 locale for Unicode rendering (Claude Code banner, box-drawing chars)
+ENV LANG=C.UTF-8
 
 # Create a non-root user with matching host UID (Claude Code refuses --dangerously-skip-permissions as root)
 ARG UID
@@ -76,10 +94,7 @@ claude() {
 }
 BASHEOF
 
-# Build the dashboard web server
-COPY --chown=claude:claude dashboard/ /home/claude/dashboard-src/
-RUN cd /home/claude/dashboard-src && \
-    go build -o /home/claude/dashboard-server . && \
-    rm -rf /home/claude/dashboard-src
+# Copy the pre-built dashboard binary from the builder stage
+COPY --from=builder /dashboard-server /home/claude/dashboard-server
 
 WORKDIR /workspace

@@ -8,8 +8,9 @@ This repository is a Docker-based sandbox for running Claude Code inside a conta
 
 ## Architecture
 
-- **Dockerfile** — Debian-based image with bash, git, curl, socat, bubblewrap, Go, uv (Python package manager), OpenSpec, and Claude Code + plugins pre-installed. Runs as non-root user `claude`. Builds the dashboard Go binary during image build.
-- **docker-compose.yml** — Defines the `claude-env` service. Maps host Claude session/auth files into the container and injects container-specific settings and MCP config as read-only volumes. Mounts the project workspace at `/workspace`. Exposes port 8080 for the dashboard.
+- **Dockerfile** — Multi-stage build. The `builder` stage compiles the Go dashboard binary. The runtime stage is Debian-based with bash, git, curl, socat, tmux, bubblewrap, Go, gcc, uv (Python package manager), OpenSpec, and Claude Code + plugins pre-installed. Runs as non-root user `claude`.
+- **docker-compose.yml** — Defines the `claude-env` service. Maps host Claude session/auth files into the container and injects container-specific settings and MCP config as read-only volumes. Mounts the project workspace at `/workspace`. Dashboard port is configurable via `DASHBOARD_PORT` env var (default 8080).
+- **docker-compose.dev.yml** — Development override for dashboard iteration. Mounts `./dashboard/` source into the container and compiles on startup. Use via `make dev`. Not auto-merged — must be invoked explicitly.
 - **container-settings.json** — Claude Code settings for the container environment (plugins, MCP servers, permissions). Mounted read-only at `/home/claude/.claude/settings.json`.
 - **mcp-config.json** — User-provided MCP server definitions (gitignored). See `mcp-config.example.json`.
 - **.env** — Host UID/GID for Docker build args (file permission compatibility).
@@ -51,6 +52,7 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
 
 ```bash
 make up       # Auto-generate .env, build and start the container
+make dev      # Start with dashboard source mounted (recompiles on restart, no image rebuild)
 make shell    # Open a bash shell in the container
 make claude   # Run Claude Code in the container
 make down     # Stop the container
@@ -58,7 +60,7 @@ make down     # Stop the container
 
 The `claude` shell function (defined in Dockerfile) wraps `claude --dangerously-skip-permissions` inside a tmux session — every invocation is visible in the dashboard. The container itself is the sandbox.
 
-The dashboard is available at `http://localhost:8080` after `make up`.
+The dashboard is available at `http://localhost:8080` after `make up` (or the port set by `DASHBOARD_PORT` in `.env`).
 
 ## MCP Servers
 

@@ -1,4 +1,4 @@
-.PHONY: setup build rebuild up up-clean down shell claude
+.PHONY: setup build rebuild up up-clean dev down shell claude
 
 setup:
 	@./generate-env.sh
@@ -14,6 +14,9 @@ up: setup
 
 up-clean: rebuild
 	docker compose up -d
+
+dev: setup
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 down:
 	docker compose down

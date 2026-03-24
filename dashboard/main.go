@@ -2,18 +2,27 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "HTTP listen address")
-	flag.Parse()
+	// Resolve listen address from DASHBOARD_PORT env var, default :8080.
+	listenAddr := ":8080"
+	if envPort := os.Getenv("DASHBOARD_PORT"); envPort != "" {
+		port := strings.TrimLeft(envPort, ":")
+		if _, err := strconv.Atoi(port); err == nil {
+			listenAddr = ":" + port
+		} else {
+			slog.Warn("ignoring invalid DASHBOARD_PORT", "value", envPort)
+		}
+	}
 
 	// Structured logging to stderr.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
@@ -32,7 +41,7 @@ func main() {
 	_ = srv // routes registered on mux via NewServer
 
 	httpServer := &http.Server{
-		Addr:    *addr,
+		Addr:    listenAddr,
 		Handler: mux,
 	}
 
@@ -55,7 +64,7 @@ func main() {
 		}
 	}()
 
-	slog.Info("server listening", "addr", *addr)
+	slog.Info("server listening", "addr", listenAddr)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
