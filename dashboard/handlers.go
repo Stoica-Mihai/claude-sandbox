@@ -85,9 +85,16 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server,
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /api/sessions/{terminalId}/scrollback", s.handleScrollback)
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	return s, nil
+}
+
+// handleHealthz returns a simple JSON health check response.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 // handleIndex renders the full dashboard page with initial session data.

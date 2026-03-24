@@ -7,7 +7,7 @@ document.addEventListener('cancel', (e) => {
 
 // TerminalManager — manages multiple xterm.js instances and WebSocket connections
 const TerminalManager = {
-    instances: {}, // terminalId -> {term, ws, fitAddon, webLinksAddon, containerId}
+    instances: {}, // terminalId -> {term, ws, fitAddon, webLinksAddon, containerId, retryTimer}
 
     create(terminalId, containerEl) {
         // Destroy existing instance for this terminal if present
@@ -94,52 +94,93 @@ const TerminalManager = {
             } catch(e) {}
         });
 
-        // Connect WebSocket
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${location.host}/ws/terminal/${terminalId}`;
-        const ws = new WebSocket(wsUrl);
-        ws.binaryType = 'arraybuffer';
-
-        ws.onopen = () => {
-            // Send initial resize
-            const resizeMsg = JSON.stringify({
-                type: 'resize',
-                cols: term.cols,
-                rows: term.rows
-            });
-            ws.send(resizeMsg);
-        };
-
         // Track whether another viewer resized tmux (our display is garbled).
         let needsRefresh = false;
 
-        ws.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer) {
-                term.write(new Uint8Array(event.data));
-            } else {
-                // Text messages are JSON control messages from the server.
-                try {
-                    const msg = JSON.parse(event.data);
-                    if (msg.type === 'deactivated') {
-                        needsRefresh = true;
-                    }
-                } catch (e) {
-                    term.write(event.data);
+        // Reconnection state
+        let retryCount = 0;
+
+        // Store instance early so connectWs() can mutate it
+        const instance = {
+            term,
+            ws: null,
+            fitAddon,
+            webLinksAddon,
+            containerId: containerEl.id,
+            retryTimer: null
+        };
+        this.instances[terminalId] = instance;
+
+        // Connect (or reconnect) the WebSocket
+        const connectWs = () => {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws/terminal/${terminalId}`;
+            const ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                if (retryCount > 0) {
+                    retryCount = 0;
+                    term.write('\r\n\x1b[32m[Reconnected]\x1b[0m');
                 }
-            }
+                // Send initial resize
+                const resizeMsg = JSON.stringify({
+                    type: 'resize',
+                    cols: term.cols,
+                    rows: term.rows
+                });
+                ws.send(resizeMsg);
+            };
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    term.write(new Uint8Array(event.data));
+                } else {
+                    // Text messages are JSON control messages from the server.
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'deactivated') {
+                            needsRefresh = true;
+                        }
+                    } catch (e) {
+                        term.write(event.data);
+                    }
+                }
+            };
+
+            ws.onerror = () => {};
+
+            ws.onclose = (event) => {
+                // Normal closure — session ended, no reconnect
+                if (event.code === 1000) {
+                    term.write('\r\n\x1b[90m[Session ended]\x1b[0m\r\n');
+                    return;
+                }
+
+                // Unexpected closure — attempt reconnection
+                if (retryCount >= 10) {
+                    term.write('\r\n\x1b[31m[Connection lost]\x1b[0m\r\n');
+                    return;
+                }
+
+                retryCount++;
+                const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 30000);
+                term.write(`\r\n\x1b[90m[Reconnecting... (attempt ${retryCount})]\x1b[0m`);
+                instance.retryTimer = setTimeout(() => {
+                    instance.retryTimer = null;
+                    connectWs();
+                }, delay);
+            };
+
+            instance.ws = ws;
         };
 
-        ws.onclose = () => {
-            term.write('\r\n\x1b[90m[Session ended]\x1b[0m\r\n');
-        };
-
-        ws.onerror = (err) => {
-            term.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n');
-        };
+        connectWs();
 
         // User input -> WebSocket (send as binary so Go routes it to PTY)
         term.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
+            const ws = instance.ws;
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 // If another viewer resized tmux, clear our garbled display.
                 // The input triggers ResizeToViewer on the server, which
                 // resizes tmux back to our dimensions. tmux redraws and we
@@ -160,7 +201,8 @@ const TerminalManager = {
 
         // Handle terminal resize
         term.onResize(({ cols, rows }) => {
-            if (ws.readyState === WebSocket.OPEN) {
+            const ws = instance.ws;
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'resize',
                     cols: cols,
@@ -169,14 +211,6 @@ const TerminalManager = {
             }
         });
 
-        this.instances[terminalId] = {
-            term,
-            ws,
-            fitAddon,
-            webLinksAddon,
-            containerId: containerEl.id
-        };
-
         return term;
     },
 
@@ -184,6 +218,10 @@ const TerminalManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
 
+        if (instance.retryTimer != null) {
+            clearTimeout(instance.retryTimer);
+            instance.retryTimer = null;
+        }
         if (instance.ws && instance.ws.readyState !== WebSocket.CLOSED) {
             instance.ws.close();
         }
