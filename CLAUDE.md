@@ -38,13 +38,14 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
 ### Key implementation details
 
 - All sessions run inside tmux. The dashboard spawns `tmux new-session -d -s claude-<hex>` and discovers sessions via `tmux list-sessions -F`. There is no managed vs external distinction — all tmux sessions with the `claude-` prefix are equal.
-- WebSocket connections spawn an ephemeral `tmux attach -t <name>` process with a PTY. The PTY is destroyed on disconnect; the tmux session persists. Sessions survive dashboard restarts.
-- Terminal input is sent as WebSocket BinaryMessage (TextMessage is reserved for JSON control like resize).
+- The dashboard uses a custom relay (`relay.go`) instead of `tmux attach` for the viewer path. Each session gets a unix socket relay via `tmux pipe-pane` + socat for bidirectional I/O. This bypasses tmux's terminal emulation layer, giving xterm.js native control over mouse events (selection, scroll).
+- The relay tracks alternate screen state: strips `\x1b[?1049h/l` from viewer output (xterm.js stays in normal mode), routes TUI-mode output to viewers only (not ring buffer), routes normal-mode output to both viewers and the 1MB ring buffer. On reconnect, the ring buffer is replayed for clean history without TUI artifacts.
+- Terminal input is sent as WebSocket BinaryMessage (TextMessage is reserved for JSON control like resize and deactivation). Input goes to the pane via the socat unix socket — no process spawning per keystroke.
+- Multi-viewer resize: each viewer's terminal dimensions are tracked independently. When a viewer sends input and isn't the active viewer, `ResizeToViewer` resizes tmux to that viewer's dimensions (mimics tmux `window-size latest`). Non-active viewers are suspended (broadcast skips them via `atomic.Bool`) so they see frozen — not garbled — display. A `{"type":"deactivated"}` text message tells the client to `term.clear()` on next input. Per-connection `writeMu` serializes all WebSocket writes to prevent gorilla/websocket concurrent-write corruption.
 - CSS font rules must use `body` selector, NOT `*` — the universal selector breaks xterm.js character grid measurement.
-- On mobile, the xterm textarea is set readonly; a visible input bar handles all input to avoid broken IME composition.
 - The `claude` shell function (in `.bashrc`) wraps every CLI invocation in a tmux session, making it visible in the dashboard. Uses `command -v claude` to resolve the binary path and `TMUX=` to avoid nesting warnings.
-- `tmux.conf` sets `window-size latest` so multi-client resize uses the most recently active client's dimensions.
-- A background polling goroutine checks `tmux list-sessions` every 5 seconds and publishes SSE events when the session list changes.
+- `tmux.conf` sets `mouse off` (xterm.js handles mouse natively), `window-size latest`, and `smcup@:rmcup@` (for CLI `tmux attach` users).
+- A background polling goroutine checks `tmux list-sessions` every 5 seconds, syncs relays for new/gone sessions, and publishes SSE events when the list changes.
 
 ## Common Commands
 

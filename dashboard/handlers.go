@@ -9,14 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"claude-dashboard/web"
 
-	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
 
@@ -39,11 +36,11 @@ type DirectoryData struct {
 	Breadcrumbs []Breadcrumb // path segments for breadcrumb navigation
 }
 
-// resizeMessage is the JSON structure sent by the client to resize the PTY.
-type resizeMessage struct {
+// controlMessage is the JSON structure for WebSocket control messages (resize, refresh).
+type controlMessage struct {
 	Type string `json:"type"`
-	Cols uint16 `json:"cols"`
-	Rows uint16 `json:"rows"`
+	Cols uint16 `json:"cols,omitempty"`
+	Rows uint16 `json:"rows,omitempty"`
 }
 
 // Server is the HTTP server serving the dashboard, API, SSE, and WebSocket.
@@ -85,6 +82,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server,
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /events", s.handleSSE)
+	mux.HandleFunc("GET /api/sessions/{terminalId}/scrollback", s.handleScrollback)
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
@@ -225,6 +223,25 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	buf.WriteTo(w)
 }
 
+// handleScrollback returns the ring buffer contents for a session as plain text.
+func (s *Server) handleScrollback(w http.ResponseWriter, r *http.Request) {
+	sessionName := r.PathValue("terminalId")
+	if sessionName == "" {
+		http.Error(w, "missing session name", http.StatusBadRequest)
+		return
+	}
+
+	relay := s.sm.GetRelay(sessionName)
+	if relay == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	data := relay.ringBuf.Bytes()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Write(data)
+}
+
 // handleSSE streams Server-Sent Events to the client. It subscribes to the
 // broker and forwards update notifications as SSE events until the client
 // disconnects.
@@ -254,11 +271,10 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleWebSocket upgrades the HTTP connection to a WebSocket and relays
-// bidirectional data between the browser terminal and a tmux attach process.
-// Each WebSocket connection gets its own ephemeral `tmux attach` PTY.
-// When the WebSocket disconnects, the attach process is killed but the
-// tmux session continues running.
+// handleWebSocket upgrades the HTTP connection to a WebSocket and registers
+// the viewer with the session's relay. Output comes from the relay's ring
+// buffer (replay) and live pipe-pane stream. Input is sent via the relay's
+// unix socket. No tmux attach process is spawned.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
@@ -266,8 +282,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the tmux session exists before upgrading.
-	if !s.sm.sessionExists(sessionName) {
+	// Get the relay for this session.
+	relay := s.sm.GetRelay(sessionName)
+	if relay == nil || relay.IsStopped() {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -278,115 +295,60 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Spawn tmux attach with an ephemeral PTY.
-	cmd := exec.Command("tmux", "attach", "-t", sessionName)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 120})
-	if err != nil {
-		slog.Error("failed to start tmux attach", "session", sessionName, "error", err)
-		closeMsg := websocket.FormatCloseMessage(
-			websocket.CloseInternalServerErr,
-			"failed to attach to session",
-		)
-		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
-		_ = conn.Close()
-		return
-	}
-
 	slog.Info("websocket attached", "session", sessionName)
 
-	// closed is signalled when either the attach process exits or the WebSocket disconnects.
-	closed := make(chan struct{})
-	closeOnce := sync.Once{}
-	cleanup := func(reason string) {
-		closeOnce.Do(func() {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
+	// Register viewer with the relay (sends reset + scrollback replay).
+	relay.AddViewer(conn)
+
+	// Read loop: WebSocket → relay (input/resize).
+	// This goroutine runs until the WebSocket disconnects or the relay stops.
+	defer func() {
+		relay.RemoveViewer(conn)
+		_ = conn.Close()
+		slog.Info("websocket detached", "session", sessionName)
+	}()
+
+	for {
+		msgType, data, readErr := conn.ReadMessage()
+		if readErr != nil {
+			if websocket.IsUnexpectedCloseError(readErr,
+				websocket.CloseGoingAway,
+				websocket.CloseNormalClosure,
+			) {
+				slog.Debug("websocket read error", "session", sessionName, "error", readErr)
 			}
-			_ = ptmx.Close()
-			_ = conn.Close()
-			close(closed)
-			slog.Info("websocket detached", "session", sessionName, "reason", reason)
-		})
+			return
+		}
+
+		// Check if relay has been stopped (session exited).
+		if relay.IsStopped() {
+			return
+		}
+
+		switch msgType {
+		case websocket.TextMessage:
+			// JSON control message (resize, refresh).
+			var msg controlMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				slog.Debug("invalid control message", "session", sessionName, "error", err)
+				continue
+			}
+			if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
+				relay.Resize(conn, msg.Cols, msg.Rows)
+			}
+		case websocket.BinaryMessage:
+			// Resume broadcast delivery if this viewer was suspended.
+			relay.UnsuspendViewer(conn)
+			// Resize tmux to this viewer's dimensions if it wasn't the last
+			// to resize (mimics tmux's "window-size latest" behavior).
+			relay.ResizeToViewer(conn)
+			// Terminal input — send to tmux pane via relay.
+			if err := relay.SendInput(data); err != nil {
+				slog.Debug("relay input failed", "session", sessionName, "error", err)
+				return
+			}
+		}
 	}
-
-	// Wait for the attach process to exit.
-	go func() {
-		_ = cmd.Wait()
-		cleanup("process exited")
-		s.sm.invalidateCache()
-		s.broker.Publish()
-	}()
-
-	// PTY → WebSocket relay goroutine.
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, readErr := ptmx.Read(buf)
-			if n > 0 {
-				if writeErr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
-					slog.Debug("websocket write error",
-						"session", sessionName,
-						"error", writeErr,
-					)
-					cleanup("ws write error")
-					return
-				}
-			}
-			if readErr != nil {
-				slog.Debug("attach pty read ended", "session", sessionName)
-				return
-			}
-		}
-	}()
-
-	// WebSocket → PTY relay goroutine.
-	go func() {
-		for {
-			msgType, data, readErr := conn.ReadMessage()
-			if readErr != nil {
-				if websocket.IsUnexpectedCloseError(readErr,
-					websocket.CloseGoingAway,
-					websocket.CloseNormalClosure,
-				) {
-					slog.Debug("websocket read error", "session", sessionName, "error", readErr)
-				}
-				cleanup("client disconnected")
-				return
-			}
-
-			select {
-			case <-closed:
-				return
-			default:
-			}
-
-			switch msgType {
-			case websocket.TextMessage:
-				var msg resizeMessage
-				if err := json.Unmarshal(data, &msg); err != nil {
-					slog.Debug("invalid control message", "session", sessionName, "error", err)
-					continue
-				}
-				if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
-					if err := pty.Setsize(ptmx, &pty.Winsize{
-						Rows: msg.Rows,
-						Cols: msg.Cols,
-					}); err != nil {
-						slog.Debug("pty resize failed", "session", sessionName, "error", err)
-					}
-				}
-			case websocket.BinaryMessage:
-				if _, err := ptmx.Write(data); err != nil {
-					slog.Debug("pty write failed", "session", sessionName, "error", err)
-					return
-				}
-			}
-		}
-	}()
-
-	// Block until fully cleaned up. No reliance on r.Context().
-	<-closed
 }
 
 // ListDirectoriesFlat returns the full absolute path for a workspace-relative

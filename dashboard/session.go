@@ -38,12 +38,14 @@ type DisplaySession struct {
 	Alive     bool
 }
 
-// SessionManager discovers tmux sessions and provides spawn/kill operations.
+// SessionManager discovers tmux sessions, manages relays, and provides
+// spawn/kill operations.
 type SessionManager struct {
 	mu        sync.RWMutex
 	cached    []DisplaySession
 	cachedAt  time.Time
 	cachedRaw string // raw tmux output for change detection
+	relays    map[string]*Relay
 	broker    *Broker
 	stopPoll  chan struct{}
 }
@@ -52,11 +54,54 @@ type SessionManager struct {
 // and starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
+		relays:   make(map[string]*Relay),
 		broker:   broker,
 		stopPoll: make(chan struct{}),
 	}
+	// Start relays for any existing sessions.
+	sm.syncRelays()
 	go sm.pollLoop()
 	return sm
+}
+
+// GetRelay returns the relay for a session, or nil if not found.
+func (sm *SessionManager) GetRelay(sessionName string) *Relay {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.relays[sessionName]
+}
+
+// syncRelays ensures every discovered tmux session has a running relay,
+// and relays for gone sessions are stopped.
+func (sm *SessionManager) syncRelays() {
+	sessions := discoverTmuxSessions()
+	currentNames := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		currentNames[s.Name] = true
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Start relays for new sessions.
+	for name := range currentNames {
+		if _, exists := sm.relays[name]; !exists {
+			relay := NewRelay(name)
+			if err := relay.Start(); err != nil {
+				slog.Warn("failed to start relay", "session", name, "error", err)
+				continue
+			}
+			sm.relays[name] = relay
+		}
+	}
+
+	// Stop relays for gone sessions.
+	for name, relay := range sm.relays {
+		if !currentNames[name] || relay.IsStopped() {
+			relay.Stop()
+			delete(sm.relays, name)
+		}
+	}
 }
 
 // ListSessions returns all claude-prefixed tmux sessions, using cache if fresh.
@@ -135,6 +180,17 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 			"session", sessionName,
 			"cwd", absPath,
 		)
+
+		// Start relay for the new session.
+		relay := NewRelay(sessionName)
+		if err := relay.Start(); err != nil {
+			slog.Warn("failed to start relay for new session", "session", sessionName, "error", err)
+		} else {
+			sm.mu.Lock()
+			sm.relays[sessionName] = relay
+			sm.mu.Unlock()
+		}
+
 		sm.invalidateCache()
 		sm.broker.Publish()
 		return sessionName, nil
@@ -155,6 +211,15 @@ func (sm *SessionManager) Kill(sessionName string) error {
 	}
 
 	slog.Info("killed tmux session", "session", sessionName)
+
+	// Stop relay for the killed session.
+	sm.mu.Lock()
+	if relay, ok := sm.relays[sessionName]; ok {
+		relay.Stop()
+		delete(sm.relays, sessionName)
+	}
+	sm.mu.Unlock()
+
 	sm.invalidateCache()
 	sm.broker.Publish()
 	return nil
@@ -196,6 +261,9 @@ func (sm *SessionManager) pollLoop() {
 				sm.cachedAt = time.Now()
 				sm.cachedRaw = raw
 				sm.mu.Unlock()
+
+				// Sync relays for new/gone sessions.
+				sm.syncRelays()
 
 				sm.broker.Publish()
 			}

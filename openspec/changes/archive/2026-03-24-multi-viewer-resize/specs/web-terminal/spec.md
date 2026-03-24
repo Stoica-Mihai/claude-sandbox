@@ -1,9 +1,5 @@
-# web-terminal Specification
+## MODIFIED Requirements
 
-## Purpose
-WebSocket-based terminal relay connecting browser xterm.js to Claude Code sessions via tmux attach.
-
-## Requirements
 ### Requirement: WebSocket-based terminal connection
 The system SHALL provide a WebSocket endpoint (served by the Go backend via `gorilla/websocket`) that connects a browser-based xterm.js terminal to a tmux session via the relay's pipe-pane + socat unix socket. When a WebSocket connection is made, the server SHALL register the viewer with the session's relay, replay the ring buffer for scrollback history, and begin delivering live output via broadcast. Terminal input SHALL be sent to the tmux pane via the relay's socat connection. No `tmux attach` process is spawned per viewer.
 
@@ -34,31 +30,7 @@ The system SHALL support dynamic terminal resizing. When the browser window or t
 - **WHEN** the xterm.js client sends a JSON TextMessage with `{"type":"resize","cols":N,"rows":N}`
 - **THEN** the server SHALL call `Resize(conn, cols, rows)` which stores the dimensions and resizes tmux only if this viewer is the active viewer
 
-### Requirement: Session lifecycle over WebSocket
-The system SHALL handle session end gracefully. When the Claude Code process exits inside tmux, the tmux session ends, the attach process exits, and the WebSocket client SHALL be notified. When the WebSocket disconnects, the attach process SHALL be terminated but the tmux session SHALL continue running.
-
-#### Scenario: Claude Code process exits
-- **WHEN** the claude process exits inside the tmux session (user typed `/exit`, process crashed, etc.)
-- **THEN** the tmux session SHALL end, the attach process SHALL exit, the PTY read SHALL return EOF, and the server SHALL send a close frame to the WebSocket
-
-#### Scenario: WebSocket disconnects
-- **WHEN** the browser closes or the WebSocket connection drops
-- **THEN** the server SHALL terminate the `tmux attach` process and close the PTY. The tmux session SHALL continue running and remain reattachable via a new WebSocket connection.
-
-#### Scenario: Reattach to a session
-- **WHEN** a new WebSocket connection is made to `/ws/terminal/:sessionName` for a still-running tmux session
-- **THEN** the server SHALL spawn a new `tmux attach` process with a new PTY, and tmux SHALL replay the current pane content to the client
-
-### Requirement: Full Claude Code TUI support
-The attach PTY SHALL be configured to fully support Claude Code's interactive features including slash commands with autocomplete, keyboard shortcuts, colored output, and the thinking/streaming display. The attach PTY SHALL be spawned with `pty.StartWithSize` using a large initial size (120x50) so Claude Code renders its banner and UI correctly before xterm.js connects and sends the actual terminal dimensions. Using a small default (e.g., 80x24) causes Claude Code to render for the small size, and the cursor position becomes incorrect after resize.
-
-#### Scenario: Slash command autocomplete
-- **WHEN** the user types `/` followed by a partial command in the web terminal
-- **THEN** Claude Code's autocomplete SHALL appear and function identically to a native terminal
-
-#### Scenario: Keyboard shortcuts
-- **WHEN** the user presses Claude Code keyboard shortcuts (e.g., Escape to cancel, Ctrl+C to interrupt)
-- **THEN** the shortcuts SHALL be forwarded to the PTY and behave identically to a native terminal
+## ADDED Requirements
 
 ### Requirement: Client-side deactivation recovery
 When the client receives a `{"type":"deactivated"}` text message, it SHALL set a `needsRefresh` flag. On the next user input (`term.onData`), if the flag is set, the client SHALL call `term.clear()` to remove garbled content before sending the keystroke. The keystroke triggers `ResizeToViewer` on the server, which resizes tmux and produces a clean redraw via broadcast.

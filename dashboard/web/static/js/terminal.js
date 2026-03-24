@@ -20,6 +20,8 @@ const TerminalManager = {
 
         const term = new Terminal({
             cursorBlink: true,
+            copyOnSelect: true,
+            rightClickSelectsWord: true,
             fontSize: 14,
             fontFamily: "Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
             lineHeight: 1.15,
@@ -108,11 +110,22 @@ const TerminalManager = {
             ws.send(resizeMsg);
         };
 
+        // Track whether another viewer resized tmux (our display is garbled).
+        let needsRefresh = false;
+
         ws.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
                 term.write(new Uint8Array(event.data));
             } else {
-                term.write(event.data);
+                // Text messages are JSON control messages from the server.
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'deactivated') {
+                        needsRefresh = true;
+                    }
+                } catch (e) {
+                    term.write(event.data);
+                }
             }
         };
 
@@ -127,6 +140,14 @@ const TerminalManager = {
         // User input -> WebSocket (send as binary so Go routes it to PTY)
         term.onData((data) => {
             if (ws.readyState === WebSocket.OPEN) {
+                // If another viewer resized tmux, clear our garbled display.
+                // The input triggers ResizeToViewer on the server, which
+                // resizes tmux back to our dimensions. tmux redraws and we
+                // get clean content through normal broadcast.
+                if (needsRefresh) {
+                    needsRefresh = false;
+                    term.clear();
+                }
                 const encoder = new TextEncoder();
                 ws.send(encoder.encode(data));
             }
