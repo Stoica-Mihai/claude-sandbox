@@ -214,6 +214,21 @@
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <!-- ===== RENAME SESSION MODAL (bottom sheet on mobile, centered on desktop) ===== -->
+    <dialog id="renameModal" class="modal modal-bottom sm:modal-middle">
+        <div class="modal-box bg-base-200 max-w-sm p-4 sm:p-6 rounded-t-2xl sm:rounded-2xl">
+            <h3 class="font-semibold text-base mb-3">Rename Session</h3>
+            <input id="renameInput" type="text" placeholder="Session name"
+                   class="input input-bordered input-sm w-full bg-base-300 text-base-content"
+                   autocomplete="off" />
+            <div class="modal-action mt-3">
+                <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+                <button id="renameSubmit" class="btn btn-primary btn-sm">Save</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
     <script src="/static/js/terminal.js"></script>
     <script src="/static/js/views.js"></script>
     <script src="/static/js/theme.js"></script>

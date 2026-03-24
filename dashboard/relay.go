@@ -60,6 +60,11 @@ type Relay struct {
 	listener  net.Listener
 	socatConn net.Conn
 
+	lastActivity   time.Time
+	lastActivityMu sync.RWMutex
+	lastResizeAt time.Time // suppress activity stamping after resize redraws
+	lastInputAt  time.Time // suppress activity stamping for keystroke echoes
+
 	inAltScreen bool   // true when Claude Code is in alternate screen mode
 	partial     []byte // partial escape sequence from previous read chunk
 
@@ -191,6 +196,7 @@ func (r *Relay) SendInput(data []byte) error {
 	if r.socatConn == nil {
 		return fmt.Errorf("socat not connected")
 	}
+	r.lastInputAt = time.Now()
 	_, err := r.socatConn.Write(data)
 	return err
 }
@@ -271,6 +277,7 @@ func (r *Relay) UnsuspendViewer(conn *websocket.Conn) {
 
 // resizeTmux runs the tmux resize-window command.
 func (r *Relay) resizeTmux(cols, rows uint16) {
+	r.lastResizeAt = time.Now()
 	cmd := exec.Command("tmux", "resize-window",
 		"-t", r.SessionName,
 		"-x", fmt.Sprintf("%d", cols),
@@ -289,6 +296,13 @@ func (r *Relay) IsStopped() bool {
 	default:
 		return false
 	}
+}
+
+// GetLastActivity returns the time of the last broadcast (output activity).
+func (r *Relay) GetLastActivity() time.Time {
+	r.lastActivityMu.RLock()
+	defer r.lastActivityMu.RUnlock()
+	return r.lastActivity
 }
 
 // readLoop continuously reads from the socat connection, processes alternate
@@ -320,6 +334,15 @@ func (r *Relay) processOutput(data []byte) {
 	// Broadcast cleaned output (alt screen sequences stripped) to all viewers.
 	if len(cleaned) > 0 {
 		r.broadcast(cleaned)
+	}
+
+	// Stamp activity only when there's real content (normal-mode segments),
+	// not cursor blinks, and not resize-triggered redraws (which are just
+	// tmux re-rendering existing content, not new output).
+	if len(segments) > 0 && time.Since(r.lastResizeAt) > 2*time.Second && time.Since(r.lastInputAt) > 500*time.Millisecond {
+		r.lastActivityMu.Lock()
+		r.lastActivity = time.Now()
+		r.lastActivityMu.Unlock()
 	}
 
 	// Write only normal-mode segments to the ring buffer.

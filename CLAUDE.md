@@ -46,7 +46,8 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
 - CSS font rules must use `body` selector, NOT `*` — the universal selector breaks xterm.js character grid measurement.
 - The `claude` shell function (in `.bashrc`) wraps every CLI invocation in a tmux session, making it visible in the dashboard. Uses `command -v claude` to resolve the binary path and `TMUX=` to avoid nesting warnings.
 - `tmux.conf` sets `mouse off` (xterm.js handles mouse natively), `window-size latest`, and `smcup@:rmcup@` (for CLI `tmux attach` users).
-- A background polling goroutine checks `tmux list-sessions` every 5 seconds, syncs relays for new/gone sessions, and publishes SSE events when the list changes.
+- A background polling goroutine checks `tmux list-sessions` every 5 seconds, syncs relays for new/gone sessions, and publishes SSE events on every tick (so session card durations and activity state stay fresh).
+- Session cards show a `DisplayName` (custom name or directory basename), CWD as secondary text, and a live-ticking duration (client-side `setInterval` from `data-created` timestamp). A rename button (✏) opens a DaisyUI modal (bottom sheet on mobile, centered on desktop) to set a custom name via `PUT /api/sessions/{terminalId}/name`. Names are in-memory only — lost on restart.
 
 ## Common Commands
 

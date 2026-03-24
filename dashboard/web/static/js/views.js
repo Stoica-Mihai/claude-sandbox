@@ -458,6 +458,33 @@ function openNewSessionModal(event) {
     document.getElementById('newSessionModal').showModal();
 }
 
+// Open the Rename Session modal
+let renameTargetId = null;
+function openRenameModal(terminalId, currentName) {
+    renameTargetId = terminalId;
+    const input = document.getElementById('renameInput');
+    input.value = currentName || '';
+    document.getElementById('renameModal').showModal();
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+document.getElementById('renameSubmit')?.addEventListener('click', () => {
+    if (!renameTargetId) return;
+    const name = document.getElementById('renameInput').value.trim();
+    fetch(`/api/sessions/${renameTargetId}/name`, {
+        method: 'PUT',
+        body: JSON.stringify({ name })
+    });
+    document.getElementById('renameModal').close();
+    renameTargetId = null;
+});
+// Submit on Enter key
+document.getElementById('renameInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('renameSubmit').click();
+    }
+});
+
 // Re-apply session card active states after HTMX swaps in fresh session list HTML
 document.addEventListener('htmx:afterSwap', (event) => {
     if (event.target?.id === 'session-list') {
@@ -572,4 +599,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isMobile()) {
         document.addEventListener('keydown', handleShortcuts);
     }
+
+    // Tick session durations every second (matches server's humanDuration format)
+    setInterval(() => {
+        document.querySelectorAll('.session-duration[data-created]').forEach(el => {
+            const ts = parseInt(el.dataset.created, 10);
+            if (!ts) return;
+            let s = Math.floor(Date.now() / 1000) - ts;
+            const h = Math.floor(s / 3600); s %= 3600;
+            const m = Math.floor(s / 60); s %= 60;
+            if (h > 0) el.textContent = m > 0 ? h + 'h ' + m + 'm' : h + 'h';
+            else if (m > 0) el.textContent = s > 0 ? m + 'm ' + s + 's' : m + 'm';
+            else el.textContent = s + 's';
+        });
+    }, 1000);
 });

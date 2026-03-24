@@ -2,36 +2,37 @@
 <span id="session-count" class="hidden">{{len .Sessions}}</span>
 {{if .Sessions}}
 {{range .Sessions}}
-<div class="session-card rounded-lg p-3 cursor-pointer stagger-in group select-none"
+<div class="session-card rounded-lg p-3 cursor-pointer group select-none"
      data-terminal-id="{{.Name}}"
-     data-session="{{.DirName}}"
+     data-session="{{.DisplayName}}"
 >
     <div class="flex items-center justify-between mb-1.5">
-        <div class="flex items-center gap-2">
-            {{if .Alive}}
-            <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-alive"></span>
-            {{else}}
-            <span class="w-2 h-2 rounded-full bg-base-content/20"></span>
-            {{end}}
-            <span class="font-mono text-xs text-base-content/70">{{.Name}}</span>
-        </div>
-        <span class="text-[10px] text-base-content/40 font-mono">{{.Duration}}</span>
+        <span class="font-mono text-xs text-base-content/70">{{.Name}}</span>
+        <span class="text-[10px] text-base-content/40 font-mono session-duration" data-created="{{.CreatedAt.Unix}}">{{.Duration}}</span>
     </div>
-    <div class="font-medium text-sm text-base-content truncate">{{.CWD}}</div>
+    <div class="font-medium text-sm text-base-content truncate">{{.DisplayName}}</div>
+    <div class="text-[11px] text-base-content/40 truncate">{{.CWD}}</div>
     <div class="flex items-center justify-between mt-2">
         {{if .Alive}}
         <span class="text-[10px] text-emerald-500/60 font-mono">active</span>
         {{else}}
         <span class="text-[10px] text-base-content/30 font-mono">stopped</span>
         {{end}}
-        <button class="btn btn-ghost btn-sm text-error/70 hover:text-error hover:bg-error/10 opacity-0 group-hover:opacity-100 transition-all"
-                title="Kill session"
-                hx-delete="/api/sessions/{{.Name}}"
-                hx-target="#session-list"
-                hx-swap="innerHTML"
-                onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
+        <div class="flex items-center gap-1">
+            <button onclick="event.stopPropagation(); openRenameModal('{{.Name}}', '{{.DisplayName}}')"
+                    class="btn btn-ghost btn-sm text-base-content/50 hover:text-base-content hover:bg-base-content/10 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Rename session">
+                ✏
+            </button>
+            <button class="btn btn-ghost btn-sm text-error/70 hover:text-error hover:bg-error/10 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Kill session"
+                    hx-delete="/api/sessions/{{.Name}}"
+                    hx-target="#session-list"
+                    hx-swap="innerHTML"
+                    onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
     </div>
 </div>
 {{end}}

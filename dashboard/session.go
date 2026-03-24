@@ -30,33 +30,39 @@ const (
 
 // DisplaySession is the view used by templates. All sessions are tmux sessions.
 type DisplaySession struct {
-	Name      string // tmux session name (e.g. "claude-a1b2c3d4")
-	CWD       string
-	DirName   string
-	CreatedAt time.Time
-	Duration  string
-	Alive     bool
+	Name           string // tmux session name (e.g. "claude-a1b2c3d4")
+	CWD            string
+	DirName        string
+	CreatedAt      time.Time
+	Duration       string
+	Alive          bool
+	LastActivity   time.Time
+	LastActiveStr  string
+	RecentActivity bool
+	DisplayName    string
 }
 
 // SessionManager discovers tmux sessions, manages relays, and provides
 // spawn/kill operations.
 type SessionManager struct {
-	mu        sync.RWMutex
-	cached    []DisplaySession
-	cachedAt  time.Time
-	cachedRaw string // raw tmux output for change detection
-	relays    map[string]*Relay
-	broker    *Broker
-	stopPoll  chan struct{}
+	mu           sync.RWMutex
+	cached       []DisplaySession
+	cachedAt     time.Time
+	cachedRaw    string // raw tmux output for change detection
+	relays       map[string]*Relay
+	sessionNames map[string]string // custom display names keyed by session name
+	broker       *Broker
+	stopPoll     chan struct{}
 }
 
 // NewSessionManager creates a SessionManager wired to the given SSE broker
 // and starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
-		relays:   make(map[string]*Relay),
-		broker:   broker,
-		stopPoll: make(chan struct{}),
+		relays:       make(map[string]*Relay),
+		sessionNames: make(map[string]string),
+		broker:       broker,
+		stopPoll:     make(chan struct{}),
 	}
 	// Start relays for any existing sessions.
 	sm.syncRelays()
@@ -69,6 +75,24 @@ func (sm *SessionManager) GetRelay(sessionName string) *Relay {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.relays[sessionName]
+}
+
+// SetSessionName sets or clears a custom display name for a session.
+func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if displayName == "" {
+		delete(sm.sessionNames, sessionName)
+	} else {
+		sm.sessionNames[sessionName] = displayName
+	}
+}
+
+// GetSessionName returns the custom display name for a session, or "" if unset.
+func (sm *SessionManager) GetSessionName(sessionName string) string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.sessionNames[sessionName]
 }
 
 // syncRelays ensures every discovered tmux session has a running relay,
@@ -100,25 +124,46 @@ func (sm *SessionManager) syncRelays() {
 		if !currentNames[name] || relay.IsStopped() {
 			relay.Stop()
 			delete(sm.relays, name)
+			delete(sm.sessionNames, name)
 		}
 	}
 }
 
 // ListSessions returns all claude-prefixed tmux sessions, using cache if fresh.
+// Enrichment (activity timestamps, display names) is applied on every call.
 func (sm *SessionManager) ListSessions() []DisplaySession {
 	sm.mu.RLock()
 	if time.Since(sm.cachedAt) < cacheTTL {
 		result := make([]DisplaySession, len(sm.cached))
 		copy(result, sm.cached)
 		sm.mu.RUnlock()
-		return result
+		return sm.enrichSessions(result)
 	}
 	sm.mu.RUnlock()
 
-	return sm.refreshSessions()
+	return sm.enrichSessions(sm.refreshSessions())
 }
 
-// refreshSessions queries tmux and updates the cache. Returns the new list.
+// enrichSessions adds live activity data and display names to a session list copy.
+func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySession {
+	for i := range sessions {
+		if relay := sm.GetRelay(sessions[i].Name); relay != nil {
+			lastActivity := relay.GetLastActivity()
+			sessions[i].LastActivity = lastActivity
+			sessions[i].LastActiveStr = humanRelativeTime(lastActivity)
+			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < 5*time.Second
+		}
+		if customName := sm.GetSessionName(sessions[i].Name); customName != "" {
+			sessions[i].DisplayName = customName
+		} else {
+			sessions[i].DisplayName = sessions[i].DirName
+		}
+	}
+	return sessions
+}
+
+// refreshSessions queries tmux and updates the cache. Returns a copy of the
+// new list (safe to mutate without affecting the cache).
 func (sm *SessionManager) refreshSessions() []DisplaySession {
 	sessions := discoverTmuxSessions()
 
@@ -127,7 +172,9 @@ func (sm *SessionManager) refreshSessions() []DisplaySession {
 	sm.cachedAt = time.Now()
 	sm.mu.Unlock()
 
-	return sessions
+	result := make([]DisplaySession, len(sessions))
+	copy(result, sessions)
+	return result
 }
 
 // invalidateCache forces the next ListSessions call to query tmux.
@@ -264,9 +311,10 @@ func (sm *SessionManager) pollLoop() {
 
 				// Sync relays for new/gone sessions.
 				sm.syncRelays()
-
-				sm.broker.Publish()
 			}
+
+			// Always publish so activity timestamps and pulse states refresh.
+			sm.broker.Publish()
 		case <-sm.stopPoll:
 			return
 		}
@@ -341,6 +389,22 @@ func generateSessionName() string {
 	buf := make([]byte, 4)
 	rand.Read(buf)
 	return sessionPrefix + hex.EncodeToString(buf)
+}
+
+// humanRelativeTime formats a time as a relative string like "3s ago" or "5m ago".
+func humanRelativeTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
 }
 
 // humanDuration formats a duration into a human-readable string like "2h 15m"

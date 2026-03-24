@@ -80,6 +80,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server,
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
+	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /api/sessions/{terminalId}/scrollback", s.handleScrollback)
@@ -152,6 +153,34 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.handleSessionsFragment(w, r)
+}
+
+// handleSetSessionName sets a custom display name for a session.
+func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
+	sessionName := r.PathValue("terminalId")
+	if sessionName == "" {
+		http.Error(w, "missing session name", http.StatusBadRequest)
+		return
+	}
+
+	// Check session exists
+	relay := s.sm.GetRelay(sessionName)
+	if relay == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	s.sm.SetSessionName(sessionName, req.Name)
+	s.broker.Publish()
 	s.handleSessionsFragment(w, r)
 }
 
