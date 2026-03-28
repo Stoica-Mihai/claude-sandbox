@@ -83,8 +83,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server,
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /events", s.handleSSE)
-	mux.HandleFunc("GET /api/sessions/{terminalId}/scrollback", s.handleScrollback)
-	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
+mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
@@ -257,25 +256,6 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	buf.WriteTo(w)
-}
-
-// handleScrollback returns the ring buffer contents for a session as plain text.
-func (s *Server) handleScrollback(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		http.Error(w, "missing session name", http.StatusBadRequest)
-		return
-	}
-
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
-		return
-	}
-
-	data := relay.ringBuf.Bytes()
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(data)
 }
 
 // handleSSE streams Server-Sent Events to the client. It subscribes to the

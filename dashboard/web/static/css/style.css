@@ -123,10 +123,31 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     transition: height 0.2s ease;
 }
 
+/* ===== Terminal background (synced with xterm theme) ===== */
+.terminal-bg { background: #0d1117; }
+[data-theme="light"] .terminal-bg { background: #ffffff; }
+.terminal-controls-bg { background: #0d1117; border-color: rgba(255,255,255,0.05); }
+[data-theme="light"] .terminal-controls-bg { background: #f6f8fa; border-color: rgba(0,0,0,0.1); }
+.terminal-controls-bg .kbd { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); }
+[data-theme="light"] .terminal-controls-bg .kbd { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.12); color: rgba(0,0,0,0.5); }
+.terminal-controls-bg .kbd:hover { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.3); }
+[data-theme="light"] .terminal-controls-bg .kbd:hover { background: rgba(0,0,0,0.1); color: rgba(0,0,0,0.8); border-color: rgba(0,0,0,0.2); }
+
 /* ===== xterm.js terminal overrides ===== */
 .xterm {
     height: 100%;
     padding: 4px;
+}
+/* Mobile: bring the scrollable viewport above the canvas screen layer
+   so touches hit the viewport directly. This gives native compositor
+   scrolling (smooth, with momentum) instead of xterm.js's JavaScript-
+   driven scrollTop manipulation which feels clunky on touch devices. */
+@media (max-width: 767px) {
+    .xterm .xterm-viewport {
+        z-index: 4;
+        background-color: transparent !important;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 .xterm-viewport {
     overflow-y: auto !important;

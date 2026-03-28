@@ -72,7 +72,7 @@ function openSessionSingle(terminalId) {
     const tabContainer = document.createElement('div');
     tabContainer.id = 'singleTab-' + terminalId;
     tabContainer.className = 'absolute inset-0 hidden';
-    tabContainer.style.backgroundColor = '#0d1117';
+    tabContainer.classList.add('terminal-bg');
     wrapper.appendChild(tabContainer);
 
     // Add to tabs array
@@ -159,79 +159,6 @@ function updateSingleWelcome(hasTerminal) {
     if (mobileInput) mobileInput.classList.toggle('hidden', !hasTerminal);
 }
 
-// ===== Scrollback panel =====
-function openScrollbackPanel() {
-    if (!singleTerminalId) return;
-
-    const panel = document.getElementById('scrollbackPanel');
-    const terminal = document.getElementById('singleTerminal');
-    const content = document.getElementById('scrollbackContent');
-    if (!panel || !terminal || !content) return;
-
-    fetch(`/api/sessions/${encodeURIComponent(singleTerminalId)}/scrollback`)
-        .then(res => {
-            if (!res.ok) throw new Error('Failed to fetch scrollback');
-            return res.arrayBuffer();
-        })
-        .then(buf => {
-            // Use a temporary offscreen xterm.js to render the raw terminal
-            // data properly (handles cursor positioning, overwrites, etc.),
-            // then extract the rendered text line by line.
-            const offscreen = document.createElement('div');
-            offscreen.style.cssText = 'position:absolute;left:-9999px;width:200px;height:200px;';
-            document.body.appendChild(offscreen);
-
-            const tmpTerm = new Terminal({ cols: 120, rows: 50, scrollback: 100000 });
-            tmpTerm.open(offscreen);
-
-            // write() is async — use callback to know when data is fully processed.
-            tmpTerm.write(new Uint8Array(buf), () => {
-                const buffer = tmpTerm.buffer.active;
-                const lines = [];
-                const totalLines = buffer.length;
-
-                for (let i = 0; i < totalLines; i++) {
-                    const line = buffer.getLine(i);
-                    if (line) {
-                        lines.push(line.translateToString(true));
-                    }
-                }
-
-                // Trim trailing empty lines.
-                while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
-                    lines.pop();
-                }
-
-                content.textContent = lines.join('\n');
-                tmpTerm.dispose();
-                offscreen.remove();
-
-                // Show panel, hide terminal.
-                terminal.classList.add('hidden');
-                panel.classList.remove('hidden');
-
-                // Scroll to bottom.
-                content.scrollTop = content.scrollHeight;
-            });
-        })
-        .catch(err => {
-            console.error('Scrollback fetch failed:', err);
-        });
-}
-
-function closeScrollbackPanel() {
-    const panel = document.getElementById('scrollbackPanel');
-    const terminal = document.getElementById('singleTerminal');
-    if (!panel || !terminal) return;
-
-    panel.classList.add('hidden');
-    terminal.classList.remove('hidden');
-
-    requestAnimationFrame(() => {
-        if (singleTerminalId) TerminalManager.resize(singleTerminalId);
-    });
-}
-
 // ===== Mobile control bar =====
 // Send a single control byte to the active terminal
 function mobileInputSend(charCode) {
@@ -265,6 +192,42 @@ function sendKeyToTerminal(charCode) {
     }
 }
 
+// Toggle a selectable text overlay over the terminal (mobile).
+function mobileToggleSelect(btn) {
+    const terminal = document.getElementById('singleTerminal');
+    if (!terminal) return;
+    const existing = document.getElementById('selectOverlay');
+    if (existing) {
+        existing.remove();
+        if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
+        return;
+    }
+
+    if (!singleTerminalId) return;
+    const inst = TerminalManager.get(singleTerminalId);
+    if (!inst) return;
+
+    // Extract visible lines.
+    const buf = inst.term.buffer.active;
+    const totalLines = buf.baseY + inst.term.rows;
+    const lines = [];
+    for (let i = 0; i <= totalLines; i++) {
+        const line = buf.getLine(i);
+        lines.push(line ? line.translateToString(true) : '');
+    }
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+
+    const overlay = document.createElement('pre');
+    overlay.id = 'selectOverlay';
+    overlay.textContent = lines.join('\n');
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:50;margin:0;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:13px;font-family:monospace;line-height:1.4;color:#c9d1d9;background:#0d1117;user-select:text;-webkit-user-select:text;white-space:pre-wrap;word-break:break-all;';
+    terminal.appendChild(overlay);
+    // Scroll to bottom to match terminal position.
+    overlay.scrollTop = overlay.scrollHeight;
+
+    if (btn) { btn.style.color = '#3fb950'; btn.style.borderColor = 'rgba(63,185,80,0.3)'; }
+}
+
 function updateSingleTabBar(activeTerminalId) {
     const tabBar = document.getElementById('singleTabBar');
     if (!tabBar) return;
@@ -283,7 +246,8 @@ function updateSingleTabBar(activeTerminalId) {
         const isActive = id === activeTerminalId;
         return `
             <div class="tab-item flex items-center gap-2 px-3 py-1.5 rounded-md text-sm cursor-pointer select-none ${isActive ? 'bg-base-300' : 'text-base-content/50 hover:text-base-content/80 hover:bg-base-300/50 transition-colors'}"
-                 onclick="switchSingleTab('${escapeHtml(id)}')">
+                 onclick="switchSingleTab('${escapeHtml(id)}')"
+                 onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${escapeHtml(id)}');}">
                 <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-base-content/30'}"></span>
                 <span class="font-mono text-xs">${escapeHtml(sessionName)}</span>
                 <button class="ml-1 opacity-40 hover:opacity-100" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">

@@ -94,25 +94,16 @@
                 </div>
 
                 <!-- Terminal controls -->
-                <div id="singleControls" class="h-9 bg-[#0d1117] border-b border-white/5 hidden items-center px-3 gap-1.5 shrink-0">
-                    <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 hover:bg-white/20 hover:text-white/80 hover:border-white/30 transition-all cursor-pointer font-mono text-[11px] px-2" onclick="sendKeyToTerminal(27)" title="Send Escape">Esc</button>
-                    <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 hover:bg-white/20 hover:text-white/80 hover:border-white/30 transition-all cursor-pointer font-mono text-[11px] px-2" onclick="sendKeyToTerminal(3)" title="Send Ctrl+C">Ctrl+C</button>
-                    <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 hover:bg-white/20 hover:text-white/80 hover:border-white/30 transition-all cursor-pointer font-mono text-[11px] px-2" onclick="sendKeyToTerminal(4)" title="Send Ctrl+D">Ctrl+D</button>
-                    <button class="kbd kbd-xs bg-white/10 border-white/15 text-white/50 hover:bg-white/20 hover:text-white/80 hover:border-white/30 transition-all cursor-pointer font-mono text-[11px] px-2 ml-2" onclick="openScrollbackPanel()" title="View session history">History</button>
+                <div id="singleControls" class="h-9 terminal-controls-bg border-b hidden items-center px-3 gap-1.5 shrink-0">
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(27)" title="Send Escape">Esc</button>
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(3)" title="Send Ctrl+C">Ctrl+C</button>
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(4)" title="Send Ctrl+D">Ctrl+D</button>
                 </div>
 
                 <!-- Terminal -->
-                <div id="singleTerminal" class="flex-1 bg-[#0d1117] overflow-hidden hidden relative">
+                <div id="singleTerminal" class="flex-1 terminal-bg overflow-hidden hidden relative">
                 </div>
 
-                <!-- Scrollback panel (native browser scrolling) -->
-                <div id="scrollbackPanel" class="flex-1 bg-[#0d1117] hidden relative">
-                    <div class="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-white/10 z-10">
-                        <span class="text-xs font-mono text-white/50">Session History</span>
-                        <button class="text-xs text-white/40 hover:text-white/70" onclick="closeScrollbackPanel()">Close</button>
-                    </div>
-                    <pre id="scrollbackContent" class="absolute left-0 right-0 bottom-0 p-3 pt-10 text-sm font-mono text-[#c9d1d9] whitespace-pre-wrap break-words leading-relaxed select-text" style="top:0;overflow-y:scroll;-webkit-overflow-scrolling:touch"></pre>
-                </div>
 
                 <!-- Welcome screen (shown when no terminal is open) -->
                 <div id="singleWelcome" class="flex-1 bg-base-300 flex items-center justify-center select-none">
@@ -172,10 +163,10 @@
                         <div class="flex items-center gap-1.5">
                             <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(27)">Esc</button>
                             <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(3)">^C</button>
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="openScrollbackPanel()">&#x23F3;</button>
                         </div>
                         <!-- Editing -->
                         <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(127)">&#x232B;</button>
+                        <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileToggleSelect(this)" title="Toggle text selection">Select</button>
                         <!-- Navigation arrows -->
                         <div class="flex items-center gap-1.5">
                             <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('D')">&#x2190;</button>

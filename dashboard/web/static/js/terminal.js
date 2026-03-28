@@ -5,6 +5,59 @@ document.addEventListener('cancel', (e) => {
     }
 }, true);
 
+// Terminal color themes
+const terminalThemes = {
+    dark: {
+        background: '#0d1117',
+        foreground: '#c9d1d9',
+        cursor: '#58a6ff',
+        selectionBackground: '#264f78',
+        black: '#0d1117',
+        red: '#ff7b72',
+        green: '#3fb950',
+        yellow: '#d29922',
+        blue: '#58a6ff',
+        magenta: '#bc8cff',
+        cyan: '#39d353',
+        white: '#c9d1d9',
+        brightBlack: '#484f58',
+        brightRed: '#ffa198',
+        brightGreen: '#56d364',
+        brightYellow: '#e3b341',
+        brightBlue: '#79c0ff',
+        brightMagenta: '#d2a8ff',
+        brightCyan: '#56d364',
+        brightWhite: '#f0f6fc',
+    },
+    light: {
+        background: '#ffffff',
+        foreground: '#24292f',
+        cursor: '#0969da',
+        selectionBackground: '#b6d4fe',
+        black: '#24292f',
+        red: '#cf222e',
+        green: '#116329',
+        yellow: '#4d2d00',
+        blue: '#0969da',
+        magenta: '#8250df',
+        cyan: '#1b7c83',
+        white: '#6e7781',
+        brightBlack: '#57606a',
+        brightRed: '#a40e26',
+        brightGreen: '#1a7f37',
+        brightYellow: '#633c01',
+        brightBlue: '#218bff',
+        brightMagenta: '#a475f9',
+        brightCyan: '#3192aa',
+        brightWhite: '#8c959f',
+    }
+};
+
+function getTerminalTheme() {
+    const appTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    return terminalThemes[appTheme] || terminalThemes.dark;
+}
+
 // TerminalManager — manages multiple xterm.js instances and WebSocket connections
 const TerminalManager = {
     instances: {}, // terminalId -> {term, ws, fitAddon, webLinksAddon, containerId, retryTimer}
@@ -18,35 +71,15 @@ const TerminalManager = {
         const fitAddon = new FitAddon.FitAddon();
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
 
+        const isMobile = window.matchMedia('(max-width: 767px)').matches;
         const term = new Terminal({
             cursorBlink: true,
-            copyOnSelect: true,
-            rightClickSelectsWord: true,
+            copyOnSelect: !isMobile,
+            rightClickSelectsWord: !isMobile,
             fontSize: 14,
             fontFamily: "Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
             lineHeight: 1.15,
-            theme: {
-                background: '#0d1117',
-                foreground: '#c9d1d9',
-                cursor: '#58a6ff',
-                selectionBackground: '#264f78',
-                black: '#0d1117',
-                red: '#ff7b72',
-                green: '#3fb950',
-                yellow: '#d29922',
-                blue: '#58a6ff',
-                magenta: '#bc8cff',
-                cyan: '#39d353',
-                white: '#c9d1d9',
-                brightBlack: '#484f58',
-                brightRed: '#ffa198',
-                brightGreen: '#56d364',
-                brightYellow: '#e3b341',
-                brightBlue: '#79c0ff',
-                brightMagenta: '#d2a8ff',
-                brightCyan: '#56d364',
-                brightWhite: '#f0f6fc',
-            },
+            theme: getTerminalTheme(),
             allowProposedApi: true,
         });
 
@@ -85,6 +118,15 @@ const TerminalManager = {
                     setTimeout(() => textarea.focus(), 0);
                 }
             });
+        }
+
+        // Mobile: add click-to-focus since the viewport overlay is now on top
+        // of the screen (via CSS z-index) for native scroll support.
+        if (isMobile) {
+            const viewport = containerEl.querySelector('.xterm-viewport');
+            if (viewport) {
+                viewport.addEventListener('click', () => term.focus());
+            }
         }
 
         // Fit after opening (needs a frame for container dimensions)
@@ -260,6 +302,13 @@ const TerminalManager = {
 
     get(terminalId) {
         return this.instances[terminalId] || null;
+    },
+
+    rethemeAll() {
+        const theme = getTerminalTheme();
+        for (const instance of Object.values(this.instances)) {
+            instance.term.options.theme = theme;
+        }
     },
 
     getByContainer(containerId) {

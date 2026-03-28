@@ -12,6 +12,7 @@
             const theme = e.target.checked ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
+            TerminalManager.rethemeAll();
         });
     }
 })();

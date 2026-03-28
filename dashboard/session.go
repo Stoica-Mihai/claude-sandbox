@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"time"
 )
+
+const sessionNamesFile = "/tmp/claude-session-names.json"
 
 const (
 	// sessionPrefix identifies dashboard-relevant tmux sessions.
@@ -84,6 +87,7 @@ func NewSessionManager(broker *Broker) *SessionManager {
 		broker:       broker,
 		stopPoll:     make(chan struct{}),
 	}
+	sm.loadSessionNames()
 	// Start relays for any existing sessions.
 	sm.syncRelays()
 	go sm.pollLoop()
@@ -100,12 +104,13 @@ func (sm *SessionManager) GetRelay(sessionName string) *Relay {
 // SetSessionName sets or clears a custom display name for a session.
 func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
 	if displayName == "" {
 		delete(sm.sessionNames, sessionName)
 	} else {
 		sm.sessionNames[sessionName] = displayName
 	}
+	sm.mu.Unlock()
+	sm.saveSessionNames()
 }
 
 // GetSessionName returns the custom display name for a session, or "" if unset.
@@ -113,6 +118,44 @@ func (sm *SessionManager) GetSessionName(sessionName string) string {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.sessionNames[sessionName]
+}
+
+// loadSessionNames reads persisted display names from disk.
+func (sm *SessionManager) loadSessionNames() {
+	data, err := os.ReadFile(sessionNamesFile)
+	if err != nil {
+		return // file doesn't exist yet — normal on first run
+	}
+	var names map[string]string
+	if err := json.Unmarshal(data, &names); err != nil {
+		slog.Warn("failed to parse session names file", "error", err)
+		return
+	}
+	sm.mu.Lock()
+	for k, v := range names {
+		sm.sessionNames[k] = v
+	}
+	sm.mu.Unlock()
+	slog.Info("loaded session names", "count", len(names))
+}
+
+// saveSessionNames writes current display names to disk.
+func (sm *SessionManager) saveSessionNames() {
+	sm.mu.RLock()
+	names := make(map[string]string, len(sm.sessionNames))
+	for k, v := range sm.sessionNames {
+		names[k] = v
+	}
+	sm.mu.RUnlock()
+
+	data, err := json.Marshal(names)
+	if err != nil {
+		slog.Warn("failed to marshal session names", "error", err)
+		return
+	}
+	if err := os.WriteFile(sessionNamesFile, data, 0644); err != nil {
+		slog.Warn("failed to save session names", "error", err)
+	}
 }
 
 // syncRelays ensures every discovered tmux session has a running relay,
@@ -140,12 +183,19 @@ func (sm *SessionManager) syncRelays() {
 	}
 
 	// Stop relays for gone sessions.
+	var namesChanged bool
 	for name, relay := range sm.relays {
 		if !currentNames[name] || relay.IsStopped() {
 			relay.Stop()
 			delete(sm.relays, name)
-			delete(sm.sessionNames, name)
+			if _, had := sm.sessionNames[name]; had {
+				delete(sm.sessionNames, name)
+				namesChanged = true
+			}
 		}
+	}
+	if namesChanged {
+		go sm.saveSessionNames()
 	}
 }
 
