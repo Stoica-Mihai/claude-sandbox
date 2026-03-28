@@ -49,11 +49,14 @@
                 <span id="session-badge-text" class="{{if .Sessions}}text-emerald-500 pulse-alive{{end}}"><span class="hidden md:inline">{{len .Sessions}} session{{if ne (len .Sessions) 1}}s{{end}}</span><span class="md:hidden">{{len .Sessions}}</span></span>
             </div>
 
-            <label class="swap swap-rotate btn btn-ghost btn-sm btn-circle" id="themeToggleLabel">
-                <input type="checkbox" id="themeToggle" />
-                <svg class="swap-off w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                <svg class="swap-on w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-            </label>
+            <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-ghost btn-sm gap-1.5 font-normal">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+                    <span id="themeCurrentLabel" class="hidden md:inline text-xs">Dark</span>
+                </label>
+                <ul id="themeMenu" tabindex="0" class="dropdown-content z-50 menu menu-sm p-2 shadow-lg bg-base-200 rounded-box w-40 border border-base-content/10">
+                </ul>
+            </div>
         </div>
     </header>
 
@@ -157,17 +160,17 @@
                 </div>
 
                 <!-- Mobile control bar (visible only on mobile when a terminal is open) -->
-                <div id="mobileInputBar" class="md:hidden hidden bg-[#161b22] border-t border-white/10 shrink-0">
+                <div id="mobileInputBar" class="md:hidden hidden border-t shrink-0">
                     <div class="flex items-center gap-1.5 px-2 py-2 overflow-x-auto">
                         <button class="mobile-key" onclick="mobileInputSend(27)">Esc</button>
                         <button class="mobile-key" onclick="mobileInputSend(3)">^C</button>
                         <button class="mobile-key" onclick="mobileInputSend(127)">&#x232B;</button>
-                        <div class="w-px h-6 bg-white/10 shrink-0"></div>
+                        <div class="w-px h-6 bg-base-content/10 shrink-0"></div>
                         <button class="mobile-key" onclick="mobileInputSendArrow('D')">&#x2190;</button>
                         <button class="mobile-key" onclick="mobileInputSendArrow('C')">&#x2192;</button>
                         <button class="mobile-key" onclick="mobileInputSendArrow('A')">&#x2191;</button>
                         <button class="mobile-key" onclick="mobileInputSendArrow('B')">&#x2193;</button>
-                        <div class="w-px h-6 bg-white/10 shrink-0"></div>
+                        <div class="w-px h-6 bg-base-content/10 shrink-0"></div>
                         <button class="mobile-key" onclick="mobileToggleSelect(this)" title="Toggle text selection">Select</button>
                     </div>
                 </div>

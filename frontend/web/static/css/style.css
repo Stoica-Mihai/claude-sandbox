@@ -31,6 +31,22 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     border-left-color: oklch(0.75 0.2 var(--hue));
     background: oklch(0.26 0.035 var(--hue) / 0.55);
 }
+
+/* Light-base theme adjustments for session cards */
+[data-theme-base="light"] .session-card {
+    background: oklch(0.96 0.015 var(--hue) / 0.6);
+    border-color: oklch(0.5 0 0 / 0.12);
+    border-left-color: oklch(0.6 0.15 var(--hue) / 0.6);
+}
+[data-theme-base="light"] .session-card.active {
+    background: oklch(0.93 0.025 var(--hue) / 0.7);
+    border-left-color: oklch(0.55 0.2 var(--hue));
+}
+[data-theme-base="light"] .session-card:hover {
+    border-left-color: oklch(0.55 0.2 var(--hue));
+    background: oklch(0.94 0.02 var(--hue) / 0.7);
+}
+
 /* ===== Pulse alive animation ===== */
 @keyframes pulse-dot {
     0%, 100% { opacity: 1; }
@@ -76,6 +92,9 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     pointer-events: none;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+[data-theme-base="light"] .grain::after {
+    opacity: 0.005;
+}
 
 /* ===== Directory picker ===== */
 .dir-item {
@@ -85,33 +104,15 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     background: oklch(0.3 0.02 160 / 0.3);
     padding-left: 1.25rem;
 }
+[data-theme-base="light"] .dir-item:hover {
+    background: oklch(0.9 0.03 160 / 0.4);
+}
 
 /* ===== Drag hint (for future drag-and-drop) ===== */
 .drag-hint {
     border: 2px dashed oklch(0.7 0.15 160 / 0.3);
     background: oklch(0.7 0.15 160 / 0.05);
     transition: all 0.2s;
-}
-
-/* ===== Light mode adjustments ===== */
-[data-theme="light"] .session-card {
-    background: oklch(0.96 0.015 var(--hue) / 0.6);
-    border-color: oklch(0.5 0 0 / 0.12);
-    border-left-color: oklch(0.6 0.15 var(--hue) / 0.6);
-}
-[data-theme="light"] .session-card.active {
-    background: oklch(0.93 0.025 var(--hue) / 0.7);
-    border-left-color: oklch(0.55 0.2 var(--hue));
-}
-[data-theme="light"] .session-card:hover {
-    border-left-color: oklch(0.55 0.2 var(--hue));
-    background: oklch(0.94 0.02 var(--hue) / 0.7);
-}
-[data-theme="light"] .dir-item:hover {
-    background: oklch(0.9 0.03 160 / 0.4);
-}
-[data-theme="light"] .grain::after {
-    opacity: 0.005;
 }
 
 /* ===== Pull to refresh ===== */
@@ -127,9 +128,9 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 .mobile-key {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.5);
+    background: oklch(0.5 0 0 / 0.15);
+    border: 1px solid oklch(0.5 0 0 / 0.2);
+    color: oklch(0.7 0 0);
     border-radius: 6px;
     padding: 0 10px;
     height: 36px;
@@ -139,19 +140,56 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     transition: all 0.15s;
 }
 .mobile-key:active {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.8);
+    background: oklch(0.5 0 0 / 0.3);
+    color: oklch(0.9 0 0);
 }
 
-/* ===== Terminal background (synced with xterm theme) ===== */
-.terminal-bg { background: #0d1117; }
-[data-theme="light"] .terminal-bg { background: #ffffff; }
-.terminal-controls-bg { background: #0d1117; border-color: rgba(255,255,255,0.05); }
-[data-theme="light"] .terminal-controls-bg { background: #f6f8fa; border-color: rgba(0,0,0,0.1); }
-.terminal-controls-bg .kbd { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); }
-[data-theme="light"] .terminal-controls-bg .kbd { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.12); color: rgba(0,0,0,0.5); }
-.terminal-controls-bg .kbd:hover { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.3); }
-[data-theme="light"] .terminal-controls-bg .kbd:hover { background: rgba(0,0,0,0.1); color: rgba(0,0,0,0.8); border-color: rgba(0,0,0,0.2); }
+/* ===== Terminal background (driven by --terminal-bg CSS var set in terminal.js) ===== */
+:root { --terminal-bg: #0d1117; }
+.terminal-bg { background: var(--terminal-bg); }
+.terminal-controls-bg { background: var(--terminal-bg); border-color: oklch(0.5 0 0 / 0.1); }
+.terminal-controls-bg .kbd {
+    background: oklch(0.5 0 0 / 0.15);
+    border-color: oklch(0.5 0 0 / 0.2);
+    color: oklch(0.7 0 0);
+}
+.terminal-controls-bg .kbd:hover {
+    background: oklch(0.5 0 0 / 0.25);
+    color: oklch(0.85 0 0);
+    border-color: oklch(0.5 0 0 / 0.3);
+}
+
+/* Light-base overrides for terminal controls */
+[data-theme-base="light"] .terminal-controls-bg .kbd {
+    background: oklch(0.5 0 0 / 0.08);
+    border-color: oklch(0.5 0 0 / 0.15);
+    color: oklch(0.35 0 0);
+}
+[data-theme-base="light"] .terminal-controls-bg .kbd:hover {
+    background: oklch(0.5 0 0 / 0.15);
+    color: oklch(0.2 0 0);
+    border-color: oklch(0.5 0 0 / 0.25);
+}
+
+/* ===== Mobile input bar (use terminal bg) ===== */
+#mobileInputBar {
+    background: var(--terminal-bg);
+    border-color: oklch(0.5 0 0 / 0.1);
+}
+
+/* ===== Theme dropdown — show 5 items, scroll for the rest ===== */
+#themeMenu {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    max-height: 9.5rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+#themeMenu button.active {
+    color: oklch(0.75 0.15 160);
+    font-weight: 600;
+}
 
 /* ===== xterm.js terminal overrides ===== */
 .xterm {
