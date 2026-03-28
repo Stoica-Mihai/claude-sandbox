@@ -16,16 +16,20 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 
 /* ===== Session cards ===== */
 .session-card {
+    --hue: 0;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    border-left: 3px solid transparent;
+    border: 1px solid oklch(0.5 0 0 / 0.15);
+    border-left: 3px solid oklch(0.7 0.18 var(--hue) / 0.7);
+    background: oklch(0.23 0.02 var(--hue) / 0.5);
 }
 .session-card:hover {
     transform: translateX(3px);
-    border-left-color: oklch(0.7 0.15 160);
+    border-left-color: oklch(0.75 0.2 var(--hue));
+    background: oklch(0.26 0.03 var(--hue) / 0.6);
 }
 .session-card.active {
-    border-left-color: oklch(0.7 0.15 160);
-    background: oklch(0.25 0.02 160 / 0.3);
+    border-left-color: oklch(0.75 0.2 var(--hue));
+    background: oklch(0.26 0.035 var(--hue) / 0.55);
 }
 /* ===== Pulse alive animation ===== */
 @keyframes pulse-dot {
@@ -90,11 +94,18 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 }
 
 /* ===== Light mode adjustments ===== */
+[data-theme="light"] .session-card {
+    background: oklch(0.96 0.015 var(--hue) / 0.6);
+    border-color: oklch(0.5 0 0 / 0.12);
+    border-left-color: oklch(0.6 0.15 var(--hue) / 0.6);
+}
 [data-theme="light"] .session-card.active {
-    background: oklch(0.9 0.03 160 / 0.5);
+    background: oklch(0.93 0.025 var(--hue) / 0.7);
+    border-left-color: oklch(0.55 0.2 var(--hue));
 }
 [data-theme="light"] .session-card:hover {
-    border-left-color: oklch(0.5 0.2 160);
+    border-left-color: oklch(0.55 0.2 var(--hue));
+    background: oklch(0.94 0.02 var(--hue) / 0.7);
 }
 [data-theme="light"] .dir-item:hover {
     background: oklch(0.9 0.03 160 / 0.4);

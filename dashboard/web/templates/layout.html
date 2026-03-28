@@ -79,7 +79,7 @@
                 </button>
             </div>
 
-            <div id="session-list" class="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5" hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML">
+            <div id="session-list" class="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5" hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML">
                 {{template "sessions" .}}
             </div>
         </aside>

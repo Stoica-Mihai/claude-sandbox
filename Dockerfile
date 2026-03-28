@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     ca-certificates \
     gcc \
+    make \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 

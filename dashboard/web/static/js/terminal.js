@@ -132,9 +132,20 @@ const TerminalManager = {
                 ws.send(resizeMsg);
             };
 
+            let scrollRafPending = false;
             ws.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
+                    const buf = term.buffer.active;
+                    const atBottom = buf.baseY <= buf.viewportY + 5;
                     term.write(new Uint8Array(event.data));
+                    // Coalesce scroll corrections into a single rAF
+                    if (atBottom && !scrollRafPending) {
+                        scrollRafPending = true;
+                        requestAnimationFrame(() => {
+                            term.scrollToBottom();
+                            scrollRafPending = false;
+                        });
+                    }
                 } else {
                     // Text messages are JSON control messages from the server.
                     try {

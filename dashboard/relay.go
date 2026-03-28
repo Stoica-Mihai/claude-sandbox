@@ -166,13 +166,19 @@ func (r *Relay) AddViewer(conn *websocket.Conn) {
 		return
 	}
 
-	// Replay ring buffer.
+	// Replay ring buffer (normal-mode conversation history).
 	scrollback := r.ringBuf.Bytes()
 	if len(scrollback) > 0 {
 		if err := conn.WriteMessage(websocket.BinaryMessage, scrollback); err != nil {
 			slog.Debug("failed to replay scrollback", "session", r.SessionName, "error", err)
 			return
 		}
+	}
+
+	// If currently in alt screen (Claude Code TUI), tell the viewer to
+	// enter alt screen so live TUI output renders in the correct buffer.
+	if r.inAltScreen {
+		_ = conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049h"))
 	}
 
 	// Add to viewers.
@@ -328,13 +334,12 @@ func (r *Relay) readLoop() {
 // processOutput handles alternate screen tracking, ring buffer writes,
 // and viewer broadcast for a chunk of output data.
 func (r *Relay) processOutput(data []byte) {
-	// Process the data, stripping alt screen sequences and tracking state.
-	cleaned, segments := r.trackAltScreen(data)
+	// Track alt screen state and extract normal-mode segments for ring buffer.
+	_, segments := r.trackAltScreen(data)
 
-	// Broadcast cleaned output (alt screen sequences stripped) to all viewers.
-	if len(cleaned) > 0 {
-		r.broadcast(cleaned)
-	}
+	// Broadcast raw data to viewers (including alt-screen sequences so
+	// xterm.js handles alternate screen properly — no viewport jumps).
+	r.broadcast(data)
 
 	// Stamp activity only when there's real content (normal-mode segments),
 	// not cursor blinks, and not resize-triggered redraws (which are just

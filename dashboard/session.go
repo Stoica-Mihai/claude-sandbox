@@ -42,6 +42,26 @@ type DisplaySession struct {
 	DisplayName    string
 }
 
+// sessionHues is a hand-picked palette of 12 maximally distinct hues.
+var sessionHues = []int{0, 30, 60, 120, 170, 210, 260, 300, 330, 45, 150, 240}
+
+// Hue returns a deterministic hue from a fixed palette of visually distinct
+// colors, derived from the session name's hex suffix.
+func (s DisplaySession) Hue() int {
+	// Parse the hex suffix after "claude-" as an integer for a clean index.
+	suffix := strings.TrimPrefix(s.Name, sessionPrefix)
+	var idx uint64
+	if v, err := strconv.ParseUint(suffix, 16, 64); err == nil {
+		idx = v
+	} else {
+		// Fallback: sum bytes.
+		for _, b := range []byte(s.Name) {
+			idx += uint64(b)
+		}
+	}
+	return sessionHues[int(idx%uint64(len(sessionHues)))]
+}
+
 // SessionManager discovers tmux sessions, manages relays, and provides
 // spawn/kill operations.
 type SessionManager struct {

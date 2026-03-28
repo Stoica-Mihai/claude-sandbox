@@ -8,25 +8,6 @@ function isMobile() {
     return window.matchMedia('(max-width: 767px)').matches;
 }
 
-// Check if the mobile input bar is actually visible (progressive enhancement check)
-function isMobileViewport() {
-    const el = document.getElementById('mobileInput');
-    return el && el.offsetParent !== null;
-}
-
-// Focus the mobile input field, used after opening/switching sessions on mobile.
-// Delay allows sidebar close animation to finish before focusing.
-function focusMobileInput(delayMs) {
-    if (!isMobileViewport()) return;
-    const input = document.getElementById('mobileInput');
-    if (!input) return;
-    if (delayMs > 0) {
-        setTimeout(() => { input.focus(); }, delayMs);
-    } else {
-        input.focus();
-    }
-}
-
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebarBackdrop');
@@ -75,11 +56,6 @@ function openSession(terminalId) {
     // Update active state on session cards
     updateSessionCardStates();
 
-    // On mobile, auto-focus the input bar so the user can type immediately.
-    // Delay lets the sidebar close animation finish first.
-    if (isMobile()) {
-        focusMobileInput(300);
-    }
 }
 
 function openSessionSingle(terminalId) {
@@ -130,12 +106,7 @@ function switchSingleTab(terminalId) {
     requestAnimationFrame(() => {
         const instance = TerminalManager.get(terminalId);
         if (instance) {
-            // On mobile, focus the input bar instead of the terminal
-            if (isMobileViewport()) {
-                focusMobileInput(0);
-            } else {
-                instance.term.focus();
-            }
+            instance.term.focus();
             TerminalManager.resize(terminalId);
         }
     });
@@ -283,51 +254,6 @@ function mobileInputSendArrow(code) {
     }
 }
 
-// Submit the text from the mobile input field
-function mobileInputSubmit() {
-    const input = document.getElementById('mobileInput');
-    if (!input || !singleTerminalId) return;
-    const text = input.value;
-    if (!text) return;
-
-    const inst = TerminalManager.get(singleTerminalId);
-    if (inst?.ws?.readyState === WebSocket.OPEN) {
-        const encoder = new TextEncoder();
-        // Send the text followed by Enter
-        inst.ws.send(encoder.encode(text + '\r'));
-        inst.term?.scrollToBottom();
-    }
-    input.value = '';
-    input.focus();
-}
-
-// Handle keydown in the mobile input — Enter submits
-function mobileInputKeydown(event) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        mobileInputSubmit();
-    }
-}
-
-// Show/hide the clear button based on input content
-function mobileInputToggleClear() {
-    const input = document.getElementById('mobileInput');
-    const clearBtn = document.getElementById('mobileInputClear');
-    if (input && clearBtn) {
-        clearBtn.classList.toggle('hidden', !input.value);
-    }
-}
-
-// Clear the mobile input text
-function mobileInputClearText() {
-    const input = document.getElementById('mobileInput');
-    if (input) {
-        input.value = '';
-        input.focus();
-        mobileInputToggleClear();
-    }
-}
-
 // Send a control byte to the active terminal in single view
 // charCode: integer (e.g., 27 for Escape, 3 for Ctrl+C)
 function sendKeyToTerminal(charCode) {
@@ -470,12 +396,21 @@ function openRenameModal(terminalId, currentName) {
 document.getElementById('renameSubmit')?.addEventListener('click', () => {
     if (!renameTargetId) return;
     const name = document.getElementById('renameInput').value.trim();
-    fetch(`/api/sessions/${renameTargetId}/name`, {
+    const targetId = renameTargetId;
+    fetch(`/api/sessions/${targetId}/name`, {
         method: 'PUT',
         body: JSON.stringify({ name })
+    }).then(res => {
+        if (!res.ok) throw new Error(`Rename failed (${res.status})`);
+        document.getElementById('renameModal').close();
+        renameTargetId = null;
+    }).catch(err => {
+        console.error('Rename failed:', err);
+        document.getElementById('renameInput').classList.add('input-error');
+        setTimeout(() => {
+            document.getElementById('renameInput')?.classList.remove('input-error');
+        }, 2000);
     });
-    document.getElementById('renameModal').close();
-    renameTargetId = null;
 });
 // Submit on Enter key
 document.getElementById('renameInput')?.addEventListener('keydown', (e) => {
@@ -494,12 +429,26 @@ document.addEventListener('htmx:afterSwap', (event) => {
 
 // Listen for HTMX responses from spawn to auto-open the new terminal
 document.addEventListener('htmx:afterRequest', (event) => {
-    // Only handle POST /api/sessions (spawn)
-    if (event.detail.verb !== 'post' || !event.detail.pathInfo?.requestPath?.includes('/api/sessions')) return;
+    const xhr = event.detail.xhr;
+    if (!xhr) return;
 
-    const terminalId = event.detail.xhr?.getResponseHeader('X-Terminal-Id');
-    if (!terminalId) return;
+    const terminalId = xhr.getResponseHeader('X-Terminal-Id');
+    if (!terminalId) return; // not a spawn response
 
+    if (xhr.status >= 400) {
+        const submitBtn = document.getElementById('dir-picker-submit');
+        if (submitBtn) {
+            submitBtn.classList.add('btn-error');
+            submitBtn.textContent = 'Failed — try again';
+            setTimeout(() => {
+                submitBtn.classList.remove('btn-error');
+                submitBtn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg> Launch Session';
+            }, 2000);
+        }
+        return;
+    }
+
+    document.getElementById('newSessionModal')?.close();
     openSession(terminalId);
 });
 
