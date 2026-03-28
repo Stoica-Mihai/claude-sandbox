@@ -1,9 +1,0 @@
-# Development override — mounts dashboard source for in-container compilation.
-# Use via: make dev
-# Do NOT rename to docker-compose.override.yml (would auto-merge on make up).
-services:
-  claude-env:
-    volumes:
-      - ./dashboard/:/home/claude/dashboard-src/:ro
-    command: >
-      sh -c "cd /home/claude/dashboard-src && go build -o /tmp/dashboard-server . && exec /tmp/dashboard-server"

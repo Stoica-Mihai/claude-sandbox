@@ -5,56 +5,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+	"time"
 
 	"claude-dashboard/web"
-
-	"github.com/gorilla/websocket"
 )
 
-// DashboardData holds the data passed to the full layout template.
-type DashboardData struct {
-	Sessions []DisplaySession
-}
-
-// Breadcrumb represents a path segment in the directory picker breadcrumb.
-type Breadcrumb struct {
-	Name string
-	Path string
-}
-
-// DirectoryData holds the data passed to the directory picker fragment.
-type DirectoryData struct {
-	Path        string       // relative path from /workspace (e.g., "subdir/nested")
-	FullPath    string       // absolute path (e.g., "/workspace/subdir/nested")
-	Dirs        []string     // directory names at current level
-	Breadcrumbs []Breadcrumb // path segments for breadcrumb navigation
-}
-
-// controlMessage is the JSON structure for WebSocket control messages (resize, refresh).
-type controlMessage struct {
-	Type string `json:"type"`
-	Cols uint16 `json:"cols,omitempty"`
-	Rows uint16 `json:"rows,omitempty"`
-}
-
-// Server is the HTTP server serving the dashboard, API, SSE, and WebSocket.
+// Server is the HTTP server serving the dashboard frontend.
+// It renders HTML templates with data fetched from the backend API,
+// and proxies WebSocket, SSE, and healthz requests to the backend.
 type Server struct {
-	templates *template.Template
-	sm        *SessionManager
-	broker    *Broker
-	mux       *http.ServeMux
-	upgrader  websocket.Upgrader
+	templates  *template.Template
+	backendURL string
+	client     *http.Client
+	mux        *http.ServeMux
 }
 
 // NewServer creates a Server by parsing embedded templates and registering
 // all routes on the provided mux.
-func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server, error) {
+func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	tmpl, err := template.ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
@@ -66,39 +38,44 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) (*Server,
 	}
 
 	s := &Server{
-		templates: tmpl,
-		sm:        sm,
-		broker:    broker,
-		mux:       mux,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+		templates:  tmpl,
+		backendURL: backendURL,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
 		},
+		mux: mux,
 	}
 
-	// Register routes.
+	// Template-rendering routes (fetch JSON from backend, render HTML).
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
-	mux.HandleFunc("GET /events", s.handleSSE)
-mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
+
+	// Pure proxy routes.
+	mux.HandleFunc("GET /events", s.handleSSEProxy)
+	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocketProxy)
+	mux.HandleFunc("GET /healthz", s.handleHealthzProxy)
+
+	// Static files.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	return s, nil
 }
 
-// handleHealthz returns a simple JSON health check response.
-func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}`))
-}
+// --- Template-rendering routes ---
 
 // handleIndex renders the full dashboard page with initial session data.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	sessions := s.sm.ListSessions()
+	sessions, err := s.fetchSessions(r)
+	if err != nil {
+		slog.Error("failed to fetch sessions from backend", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	data := DashboardData{Sessions: sessions}
 
 	var buf bytes.Buffer
@@ -113,7 +90,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // handleSessionsFragment renders the sessions list HTML fragment for HTMX.
 func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) {
-	sessions := s.sm.ListSessions()
+	sessions, err := s.fetchSessions(r)
+	if err != nil {
+		slog.Error("failed to fetch sessions from backend", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	data := DashboardData{Sessions: sessions}
 
 	var buf bytes.Buffer
@@ -126,130 +109,175 @@ func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) 
 	buf.WriteTo(w)
 }
 
-// handleSpawn creates a new Claude Code session inside a tmux session.
+// handleSpawn forwards the spawn request to the backend (as JSON), then
+// fetches the updated session list and renders the sessions fragment.
+// The form sends cwd as a form field; we convert it to JSON for the backend.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
+	// The HTMX form sends application/x-www-form-urlencoded with "cwd" field.
 	cwd := r.FormValue("cwd")
 	if cwd == "" {
 		http.Error(w, "missing cwd parameter", http.StatusBadRequest)
 		return
 	}
 
-	sessionName, err := s.sm.Spawn(cwd)
+	// Forward as JSON to backend.
+	payload, _ := json.Marshal(map[string]string{"cwd": cwd})
+	backendReq, err := http.NewRequestWithContext(r.Context(), "POST",
+		s.backendURL+"/api/sessions", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("failed to spawn session", "cwd", cwd, "error", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	backendReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(backendReq)
+	if err != nil {
+		slog.Error("failed to spawn session via backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Error("backend spawn failed", "status", resp.StatusCode, "body", string(body))
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body)
 		return
 	}
 
-	w.Header().Set("X-Terminal-Id", sessionName)
+	// Parse the backend response to get the session name.
+	var spawnResp struct {
+		SessionName string `json:"session_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&spawnResp); err != nil {
+		slog.Error("failed to decode spawn response", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Set the X-Terminal-Id header for the client JS to pick up.
+	w.Header().Set("X-Terminal-Id", spawnResp.SessionName)
+
+	// Fetch updated sessions and render the fragment.
 	s.handleSessionsFragment(w, r)
 }
 
-// handleKill terminates a tmux session.
+// handleKill forwards the kill request to the backend, then renders the
+// updated sessions fragment.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
+	terminalId := r.PathValue("terminalId")
+	if terminalId == "" {
 		http.Error(w, "missing session name", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.sm.Kill(sessionName); err != nil {
-		slog.Error("failed to kill session", "session", sessionName, "error", err)
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	s.handleSessionsFragment(w, r)
-}
-
-// handleSetSessionName sets a custom display name for a session.
-func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		http.Error(w, "missing session name", http.StatusBadRequest)
-		return
-	}
-
-	// Check session exists
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
-		return
-	}
-
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	s.sm.SetSessionName(sessionName, req.Name)
-	s.broker.Publish()
-	s.handleSessionsFragment(w, r)
-}
-
-// handleDirectories lists directories under /workspace for the directory picker.
-func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
-	subpath := r.URL.Query().Get("path")
-
-	// Resolve and validate the target path.
-	target := filepath.Join(workspaceRoot, subpath)
-	absTarget, err := filepath.Abs(target)
-	if err != nil || !strings.HasPrefix(absTarget, workspaceRoot) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-
-	info, err := os.Stat(absTarget)
-	if err != nil || !info.IsDir() {
-		http.Error(w, "directory not found", http.StatusBadRequest)
-		return
-	}
-
-	entries, err := os.ReadDir(absTarget)
+	backendReq, err := http.NewRequestWithContext(r.Context(), "DELETE",
+		s.backendURL+"/api/sessions/"+terminalId, nil)
 	if err != nil {
-		slog.Error("failed to read directory", "path", absTarget, "error", err)
-		http.Error(w, "failed to read directory", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	var dirs []string
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		dirs = append(dirs, entry.Name())
+	resp, err := s.client.Do(backendReq)
+	if err != nil {
+		slog.Error("failed to kill session via backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body)
+		return
 	}
 
-	// Compute relative current path for display.
-	currentRel, _ := filepath.Rel(workspaceRoot, absTarget)
-	if currentRel == "." {
-		currentRel = ""
+	// Render updated sessions fragment.
+	s.handleSessionsFragment(w, r)
+}
+
+// handleSetSessionName forwards the rename request to the backend, then
+// renders the updated sessions fragment.
+func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
+	terminalId := r.PathValue("terminalId")
+	if terminalId == "" {
+		http.Error(w, "missing session name", http.StatusBadRequest)
+		return
 	}
 
-	// Build breadcrumbs from path segments.
-	var breadcrumbs []Breadcrumb
-	if currentRel != "" {
-		parts := strings.Split(currentRel, string(filepath.Separator))
-		for i, part := range parts {
-			breadcrumbs = append(breadcrumbs, Breadcrumb{
-				Name: part,
-				Path: strings.Join(parts[:i+1], "/"),
-			})
-		}
+	// Read the JSON body and forward it to the backend.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
 	}
 
-	data := DirectoryData{
-		Path:        currentRel,
-		FullPath:    absTarget,
-		Dirs:        dirs,
-		Breadcrumbs: breadcrumbs,
+	backendReq, err := http.NewRequestWithContext(r.Context(), "PUT",
+		s.backendURL+"/api/sessions/"+terminalId+"/name", bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	backendReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(backendReq)
+	if err != nil {
+		slog.Error("failed to rename session via backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		w.WriteHeader(resp.StatusCode)
+		w.Write(respBody)
+		return
+	}
+
+	// Render updated sessions fragment.
+	s.handleSessionsFragment(w, r)
+}
+
+// handleDirectories fetches directory data from the backend and renders the
+// directory-picker template.
+func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
+	targetURL := s.backendURL + "/api/directories"
+	if q := r.URL.RawQuery; q != "" {
+		targetURL += "?" + q
+	}
+
+	backendReq, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := s.client.Do(backendReq)
+	if err != nil {
+		slog.Error("failed to fetch directories from backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		http.Error(w, string(body), resp.StatusCode)
+		return
+	}
+
+	var dirData DirectoryData
+	if err := json.NewDecoder(resp.Body).Decode(&dirData); err != nil {
+		slog.Error("failed to decode directory response", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "directory-picker", data); err != nil {
+	if err := s.templates.ExecuteTemplate(&buf, "directory-picker", dirData); err != nil {
 		slog.Error("failed to render directory picker", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -258,125 +286,48 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	buf.WriteTo(w)
 }
 
-// handleSSE streams Server-Sent Events to the client. It subscribes to the
-// broker and forwards update notifications as SSE events until the client
-// disconnects.
-func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
+// --- Pure proxy routes ---
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	flusher.Flush()
-
-	id, ch := s.broker.Subscribe()
-	defer s.broker.Unsubscribe(id)
-
-	for {
-		select {
-		case <-ch:
-			fmt.Fprint(w, "event: update\ndata: \n\n")
-			flusher.Flush()
-		case <-r.Context().Done():
-			return
-		}
-	}
+// handleSSEProxy proxies the SSE event stream from the backend.
+func (s *Server) handleSSEProxy(w http.ResponseWriter, r *http.Request) {
+	sseProxy(w, r, s.backendURL)
 }
 
-// handleWebSocket upgrades the HTTP connection to a WebSocket and registers
-// the viewer with the session's relay. Output comes from the relay's ring
-// buffer (replay) and live pipe-pane stream. Input is sent via the relay's
-// unix socket. No tmux attach process is spawned.
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		http.Error(w, "missing session name", http.StatusBadRequest)
-		return
-	}
-
-	// Get the relay for this session.
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil || relay.IsStopped() {
-		http.Error(w, "session not found", http.StatusNotFound)
-		return
-	}
-
-	conn, err := s.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		slog.Error("websocket upgrade failed", "session", sessionName, "error", err)
-		return
-	}
-
-	slog.Info("websocket attached", "session", sessionName)
-
-	// Register viewer with the relay (sends reset + scrollback replay).
-	relay.AddViewer(conn)
-
-	// Read loop: WebSocket → relay (input/resize).
-	// This goroutine runs until the WebSocket disconnects or the relay stops.
-	defer func() {
-		relay.RemoveViewer(conn)
-		_ = conn.Close()
-		slog.Info("websocket detached", "session", sessionName)
-	}()
-
-	for {
-		msgType, data, readErr := conn.ReadMessage()
-		if readErr != nil {
-			if websocket.IsUnexpectedCloseError(readErr,
-				websocket.CloseGoingAway,
-				websocket.CloseNormalClosure,
-			) {
-				slog.Debug("websocket read error", "session", sessionName, "error", readErr)
-			}
-			return
-		}
-
-		// Check if relay has been stopped (session exited).
-		if relay.IsStopped() {
-			return
-		}
-
-		switch msgType {
-		case websocket.TextMessage:
-			// JSON control message (resize, refresh).
-			var msg controlMessage
-			if err := json.Unmarshal(data, &msg); err != nil {
-				slog.Debug("invalid control message", "session", sessionName, "error", err)
-				continue
-			}
-			if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
-				relay.Resize(conn, msg.Cols, msg.Rows)
-			}
-		case websocket.BinaryMessage:
-			// Resume broadcast delivery if this viewer was suspended.
-			relay.UnsuspendViewer(conn)
-			// Resize tmux to this viewer's dimensions if it wasn't the last
-			// to resize (mimics tmux's "window-size latest" behavior).
-			relay.ResizeToViewer(conn)
-			// Terminal input — send to tmux pane via relay.
-			if err := relay.SendInput(data); err != nil {
-				slog.Debug("relay input failed", "session", sessionName, "error", err)
-				return
-			}
-		}
-	}
+// handleWebSocketProxy proxies a WebSocket connection to the backend.
+func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
+	wsProxy(w, r, s.backendURL)
 }
 
-// ListDirectoriesFlat returns the full absolute path for a workspace-relative
-// directory selection. Used by handleSpawn to resolve the cwd.
-func ListDirectoriesFlat(subpath string) (string, error) {
-	target := filepath.Join(workspaceRoot, subpath)
-	absTarget, err := filepath.Abs(target)
+// handleHealthzProxy proxies the health check to the backend.
+func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
+	httpProxy(w, r, s.backendURL)
+}
+
+// --- Helpers ---
+
+// fetchSessions calls the backend's GET /api/sessions and returns the parsed list.
+func (s *Server) fetchSessions(r *http.Request) ([]DisplaySession, error) {
+	backendReq, err := http.NewRequestWithContext(r.Context(), "GET",
+		s.backendURL+"/api/sessions", nil)
 	if err != nil {
-		return "", fmt.Errorf("invalid path: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	if !strings.HasPrefix(absTarget, workspaceRoot) {
-		return "", fmt.Errorf("path must be under %s", workspaceRoot)
+
+	resp, err := s.client.Do(backendReq)
+	if err != nil {
+		return nil, fmt.Errorf("backend request: %w", err)
 	}
-	return absTarget, nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("backend returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var sessions []DisplaySession
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return nil, fmt.Errorf("decoding sessions: %w", err)
+	}
+
+	return sessions, nil
 }

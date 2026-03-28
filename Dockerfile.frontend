@@ -1,0 +1,30 @@
+# ── Builder stage: compile the Go dashboard binary ──
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libc6-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+COPY dashboard/ /src/dashboard/
+RUN cd /src/dashboard && go build -o /dashboard-server .
+
+# ── Runtime stage: minimal, no tmux/socat/claude ──
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m dashboard
+USER dashboard
+
+COPY --from=builder /dashboard-server /home/dashboard/dashboard-server
+
+CMD ["/home/dashboard/dashboard-server"]

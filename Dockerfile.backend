@@ -1,7 +1,6 @@
-# ── Builder stage: compile the Go dashboard binary ──
+# ── Builder stage: compile the Go backend binary ──
 FROM debian:bookworm-slim AS builder
 
-# Install Go 1.26.1 and build toolchain
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
@@ -12,13 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-COPY dashboard/ /src/dashboard/
-RUN cd /src/dashboard && go build -o /dashboard-server .
+COPY backend/ /src/backend/
+RUN cd /src/backend && go build -o /backend-server .
 
 # ── Runtime stage ──
 FROM debian:bookworm-slim
 
-# Runtime packages — gcc/libc6-dev needed for Go race detector (go test -race uses CGO)
+# Runtime packages — everything Claude Code and tmux sessions need
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
@@ -34,40 +33,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Go toolchain — needed for dev workflow (make dev) and go test -race
+# Go toolchain — needed for go test -race and dev workflow
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# UTF-8 locale for Unicode rendering (Claude Code banner, box-drawing chars)
+# UTF-8 locale for Unicode rendering
 ENV LANG=C.UTF-8
 
-# Create a non-root user with matching host UID (Claude Code refuses --dangerously-skip-permissions as root)
+# Create a non-root user with matching host UID
 ARG UID
 ARG GID
 RUN groupadd -g ${GID} claude && \
     useradd -m -u ${UID} -g claude claude
 USER claude
 
-# tmux configuration (no status bar, large scrollback, latest window-size for multi-client)
+# tmux configuration
 COPY --chown=claude:claude tmux.conf /home/claude/.tmux.conf
 
-# Install Claude Code as the non-root user
+# Install Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Install UV
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install OpenSpec (spec-driven planning layer for coding agents)
+# Install OpenSpec
 RUN npm install -g --prefix /home/claude/.local @fission-ai/openspec@latest
 
 ENV PATH="/home/claude/.local/bin:${PATH}"
-# Openspec telemetry disable
 ENV DO_NOT_TRACK=1
-
-# Enable plugin auto-updates even when the main auto-updater is disabled
 ENV FORCE_AUTOUPDATE_PLUGINS=true
 
-# Pre-install Context7 MCP server (registered via host .claude.json mount)
+# Pre-install Context7 MCP server
 RUN npm install -g --prefix /home/claude/.local @upstash/context7-mcp
 
 # Register marketplaces and install plugins
@@ -84,7 +80,7 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install cli-anything-go@claude-skills && \
     claude plugin install opsx-ext@claude-skills
 
-# Shell function: wraps every `claude` invocation in a tmux session for dashboard visibility
+# Shell function: wraps every `claude` invocation in a tmux session
 RUN cat >> /home/claude/.bashrc <<'BASHEOF'
 claude() {
   local claude_bin
@@ -95,7 +91,9 @@ claude() {
 }
 BASHEOF
 
-# Copy the pre-built dashboard binary from the builder stage
-COPY --from=builder /dashboard-server /home/claude/dashboard-server
+# Copy the pre-built backend binary
+COPY --from=builder /backend-server /home/claude/backend-server
 
 WORKDIR /workspace
+
+CMD ["/home/claude/backend-server"]

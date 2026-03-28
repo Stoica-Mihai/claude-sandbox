@@ -1,11 +1,12 @@
 services:
-  claude-env:
+  backend:
     build:
       context: .
+      dockerfile: Dockerfile.backend
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
-    container_name: claude_workspace
+    container_name: claude_backend
     tty: true
     stdin_open: true
     init: true
@@ -24,13 +25,14 @@ services:
 
     environment:
       - HOME=/home/claude
-      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - BACKEND_PORT=8081
 
-    ports:
-      - "${DASHBOARD_PORT:-8080}:${DASHBOARD_PORT:-8080}"
+    # No exposed ports — only reachable via internal network
+    networks:
+      - claude-net
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${DASHBOARD_PORT:-8080}/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -50,4 +52,44 @@ services:
 
     working_dir: /workspace
 
-    command: /home/claude/dashboard-server
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: claude_frontend
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./dashboard/
+
+    environment:
+      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - BACKEND_URL=http://backend:8081
+
+    ports:
+      - "${DASHBOARD_PORT:-8080}:${DASHBOARD_PORT:-8080}"
+
+    networks:
+      - claude-net
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${DASHBOARD_PORT:-8080}/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  claude-net:
+    driver: bridge

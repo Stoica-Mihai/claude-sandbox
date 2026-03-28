@@ -1,4 +1,4 @@
-.PHONY: setup build rebuild up up-clean dev down shell claude
+.PHONY: setup build rebuild up down shell claude restart-frontend restart-backend watch
 
 setup:
 	@./generate-env.sh
@@ -12,17 +12,20 @@ rebuild: setup
 up: setup
 	docker compose up -d --build
 
-up-clean: rebuild
-	docker compose up -d
-
-dev: setup
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-
 down:
 	docker compose down
 
+restart-frontend:
+	docker compose up -d --build frontend
+
+restart-backend:
+	docker compose up -d --build backend
+
+watch:
+	docker compose watch
+
 shell:
-	docker exec -it claude_workspace bash
+	docker exec -it claude_backend bash
 
 claude:
-	docker exec -it claude_workspace claude
+	docker exec -it claude_backend claude
