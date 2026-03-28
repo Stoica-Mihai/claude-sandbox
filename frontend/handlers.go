@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"claude-dashboard/web"
+	"claude-frontend/web"
 )
 
 // Server is the HTTP server serving the dashboard frontend.

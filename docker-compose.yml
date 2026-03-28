@@ -61,7 +61,7 @@ services:
     develop:
       watch:
         - action: rebuild
-          path: ./dashboard/
+          path: ./frontend/
 
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}

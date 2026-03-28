@@ -1,4 +1,4 @@
-# ── Builder stage: compile the Go dashboard binary ──
+# ── Builder stage: compile the Go frontend binary ──
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-COPY dashboard/ /src/dashboard/
-RUN cd /src/dashboard && go build -o /dashboard-server .
+COPY frontend/ /src/frontend/
+RUN cd /src/frontend && go build -o /frontend-server .
 
 # ── Runtime stage: minimal, no tmux/socat/claude ──
 FROM debian:bookworm-slim
@@ -22,9 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m dashboard
-USER dashboard
+RUN useradd -m frontend
+USER frontend
 
-COPY --from=builder /dashboard-server /home/dashboard/dashboard-server
+COPY --from=builder /frontend-server /home/frontend/frontend-server
 
-CMD ["/home/dashboard/dashboard-server"]
+CMD ["/home/frontend/frontend-server"]

@@ -1,4 +1,4 @@
-module claude-dashboard
+module claude-frontend
 
 go 1.26.1
 
