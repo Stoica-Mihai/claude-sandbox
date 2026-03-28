@@ -408,6 +408,7 @@ function initPullToRefresh() {
         if (e.target.closest('#scrollbackPanel')) return;
         if (document.querySelector('dialog[open]')) return;
         if (e.target.closest('#sidebar')) return;
+        if (e.target.closest('.dropdown-content')) return;
         startY = e.touches[0].clientY;
         pulling = true;
     }, { passive: true });
