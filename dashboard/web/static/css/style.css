@@ -123,6 +123,26 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     transition: height 0.2s ease;
 }
 
+/* ===== Mobile toolbar buttons ===== */
+.mobile-key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.5);
+    border-radius: 6px;
+    padding: 0 10px;
+    height: 36px;
+    min-width: 36px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.mobile-key:active {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8);
+}
+
 /* ===== Terminal background (synced with xterm theme) ===== */
 .terminal-bg { background: #0d1117; }
 [data-theme="light"] .terminal-bg { background: #ffffff; }

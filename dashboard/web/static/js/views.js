@@ -99,7 +99,7 @@ function switchSingleTab(terminalId) {
 
     // Update tab bar, status bar, and sidebar card highlights
     updateSingleTabBar(terminalId);
-    updateSingleStatusBar(terminalId);
+
     updateSessionCardStates();
 
     // Focus and resize
@@ -142,12 +142,10 @@ function closeSingleTab(terminalId) {
 function updateSingleWelcome(hasTerminal) {
     const welcome = document.getElementById('singleWelcome');
     const terminal = document.getElementById('singleTerminal');
-    const statusBar = document.getElementById('singleStatusBar');
     const controls = document.getElementById('singleControls');
     const mobileInput = document.getElementById('mobileInputBar');
     if (welcome) welcome.classList.toggle('hidden', hasTerminal);
     if (terminal) terminal.classList.toggle('hidden', !hasTerminal);
-    if (statusBar) statusBar.classList.toggle('hidden', !hasTerminal);
     if (controls) {
         // Only show controls bar on desktop (mobile has the input bar)
         if (isMobile()) {
@@ -257,28 +255,6 @@ function updateSingleTabBar(activeTerminalId) {
     }).join('');
 }
 
-function updateSingleStatusBar(terminalId) {
-    const leftEl = document.getElementById('singleStatusLeft');
-    const rightEl = document.getElementById('singleStatusRight');
-
-    if (!terminalId) {
-        if (leftEl) leftEl.innerHTML = '';
-        if (rightEl) rightEl.textContent = '';
-        return;
-    }
-
-    const card = document.querySelector(`[data-terminal-id="${terminalId}"]`);
-
-    if (card && leftEl) {
-        const cwd = card.querySelector('.font-medium')?.textContent || '';
-        const pid = card.querySelector('.font-mono.text-xs')?.textContent || '';
-        leftEl.innerHTML = `<span>${escapeHtml(pid)}</span><span class="ml-4">${escapeHtml(terminalId.substring(0, 6))}</span><span class="ml-4">${escapeHtml(cwd)}</span>`;
-    }
-
-    if (rightEl) {
-        rightEl.textContent = '';
-    }
-}
 
 function closeSingleTerminal() {
     // Close the active tab

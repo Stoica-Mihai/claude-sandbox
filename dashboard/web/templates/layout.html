@@ -158,34 +158,20 @@
 
                 <!-- Mobile control bar (visible only on mobile when a terminal is open) -->
                 <div id="mobileInputBar" class="md:hidden hidden bg-[#161b22] border-t border-white/10 shrink-0">
-                    <div class="flex items-center justify-between px-2 py-2">
-                        <!-- Signal buttons -->
-                        <div class="flex items-center gap-1.5">
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(27)">Esc</button>
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(3)">^C</button>
-                        </div>
-                        <!-- Editing -->
-                        <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileInputSend(127)">&#x232B;</button>
-                        <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer font-mono text-xs px-2.5 h-9 min-w-[2.5rem]" onclick="mobileToggleSelect(this)" title="Toggle text selection">Select</button>
-                        <!-- Navigation arrows -->
-                        <div class="flex items-center gap-1.5">
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('D')">&#x2190;</button>
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('C')">&#x2192;</button>
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('A')">&#x2191;</button>
-                            <button class="kbd kbd-sm bg-white/10 border-white/15 text-white/50 active:bg-white/20 active:text-white/80 transition-all cursor-pointer text-sm h-9 w-9 flex items-center justify-center" onclick="mobileInputSendArrow('B')">&#x2193;</button>
-                        </div>
+                    <div class="flex items-center gap-1.5 px-2 py-2 overflow-x-auto">
+                        <button class="mobile-key" onclick="mobileInputSend(27)">Esc</button>
+                        <button class="mobile-key" onclick="mobileInputSend(3)">^C</button>
+                        <button class="mobile-key" onclick="mobileInputSend(127)">&#x232B;</button>
+                        <div class="w-px h-6 bg-white/10 shrink-0"></div>
+                        <button class="mobile-key" onclick="mobileInputSendArrow('D')">&#x2190;</button>
+                        <button class="mobile-key" onclick="mobileInputSendArrow('C')">&#x2192;</button>
+                        <button class="mobile-key" onclick="mobileInputSendArrow('A')">&#x2191;</button>
+                        <button class="mobile-key" onclick="mobileInputSendArrow('B')">&#x2193;</button>
+                        <div class="w-px h-6 bg-white/10 shrink-0"></div>
+                        <button class="mobile-key" onclick="mobileToggleSelect(this)" title="Toggle text selection">Select</button>
                     </div>
                 </div>
 
-                <!-- Status bar -->
-                <div id="singleStatusBar" class="h-7 bg-base-200 border-t border-base-content/15 flex items-center justify-between px-4 text-[10px] font-mono text-base-content/50 shrink-0 hidden">
-                    <div class="flex items-center gap-4">
-                        <span id="singleStatusLeft">No session selected</span>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <span id="singleStatusRight"></span>
-                    </div>
-                </div>
             </div>
 
         </main>
