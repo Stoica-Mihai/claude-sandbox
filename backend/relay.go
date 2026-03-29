@@ -15,6 +15,19 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	// termReset is the escape sequence to reset the terminal to initial state.
+	termReset = "\x1bc"
+	// socatConnectTimeout is how long to wait for socat to connect.
+	socatConnectTimeout = 5 * time.Second
+	// resizeActivityWindow suppresses activity stamping after resize redraws.
+	resizeActivityWindow = 2 * time.Second
+	// inputActivityWindow suppresses activity stamping for keystroke echoes.
+	inputActivityWindow = 500 * time.Millisecond
+	// maxReconnectAttempts is the number of relay reconnect attempts before giving up.
+	maxReconnectAttempts = 3
+)
+
 // Alternate screen sequences to detect and strip.
 var altScreenEnter = [][]byte{
 	[]byte("\x1b[?1049h"),
@@ -104,7 +117,7 @@ func (r *Relay) Start() error {
 	}
 
 	// Accept the socat connection (with timeout).
-	r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(5 * time.Second))
+	r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(socatConnectTimeout))
 	r.socatConn, err = r.listener.Accept()
 	if err != nil {
 		r.stopPipePaneCmd()
@@ -168,7 +181,7 @@ func (r *Relay) Stop() {
 func (r *Relay) AddViewer(conn *websocket.Conn) {
 	// Send terminal reset — safe to write directly since the viewer
 	// isn't in the map yet (broadcast can't reach it).
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("\x1bc")); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(termReset)); err != nil {
 		slog.Debug("failed to send reset to viewer", "session", r.SessionName, "error", err)
 		return
 	}
@@ -185,7 +198,7 @@ func (r *Relay) AddViewer(conn *websocket.Conn) {
 	// If currently in alt screen (Claude Code TUI), tell the viewer to
 	// enter alt screen so live TUI output renders in the correct buffer.
 	if r.inAltScreen {
-		_ = conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049h"))
+		_ = conn.WriteMessage(websocket.BinaryMessage, altScreenEnter[0])
 	}
 
 	// Add to viewers.
@@ -351,7 +364,7 @@ func (r *Relay) processOutput(data []byte) {
 	// Stamp activity only when there's real content (normal-mode segments),
 	// not cursor blinks, and not resize-triggered redraws (which are just
 	// tmux re-rendering existing content, not new output).
-	if len(segments) > 0 && time.Since(r.lastResizeAt) > 2*time.Second && time.Since(r.lastInputAt) > 500*time.Millisecond {
+	if len(segments) > 0 && time.Since(r.lastResizeAt) > resizeActivityWindow && time.Since(r.lastInputAt) > inputActivityWindow {
 		r.lastActivityMu.Lock()
 		r.lastActivity = time.Now()
 		r.lastActivityMu.Unlock()
@@ -485,7 +498,7 @@ func (r *Relay) stopPipePaneCmd() {
 
 // reconnect attempts to re-establish the socat connection after a drop.
 func (r *Relay) reconnect() {
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= maxReconnectAttempts; attempt++ {
 		select {
 		case <-r.done:
 			return
@@ -515,7 +528,7 @@ func (r *Relay) reconnect() {
 		}
 
 		// Accept new socat connection.
-		r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(5 * time.Second))
+		r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(socatConnectTimeout))
 		conn, err := r.listener.Accept()
 		if err != nil {
 			slog.Warn("reconnect accept failed", "session", r.SessionName, "error", err)
@@ -531,6 +544,6 @@ func (r *Relay) reconnect() {
 		return
 	}
 
-	slog.Error("relay reconnect failed after 3 attempts", "session", r.SessionName)
+	slog.Error(fmt.Sprintf("relay reconnect failed after %d attempts", maxReconnectAttempts), "session", r.SessionName)
 	r.Stop()
 }

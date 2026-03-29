@@ -29,6 +29,10 @@ const (
 	pollInterval = 5 * time.Second
 	// maxSpawnRetries is the number of retries on tmux session name collision.
 	maxSpawnRetries = 3
+	// recentActivityThreshold is how recently a session must have had output to be considered "active".
+	recentActivityThreshold = 5 * time.Second
+	// termType is the TERM environment variable set for new sessions.
+	termType = "xterm-256color"
 )
 
 // DisplaySession is the view used by API responses. All sessions are tmux sessions.
@@ -222,7 +226,7 @@ func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySes
 			lastActivity := relay.GetLastActivity()
 			sessions[i].LastActivity = lastActivity
 			sessions[i].LastActiveStr = humanRelativeTime(lastActivity)
-			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < 5*time.Second
+			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < recentActivityThreshold
 		}
 		if customName := sm.GetSessionName(sessions[i].Name); customName != "" {
 			sessions[i].DisplayName = customName
@@ -284,7 +288,7 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 			"-c", absPath,
 			"--", claudePath, "--dangerously-skip-permissions",
 		)
-		cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+		cmd.Env = append(os.Environ(), "TERM=" + termType)
 
 		if err := cmd.Run(); err != nil {
 			slog.Warn("tmux new-session failed, retrying",
@@ -459,7 +463,9 @@ func parseTmuxOutput(raw string) []DisplaySession {
 // generateSessionName creates a tmux session name like "claude-a1b2c3d4".
 func generateSessionName() string {
 	buf := make([]byte, 4)
-	rand.Read(buf)
+	if _, err := rand.Read(buf); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
 	return sessionPrefix + hex.EncodeToString(buf)
 }
 

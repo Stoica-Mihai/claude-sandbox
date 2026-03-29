@@ -170,13 +170,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 .xterm-viewport {
     overflow-y: auto !important;
 }
-.xterm-viewport::-webkit-scrollbar {
-    width: 5px;
-}
-.xterm-viewport::-webkit-scrollbar-thumb {
-    background: oklch(0.5 0 0 / 0.25);
-    border-radius: 3px;
-}
 /* v6 uses a DOM-based scrollbar — style it to match */
 .xterm .xterm-scrollable-element > .scrollbar > .slider {
     background: oklch(0.5 0 0 / 0.25) !important;

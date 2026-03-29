@@ -1,3 +1,9 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     build:
@@ -48,11 +54,7 @@ services:
           cpus: '4'
           memory: 8G
 
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
 
     working_dir: /workspace
 
@@ -88,11 +90,7 @@ services:
       retries: 3
       start_period: 5s
 
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
 
 networks:
   claude-net:

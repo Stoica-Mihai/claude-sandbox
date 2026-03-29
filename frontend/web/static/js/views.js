@@ -1,3 +1,7 @@
+// Mobile breakpoint (matches Tailwind's md: prefix)
+const MOBILE_BREAKPOINT = '(max-width: 767px)';
+
+
 // View mode management
 // Single terminal view with tabs
 let singleTerminalId = null;    // currently active tab
@@ -5,7 +9,7 @@ let singleTabs = [];            // array of open tab terminal IDs
 
 // ===== Mobile sidebar drawer =====
 function isMobile() {
-    return window.matchMedia('(max-width: 767px)').matches;
+    return window.matchMedia(MOBILE_BREAKPOINT).matches;
 }
 
 function toggleSidebar() {
@@ -159,12 +163,13 @@ function updateSingleWelcome(hasTerminal) {
 
 // ===== Mobile control bar =====
 // Send a single control byte to the active terminal
-function mobileInputSend(charCode) {
+function sendKeyToTerminal(charCode) {
     if (!singleTerminalId) return;
     const inst = TerminalManager.get(singleTerminalId);
     if (inst?.ws?.readyState === WebSocket.OPEN) {
         inst.ws.send(new Uint8Array([charCode]));
         inst.term?.scrollToBottom();
+        inst.term?.focus();
     }
 }
 
@@ -176,17 +181,6 @@ function mobileInputSendArrow(code) {
         const encoder = new TextEncoder();
         inst.ws.send(encoder.encode('\x1b[' + code));
         inst.term?.scrollToBottom();
-    }
-}
-
-// Send a control byte to the active terminal in single view
-// charCode: integer (e.g., 27 for Escape, 3 for Ctrl+C)
-function sendKeyToTerminal(charCode) {
-    if (!singleTerminalId) return;
-    const inst = TerminalManager.get(singleTerminalId);
-    if (inst?.ws?.readyState === WebSocket.OPEN) {
-        inst.ws.send(new Uint8Array([charCode]));
-        inst.term?.focus();
     }
 }
 

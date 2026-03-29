@@ -10,6 +10,40 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// pipeWs reads frames from src and writes them to dst until an error occurs.
+// On a close frame from src, it forwards the close to dst. onDone is called
+// when the loop exits.
+func pipeWs(src, dst *websocket.Conn, label string, onDone func()) {
+	defer onDone()
+	for {
+		msgType, data, err := src.ReadMessage()
+		if err != nil {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				slog.Debug("ws proxy: "+label+" read error", "error", err)
+			}
+			if ce, ok := err.(*websocket.CloseError); ok {
+				dst.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(ce.Code, ce.Text))
+			}
+			return
+		}
+		if err := dst.WriteMessage(msgType, data); err != nil {
+			slog.Debug("ws proxy: "+label+" write error", "error", err)
+			return
+		}
+	}
+}
+
+// buildBackendURL constructs the full backend URL from a base URL and the
+// incoming request's path and query string.
+func buildBackendURL(base string, r *http.Request) string {
+	u := base + r.URL.Path
+	if r.URL.RawQuery != "" {
+		u += "?" + r.URL.RawQuery
+	}
+	return u
+}
+
 // wsProxy proxies a WebSocket connection from the client to the backend.
 // It upgrades the client connection, dials the backend, and pipes frames
 // in both directions until one side closes.
@@ -64,63 +98,15 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 	defer clientConn.Close()
 
 	done := make(chan struct{})
-
-	// Backend -> Client
-	go func() {
-		defer close(done)
-		for {
-			msgType, data, err := backendConn.ReadMessage()
-			if err != nil {
-				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					slog.Debug("ws proxy: backend read error", "error", err)
-				}
-				// Forward close to client.
-				if ce, ok := err.(*websocket.CloseError); ok {
-					clientConn.WriteMessage(websocket.CloseMessage,
-						websocket.FormatCloseMessage(ce.Code, ce.Text))
-				}
-				return
-			}
-			if err := clientConn.WriteMessage(msgType, data); err != nil {
-				slog.Debug("ws proxy: client write error", "error", err)
-				return
-			}
-		}
-	}()
-
-	// Client -> Backend
-	go func() {
-		for {
-			msgType, data, err := clientConn.ReadMessage()
-			if err != nil {
-				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					slog.Debug("ws proxy: client read error", "error", err)
-				}
-				// Forward close to backend.
-				if ce, ok := err.(*websocket.CloseError); ok {
-					backendConn.WriteMessage(websocket.CloseMessage,
-						websocket.FormatCloseMessage(ce.Code, ce.Text))
-				}
-				backendConn.Close()
-				return
-			}
-			if err := backendConn.WriteMessage(msgType, data); err != nil {
-				slog.Debug("ws proxy: backend write error", "error", err)
-				return
-			}
-		}
-	}()
-
+	go pipeWs(backendConn, clientConn, "backend→client", func() { close(done) })
+	go pipeWs(clientConn, backendConn, "client→backend", func() { backendConn.Close() })
 	<-done
 }
 
 // sseProxy proxies an SSE stream from the backend to the client.
 // It copies the response headers and streams the body.
 func sseProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
-	targetURL := backendURL + r.URL.Path
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
+	targetURL := buildBackendURL(backendURL, r)
 
 	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
 	if err != nil {
@@ -177,10 +163,7 @@ func sseProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 // httpProxy forwards an HTTP request to the backend and copies the response
 // back to the client. Used for simple API proxy routes.
 func httpProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
-	targetURL := backendURL + r.URL.Path
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
+	targetURL := buildBackendURL(backendURL, r)
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
 	if err != nil {

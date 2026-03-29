@@ -5,6 +5,25 @@ document.addEventListener('cancel', (e) => {
     }
 }, true);
 
+// ANSI escape codes for terminal status messages
+const ANSI_RED = '\x1b[31m';
+const ANSI_GREEN = '\x1b[32m';
+const ANSI_GRAY = '\x1b[90m';
+const ANSI_RESET = '\x1b[0m';
+
+// WebSocket reconnection
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_BASE_DELAY = 1000;   // ms — doubles each retry
+const RECONNECT_MAX_DELAY = 30000;   // ms — 30 second cap
+const WS_NORMAL_CLOSURE = 1000;
+
+// Touch momentum physics
+const MOMENTUM_FRICTION = 0.96;
+const MOMENTUM_MIN_VELOCITY = 0.5;
+const MOMENTUM_MS_PER_FRAME = 16;
+const MAX_TOUCH_SAMPLES = 5;
+
+
 // Terminal color themes — one per app theme
 const terminalThemes = {
     dark: {
@@ -257,11 +276,11 @@ const TerminalManager = {
         const fitAddon = new FitAddon.FitAddon();
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
 
-        const isMobile = window.matchMedia('(max-width: 767px)').matches;
+        const mobile = isMobile();
         const term = new Terminal({
             cursorBlink: true,
-            copyOnSelect: !isMobile,
-            rightClickSelectsWord: !isMobile,
+            copyOnSelect: !mobile,
+            rightClickSelectsWord: !mobile,
             fontSize: 14,
             fontFamily: "Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
             lineHeight: 1.15,
@@ -274,7 +293,7 @@ const TerminalManager = {
 
         // GPU-accelerated rendering (desktop only — saves battery on mobile).
         let webglAddon = null;
-        if (!isMobile && typeof WebglAddon !== 'undefined') {
+        if (!mobile && typeof WebglAddon !== 'undefined') {
             try {
                 webglAddon = new WebglAddon.WebglAddon();
                 webglAddon.onContextLoss(() => {
@@ -352,7 +371,7 @@ const TerminalManager = {
                     }).then(async (resp) => {
                         if (!resp.ok) {
                             const err = await resp.json().catch(() => ({}));
-                            term.write(`\r\n\x1b[31m[Upload failed: ${err.error || resp.statusText}]\x1b[0m`);
+                            term.write(`\r\n${ANSI_RED}[Upload failed: ${err.error || resp.statusText}]${ANSI_RESET}`);
                             return;
                         }
                         const { path } = await resp.json();
@@ -361,7 +380,7 @@ const TerminalManager = {
                             ws.send(new TextEncoder().encode(path));
                         }
                     }).catch((err) => {
-                        term.write(`\r\n\x1b[31m[Upload failed: ${err.message}]\x1b[0m`);
+                        term.write(`\r\n${ANSI_RED}[Upload failed: ${err.message}]${ANSI_RESET}`);
                     });
                     return;
                 }
@@ -372,7 +391,7 @@ const TerminalManager = {
         // ScrollableElement. Touch swipes no longer scroll. We drive the
         // ScrollableElement's pixel-level setScrollPosition directly for
         // smooth sub-line scrolling with momentum.
-        if (isMobile) {
+        if (mobile) {
             const viewport = containerEl.querySelector('.xterm-viewport');
             if (viewport) {
                 viewport.addEventListener('click', () => term.focus());
@@ -381,7 +400,7 @@ const TerminalManager = {
             let lastTouchY = 0;
             let momentumRaf = 0;
             const samples = [];
-            const maxSamples = 5;
+            const maxSamples = MAX_TOUCH_SAMPLES;
 
             containerEl.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
@@ -413,11 +432,11 @@ const TerminalManager = {
                 const dt = last.t - first.t;
                 if (dt <= 0) return;
                 const totalDy = samples.reduce((sum, s) => sum + s.dy, 0);
-                let vel = (totalDy / dt) * 16;
+                let vel = (totalDy / dt) * MOMENTUM_MS_PER_FRAME;
 
                 const coast = () => {
-                    vel *= 0.96;
-                    if (Math.abs(vel) < 0.5) return;
+                    vel *= MOMENTUM_FRICTION;
+                    if (Math.abs(vel) < MOMENTUM_MIN_VELOCITY) return;
                     const pos = se.getScrollPosition();
                     se.setScrollPosition({ scrollTop: pos.scrollTop + vel });
                     momentumRaf = requestAnimationFrame(coast);
@@ -461,7 +480,7 @@ const TerminalManager = {
             ws.onopen = () => {
                 if (retryCount > 0) {
                     retryCount = 0;
-                    term.write('\r\n\x1b[32m[Reconnected]\x1b[0m');
+                    term.write(`\r\n${ANSI_GREEN}[Reconnected]${ANSI_RESET}`);
                 }
                 // Send initial resize
                 const resizeMsg = JSON.stringify({
@@ -503,20 +522,20 @@ const TerminalManager = {
 
             ws.onclose = (event) => {
                 // Normal closure — session ended, no reconnect
-                if (event.code === 1000) {
-                    term.write('\r\n\x1b[90m[Session ended]\x1b[0m\r\n');
+                if (event.code === WS_NORMAL_CLOSURE) {
+                    term.write(`\r\n${ANSI_GRAY}[Session ended]${ANSI_RESET}\r\n`);
                     return;
                 }
 
                 // Unexpected closure — attempt reconnection
-                if (retryCount >= 10) {
-                    term.write('\r\n\x1b[31m[Connection lost]\x1b[0m\r\n');
+                if (retryCount >= MAX_RECONNECT_ATTEMPTS) {
+                    term.write(`\r\n${ANSI_RED}[Connection lost]${ANSI_RESET}\r\n`);
                     return;
                 }
 
                 retryCount++;
-                const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 30000);
-                term.write(`\r\n\x1b[90m[Reconnecting... (attempt ${retryCount})]\x1b[0m`);
+                const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, retryCount - 1), RECONNECT_MAX_DELAY);
+                term.write(`\r\n${ANSI_GRAY}[Reconnecting... (attempt ${retryCount})]${ANSI_RESET}`);
                 instance.retryTimer = setTimeout(() => {
                     instance.retryTimer = null;
                     connectWs();
@@ -544,7 +563,7 @@ const TerminalManager = {
                 ws.send(encoder.encode(data));
             }
             // On mobile, dismiss keyboard after Enter so the user can see output
-            if (data === '\r' && window.matchMedia('(max-width: 767px)').matches) {
+            if (data === '\r' && isMobile()) {
                 const ta = containerEl.querySelector('.xterm-helper-textarea');
                 if (ta) setTimeout(() => ta.blur(), 50);
             }

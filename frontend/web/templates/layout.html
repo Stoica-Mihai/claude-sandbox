@@ -99,9 +99,9 @@
 
                 <!-- Terminal controls -->
                 <div id="singleControls" class="h-9 terminal-controls-bg border-b hidden items-center px-3 gap-1.5 shrink-0">
-                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(27)" title="Send Escape">Esc</button>
-                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(3)" title="Send Ctrl+C">Ctrl+C</button>
-                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(4)" title="Send Ctrl+D">Ctrl+D</button>
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(KEY_ESCAPE)" title="Send Escape">Esc</button>
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(KEY_CTRL_C)" title="Send Ctrl+C">Ctrl+C</button>
+                    <button class="kbd kbd-xs" onclick="sendKeyToTerminal(KEY_CTRL_D)" title="Send Ctrl+D">Ctrl+D</button>
                 </div>
 
                 <!-- Terminal -->
@@ -163,9 +163,9 @@
                 <!-- Mobile control bar (visible only on mobile when a terminal is open) -->
                 <div id="mobileInputBar" class="md:hidden hidden shrink-0">
                     <div class="flex items-center gap-1.5 px-2 py-2 overflow-x-auto">
-                        <button class="mobile-key" onclick="mobileInputSend(27)">Esc</button>
-                        <button class="mobile-key" onclick="mobileInputSend(3)">^C</button>
-                        <button class="mobile-key" onclick="mobileInputSend(127)">&#x232B;</button>
+                        <button class="mobile-key" onclick="sendKeyToTerminal(KEY_ESCAPE)">Esc</button>
+                        <button class="mobile-key" onclick="sendKeyToTerminal(KEY_CTRL_C)">^C</button>
+                        <button class="mobile-key" onclick="sendKeyToTerminal(KEY_BACKSPACE)">&#x232B;</button>
                         <div class="w-px h-6 bg-base-content/10 shrink-0"></div>
                         <button class="mobile-key" onclick="mobileInputSendArrow('D')">&#x2190;</button>
                         <button class="mobile-key" onclick="mobileInputSendArrow('C')">&#x2192;</button>
@@ -210,6 +210,13 @@
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <script>
+    // Key codes for terminal control buttons
+    const KEY_ESCAPE = 27;
+    const KEY_CTRL_C = 3;
+    const KEY_CTRL_D = 4;
+    const KEY_BACKSPACE = 127;
+    </script>
     <script src="/static/js/terminal.js"></script>
     <script src="/static/js/views.js"></script>
     <script src="/static/js/theme.js"></script>

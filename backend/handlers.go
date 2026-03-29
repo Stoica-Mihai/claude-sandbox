@@ -15,7 +15,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const uploadDir = "/tmp/uploads"
+const (
+	uploadDir = "/tmp/uploads"
+	// maxUploadSize is the maximum allowed image upload size (10 MB).
+	maxUploadSize = 10 << 20
+)
 
 type controlMessage struct {
 	Type string `json:"type"`
@@ -59,14 +63,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // handleHealthz returns a simple JSON health check response.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}`))
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleListSessions returns all claude-prefixed tmux sessions as JSON.
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.sm.ListSessions()
-	writeJSON(w, 200, sessions)
+	writeJSON(w, http.StatusOK, sessions)
 }
 
 // handleSpawn creates a new Claude Code session inside a tmux session.
@@ -90,7 +93,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 201, map[string]string{"session_name": sessionName})
+	writeJSON(w, http.StatusCreated, map[string]string{"session_name": sessionName})
 }
 
 // handleKill terminates a tmux session.
@@ -208,7 +211,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 		Breadcrumbs: breadcrumbs,
 	}
 
-	writeJSON(w, 200, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleUpload accepts an image file upload and saves it to a temp directory
@@ -233,8 +236,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 10 MB max.
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file too large or invalid form"})
 		return
 	}

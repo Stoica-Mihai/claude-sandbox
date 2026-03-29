@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -64,6 +65,39 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	return s, nil
 }
 
+// --- Shared helpers ---
+
+// renderTemplate executes a named template into a buffer and writes the result.
+func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) {
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, name, data); err != nil {
+		slog.Error("template render failed", "template", name, "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	buf.WriteTo(w)
+}
+
+// backendRequest constructs and executes an HTTP request to the backend API.
+func (s *Server) backendRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, s.backendURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return s.client.Do(req)
+}
+
+// forwardError writes the backend's error status and body to the client.
+func forwardError(w http.ResponseWriter, resp *http.Response) {
+	body, _ := io.ReadAll(resp.Body)
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
+}
+
 // --- Template-rendering routes ---
 
 // handleIndex renders the full dashboard page with initial session data.
@@ -75,16 +109,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := DashboardData{Sessions: sessions}
-
-	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "layout.html", data); err != nil {
-		slog.Error("failed to render dashboard", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	buf.WriteTo(w)
+	s.renderTemplate(w, "layout.html", DashboardData{Sessions: sessions})
 }
 
 // handleSessionsFragment renders the sessions list HTML fragment for HTMX.
@@ -96,16 +121,7 @@ func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	data := DashboardData{Sessions: sessions}
-
-	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "sessions", data); err != nil {
-		slog.Error("failed to render sessions fragment", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	buf.WriteTo(w)
+	s.renderTemplate(w, "sessions", DashboardData{Sessions: sessions})
 }
 
 // handleSpawn forwards the spawn request to the backend (as JSON), then
@@ -121,15 +137,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 
 	// Forward as JSON to backend.
 	payload, _ := json.Marshal(map[string]string{"cwd": cwd})
-	backendReq, err := http.NewRequestWithContext(r.Context(), "POST",
-		s.backendURL+"/api/sessions", bytes.NewReader(payload))
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	backendReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(backendReq)
+	resp, err := s.backendRequest(r.Context(), "POST", "/api/sessions", bytes.NewReader(payload))
 	if err != nil {
 		slog.Error("failed to spawn session via backend", "error", err)
 		http.Error(w, "backend connection failed", http.StatusBadGateway)
@@ -138,10 +146,8 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		slog.Error("backend spawn failed", "status", resp.StatusCode, "body", string(body))
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body)
+		slog.Error("backend spawn failed", "status", resp.StatusCode)
+		forwardError(w, resp)
 		return
 	}
 
@@ -171,14 +177,7 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backendReq, err := http.NewRequestWithContext(r.Context(), "DELETE",
-		s.backendURL+"/api/sessions/"+terminalId, nil)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	resp, err := s.client.Do(backendReq)
+	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/"+terminalId, nil)
 	if err != nil {
 		slog.Error("failed to kill session via backend", "error", err)
 		http.Error(w, "backend connection failed", http.StatusBadGateway)
@@ -187,9 +186,7 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body)
+		forwardError(w, resp)
 		return
 	}
 
@@ -213,15 +210,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backendReq, err := http.NewRequestWithContext(r.Context(), "PUT",
-		s.backendURL+"/api/sessions/"+terminalId+"/name", bytes.NewReader(body))
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	backendReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(backendReq)
+	resp, err := s.backendRequest(r.Context(), "PUT", "/api/sessions/"+terminalId+"/name", bytes.NewReader(body))
 	if err != nil {
 		slog.Error("failed to rename session via backend", "error", err)
 		http.Error(w, "backend connection failed", http.StatusBadGateway)
@@ -230,9 +219,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		w.WriteHeader(resp.StatusCode)
-		w.Write(respBody)
+		forwardError(w, resp)
 		return
 	}
 
@@ -243,18 +230,12 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 // handleDirectories fetches directory data from the backend and renders the
 // directory-picker template.
 func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
-	targetURL := s.backendURL + "/api/directories"
+	path := "/api/directories"
 	if q := r.URL.RawQuery; q != "" {
-		targetURL += "?" + q
+		path += "?" + q
 	}
 
-	backendReq, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	resp, err := s.client.Do(backendReq)
+	resp, err := s.backendRequest(r.Context(), "GET", path, nil)
 	if err != nil {
 		slog.Error("failed to fetch directories from backend", "error", err)
 		http.Error(w, "backend connection failed", http.StatusBadGateway)
@@ -263,8 +244,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		http.Error(w, string(body), resp.StatusCode)
+		forwardError(w, resp)
 		return
 	}
 
@@ -275,14 +255,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "directory-picker", dirData); err != nil {
-		slog.Error("failed to render directory picker", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	buf.WriteTo(w)
+	s.renderTemplate(w, "directory-picker", dirData)
 }
 
 // --- Pure proxy routes ---
@@ -311,13 +284,7 @@ func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
 
 // fetchSessions calls the backend's GET /api/sessions and returns the parsed list.
 func (s *Server) fetchSessions(r *http.Request) ([]DisplaySession, error) {
-	backendReq, err := http.NewRequestWithContext(r.Context(), "GET",
-		s.backendURL+"/api/sessions", nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	resp, err := s.client.Do(backendReq)
+	resp, err := s.backendRequest(r.Context(), "GET", "/api/sessions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("backend request: %w", err)
 	}

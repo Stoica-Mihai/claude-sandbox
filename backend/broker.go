@@ -62,6 +62,8 @@ func (b *Broker) Publish() {
 // randomID generates a short random hex string for subscriber identification.
 func randomID() string {
 	buf := make([]byte, 8)
-	rand.Read(buf)
+	if _, err := rand.Read(buf); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
 	return hex.EncodeToString(buf)
 }
