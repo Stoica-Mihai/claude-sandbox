@@ -16,6 +16,7 @@
     <script src="/static/vendor/xterm.min.js"></script>
     <script src="/static/vendor/addon-fit.min.js"></script>
     <script src="/static/vendor/addon-web-links.min.js"></script>
+    <script src="/static/vendor/addon-webgl.min.js"></script>
 </head>
 <body class="grain bg-base-300 flex flex-col" style="height: 100dvh;" hx-ext="sse" sse-connect="/events">
 
@@ -160,7 +161,7 @@
                 </div>
 
                 <!-- Mobile control bar (visible only on mobile when a terminal is open) -->
-                <div id="mobileInputBar" class="md:hidden hidden border-t shrink-0">
+                <div id="mobileInputBar" class="md:hidden hidden shrink-0">
                     <div class="flex items-center gap-1.5 px-2 py-2 overflow-x-auto">
                         <button class="mobile-key" onclick="mobileInputSend(27)">Esc</button>
                         <button class="mobile-key" onclick="mobileInputSend(3)">^C</button>

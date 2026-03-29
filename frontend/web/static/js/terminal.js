@@ -272,6 +272,21 @@ const TerminalManager = {
         term.loadAddon(fitAddon);
         term.loadAddon(webLinksAddon);
 
+        // GPU-accelerated rendering (desktop only — saves battery on mobile).
+        let webglAddon = null;
+        if (!isMobile && typeof WebglAddon !== 'undefined') {
+            try {
+                webglAddon = new WebglAddon.WebglAddon();
+                webglAddon.onContextLoss(() => {
+                    webglAddon.dispose();
+                    webglAddon = null;
+                });
+                term.loadAddon(webglAddon);
+            } catch (e) {
+                webglAddon = null;
+            }
+        }
+
         // Prevent the browser from intercepting keys that Claude Code needs
         term.attachCustomKeyEventHandler((e) => {
             if (e.type !== 'keydown') return true;
@@ -353,13 +368,36 @@ const TerminalManager = {
             }, { capture: true });
         }
 
-        // Mobile: add click-to-focus since the viewport overlay is now on top
-        // of the screen (via CSS z-index) for native scroll support.
+        // Mobile: xterm.js v6 replaced native viewport scroll with a programmatic
+        // ScrollableElement. Touch swipes no longer scroll. We translate touch
+        // movements into term.scrollLines() calls directly.
         if (isMobile) {
             const viewport = containerEl.querySelector('.xterm-viewport');
             if (viewport) {
                 viewport.addEventListener('click', () => term.focus());
             }
+            let touchStartY = 0;
+            let lastTouchY = 0;
+            let accumulatedDelta = 0;
+            const lineHeight = Math.ceil(14 * 1.15); // fontSize * lineHeight
+            containerEl.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    touchStartY = e.touches[0].clientY;
+                    lastTouchY = touchStartY;
+                    accumulatedDelta = 0;
+                }
+            }, { passive: true });
+            containerEl.addEventListener('touchmove', (e) => {
+                if (e.touches.length !== 1) return;
+                const currentY = e.touches[0].clientY;
+                accumulatedDelta += lastTouchY - currentY;
+                lastTouchY = currentY;
+                const lines = Math.trunc(accumulatedDelta / lineHeight);
+                if (lines !== 0) {
+                    term.scrollLines(lines);
+                    accumulatedDelta -= lines * lineHeight;
+                }
+            }, { passive: true });
         }
 
         // Fit after opening (needs a frame for container dimensions)
@@ -381,6 +419,7 @@ const TerminalManager = {
             ws: null,
             fitAddon,
             webLinksAddon,
+            webglAddon,
             containerId: containerEl.id,
             retryTimer: null
         };
@@ -510,6 +549,9 @@ const TerminalManager = {
         }
         if (instance.ws && instance.ws.readyState !== WebSocket.CLOSED) {
             instance.ws.close();
+        }
+        if (instance.webglAddon) {
+            instance.webglAddon.dispose();
         }
         instance.term.dispose();
         delete this.instances[terminalId];
