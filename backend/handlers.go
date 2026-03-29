@@ -26,7 +26,6 @@ type controlMessage struct {
 type Server struct {
 	sm       *SessionManager
 	broker   *Broker
-	mux      *http.ServeMux
 	upgrader websocket.Upgrader
 }
 
@@ -34,7 +33,6 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	s := &Server{
 		sm:     sm,
 		broker: broker,
-		mux:    mux,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},

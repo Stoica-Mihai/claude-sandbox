@@ -21,7 +21,6 @@ type Server struct {
 	templates  *template.Template
 	backendURL string
 	client     *http.Client
-	mux        *http.ServeMux
 }
 
 // NewServer creates a Server by parsing embedded templates and registering
@@ -43,7 +42,6 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		mux: mux,
 	}
 
 	// Template-rendering routes (fetch JSON from backend, render HTML).

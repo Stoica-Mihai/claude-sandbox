@@ -130,7 +130,7 @@ function closeSingleTab(terminalId) {
         } else {
             singleTerminalId = null;
             updateSingleTabBar(null);
-            updateSingleStatusBar(null);
+
         }
     } else {
         // Just update the tab bar to remove the closed tab
@@ -255,27 +255,6 @@ function updateSingleTabBar(activeTerminalId) {
     }).join('');
 }
 
-
-function closeSingleTerminal() {
-    // Close the active tab
-    if (singleTerminalId) {
-        closeSingleTab(singleTerminalId);
-    }
-    updateSessionCardStates();
-}
-
-function closeAllSingleTabs() {
-    // Destroy all tabs
-    [...singleTabs].forEach(id => {
-        TerminalManager.destroy(id);
-        const tabContainer = document.getElementById('singleTab-' + id);
-        if (tabContainer) tabContainer.remove();
-    });
-    singleTabs = [];
-    singleTerminalId = null;
-    updateSingleTabBar(null);
-    updateSingleStatusBar(null);
-}
 
 function updateSessionCardStates() {
     document.querySelectorAll('.session-card').forEach(card => {

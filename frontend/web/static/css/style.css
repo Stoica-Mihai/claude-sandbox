@@ -56,33 +56,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* ===== Cursor blink ===== */
-@keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-}
-.cursor-blink {
-    animation: blink 1s step-end infinite;
-}
-
-/* ===== Stagger-in entrance animation ===== */
-@keyframes slideIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.stagger-in {
-    animation: slideIn 0.25s ease-out forwards;
-    opacity: 0;
-}
-.stagger-in:nth-child(1) { animation-delay: 0.04s; }
-.stagger-in:nth-child(2) { animation-delay: 0.08s; }
-.stagger-in:nth-child(3) { animation-delay: 0.12s; }
-.stagger-in:nth-child(4) { animation-delay: 0.16s; }
-.stagger-in:nth-child(5) { animation-delay: 0.20s; }
-.stagger-in:nth-child(6) { animation-delay: 0.24s; }
-.stagger-in:nth-child(7) { animation-delay: 0.28s; }
-.stagger-in:nth-child(8) { animation-delay: 0.32s; }
-
 /* ===== Grain overlay ===== */
 .grain::after {
     content: '';
@@ -106,13 +79,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 }
 [data-theme-base="light"] .dir-item:hover {
     background: oklch(0.9 0.03 160 / 0.4);
-}
-
-/* ===== Drag hint (for future drag-and-drop) ===== */
-.drag-hint {
-    border: 2px dashed oklch(0.7 0.15 160 / 0.3);
-    background: oklch(0.7 0.15 160 / 0.05);
-    transition: all 0.2s;
 }
 
 /* ===== Pull to refresh ===== */

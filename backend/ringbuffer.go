@@ -49,10 +49,3 @@ func (rb *RingBuffer) Bytes() []byte {
 	}
 	return out
 }
-
-func (rb *RingBuffer) Reset() {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	rb.head = 0
-	rb.size = 0
-}
