@@ -160,9 +160,10 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     height: 100%;
     padding: 4px;
 }
+/* v6 viewport defaults to #000 — make transparent so --terminal-bg shows through */
+.xterm .xterm-viewport { background-color: transparent !important; }
 @media (max-width: 767px) {
     .xterm { padding: 0; }
-    .xterm .xterm-viewport { background-color: transparent !important; }
     .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
     #viewSingle { background: var(--terminal-bg); }
 }
