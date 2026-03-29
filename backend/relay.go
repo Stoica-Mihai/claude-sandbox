@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -151,6 +152,12 @@ func (r *Relay) Stop() {
 		}
 		r.viewers = make(map[*websocket.Conn]*viewer)
 		r.mu.Unlock()
+
+		// Clean up uploaded files for this session.
+		uploadPath := filepath.Join(uploadDir, r.SessionName)
+		if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
+			slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
+		}
 
 		slog.Info("relay stopped", "session", r.SessionName)
 	})

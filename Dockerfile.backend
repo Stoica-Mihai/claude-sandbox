@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
+# Pre-download Go modules (cached unless go.mod/go.sum change)
+COPY backend/go.mod backend/go.sum /src/backend/
+RUN cd /src/backend && go mod download
+
+# Copy source and build (busts cache on any source file change)
 COPY backend/ /src/backend/
 RUN cd /src/backend && go build -o /backend-server .
 

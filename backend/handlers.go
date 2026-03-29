@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +14,8 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+const uploadDir = "/tmp/uploads"
 
 type controlMessage struct {
 	Type string `json:"type"`
@@ -42,6 +47,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
+	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 
 	return s
@@ -205,6 +211,92 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, 200, resp)
+}
+
+// handleUpload accepts an image file upload and saves it to a temp directory
+// accessible from the tmux session. Returns the file path as JSON.
+func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	sessionName := r.PathValue("terminalId")
+	if sessionName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session name"})
+		return
+	}
+
+	// Reject path traversal attempts.
+	if strings.Contains(sessionName, "/") || strings.Contains(sessionName, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session name"})
+		return
+	}
+
+	relay := s.sm.GetRelay(sessionName)
+	if relay == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		return
+	}
+
+	// 10 MB max.
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file too large or invalid form"})
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing image field"})
+		return
+	}
+	defer file.Close()
+
+	// Validate content type.
+	ct := header.Header.Get("Content-Type")
+	var ext string
+	switch {
+	case strings.HasPrefix(ct, "image/png"):
+		ext = ".png"
+	case strings.HasPrefix(ct, "image/jpeg"):
+		ext = ".jpg"
+	case strings.HasPrefix(ct, "image/gif"):
+		ext = ".gif"
+	case strings.HasPrefix(ct, "image/webp"):
+		ext = ".webp"
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type: " + ct})
+		return
+	}
+
+	// Create upload directory for this session.
+	sessionDir := filepath.Join(uploadDir, sessionName)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		slog.Error("failed to create upload dir", "path", sessionDir, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upload directory"})
+		return
+	}
+
+	var randBytes [4]byte
+	if _, err := rand.Read(randBytes[:]); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate filename"})
+		return
+	}
+	filename := "clipboard-" + hex.EncodeToString(randBytes[:]) + ext
+	filePath := filepath.Join(sessionDir, filename)
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		slog.Error("failed to create file", "path", filePath, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		slog.Error("failed to write file", "path", filePath, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write file"})
+		return
+	}
+
+	slog.Info("image uploaded", "session", sessionName, "path", filePath, "size", header.Size)
+	writeJSON(w, http.StatusOK, map[string]string{"path": filePath})
 }
 
 // handleSSE streams Server-Sent Events to the client. It subscribes to the

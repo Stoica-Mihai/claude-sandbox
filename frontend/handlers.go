@@ -52,6 +52,7 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
+	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 
 	// Pure proxy routes.
@@ -296,6 +297,11 @@ func (s *Server) handleSSEProxy(w http.ResponseWriter, r *http.Request) {
 // handleWebSocketProxy proxies a WebSocket connection to the backend.
 func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 	wsProxy(w, r, s.backendURL)
+}
+
+// handleUploadProxy proxies image uploads to the backend.
+func (s *Server) handleUploadProxy(w http.ResponseWriter, r *http.Request) {
+	httpProxy(w, r, s.backendURL)
 }
 
 // handleHealthzProxy proxies the health check to the backend.

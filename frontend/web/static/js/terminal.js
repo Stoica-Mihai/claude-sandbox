@@ -284,6 +284,11 @@ const TerminalManager = {
                 e.preventDefault();
                 e.stopPropagation();
             }
+            // Block xterm from sending raw \x16 for Ctrl+V — we handle paste
+            // via a capture-phase paste listener on the textarea instead.
+            if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+                return false;
+            }
             return true;
         });
 
@@ -304,6 +309,48 @@ const TerminalManager = {
                     setTimeout(() => textarea.focus(), 0);
                 }
             });
+
+            // Capture-phase paste listener: runs before xterm's handler (which
+            // calls stopPropagation). If the clipboard contains an image, we
+            // block xterm, upload the image, and send the path as terminal input.
+            // Text-only pastes fall through to xterm's normal handling.
+            textarea.addEventListener('paste', (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+
+                for (const item of items) {
+                    if (!item.type.startsWith('image/')) continue;
+
+                    // Image found — block xterm from handling this paste.
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+
+                    const blob = item.getAsFile();
+                    if (!blob) return;
+
+                    const formData = new FormData();
+                    formData.append('image', blob, 'clipboard.' + blob.type.split('/')[1]);
+
+                    fetch(`/api/sessions/${terminalId}/upload`, {
+                        method: 'POST',
+                        body: formData,
+                    }).then(async (resp) => {
+                        if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            term.write(`\r\n\x1b[31m[Upload failed: ${err.error || resp.statusText}]\x1b[0m`);
+                            return;
+                        }
+                        const { path } = await resp.json();
+                        const ws = this.instances[terminalId]?.ws;
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(new TextEncoder().encode(path));
+                        }
+                    }).catch((err) => {
+                        term.write(`\r\n\x1b[31m[Upload failed: ${err.message}]\x1b[0m`);
+                    });
+                    return;
+                }
+            }, { capture: true });
         }
 
         // Mobile: add click-to-focus since the viewport overlay is now on top

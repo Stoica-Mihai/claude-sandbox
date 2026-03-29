@@ -11,6 +11,10 @@ services:
     stdin_open: true
     init: true
     restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
