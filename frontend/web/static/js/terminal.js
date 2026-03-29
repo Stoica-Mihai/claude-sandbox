@@ -369,34 +369,60 @@ const TerminalManager = {
         }
 
         // Mobile: xterm.js v6 replaced native viewport scroll with a programmatic
-        // ScrollableElement. Touch swipes no longer scroll. We translate touch
-        // movements into term.scrollLines() calls directly.
+        // ScrollableElement. Touch swipes no longer scroll. We drive the
+        // ScrollableElement's pixel-level setScrollPosition directly for
+        // smooth sub-line scrolling with momentum.
         if (isMobile) {
             const viewport = containerEl.querySelector('.xterm-viewport');
             if (viewport) {
                 viewport.addEventListener('click', () => term.focus());
             }
-            let touchStartY = 0;
+            const getSE = () => term._core?._viewport?._scrollableElement;
             let lastTouchY = 0;
-            let accumulatedDelta = 0;
-            const lineHeight = Math.ceil(14 * 1.15); // fontSize * lineHeight
+            let momentumRaf = 0;
+            const samples = [];
+            const maxSamples = 5;
+
             containerEl.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
-                    touchStartY = e.touches[0].clientY;
-                    lastTouchY = touchStartY;
-                    accumulatedDelta = 0;
+                    cancelAnimationFrame(momentumRaf);
+                    lastTouchY = e.touches[0].clientY;
+                    samples.length = 0;
                 }
             }, { passive: true });
+
             containerEl.addEventListener('touchmove', (e) => {
                 if (e.touches.length !== 1) return;
                 const currentY = e.touches[0].clientY;
-                accumulatedDelta += lastTouchY - currentY;
+                const dy = lastTouchY - currentY;
                 lastTouchY = currentY;
-                const lines = Math.trunc(accumulatedDelta / lineHeight);
-                if (lines !== 0) {
-                    term.scrollLines(lines);
-                    accumulatedDelta -= lines * lineHeight;
-                }
+                samples.push({ dy, t: performance.now() });
+                if (samples.length > maxSamples) samples.shift();
+                const se = getSE();
+                if (!se) return;
+                const pos = se.getScrollPosition();
+                se.setScrollPosition({ scrollTop: pos.scrollTop + dy });
+            }, { passive: true });
+
+            containerEl.addEventListener('touchend', () => {
+                if (samples.length < 2) return;
+                const se = getSE();
+                if (!se) return;
+                const first = samples[0];
+                const last = samples[samples.length - 1];
+                const dt = last.t - first.t;
+                if (dt <= 0) return;
+                const totalDy = samples.reduce((sum, s) => sum + s.dy, 0);
+                let vel = (totalDy / dt) * 16;
+
+                const coast = () => {
+                    vel *= 0.96;
+                    if (Math.abs(vel) < 0.5) return;
+                    const pos = se.getScrollPosition();
+                    se.setScrollPosition({ scrollTop: pos.scrollTop + vel });
+                    momentumRaf = requestAnimationFrame(coast);
+                };
+                momentumRaf = requestAnimationFrame(coast);
             }, { passive: true });
         }
 

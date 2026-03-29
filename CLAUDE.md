@@ -30,11 +30,11 @@ A Go web server serving an HTMX + Tailwind/DaisyUI dashboard for managing Claude
   - `templates/layout.html` — Full page with sidebar, tabbed terminal view, responsive mobile layout.
   - `templates/fragments/sessions.html` — Session list HTMX fragment.
   - `templates/fragments/directory-picker.html` — Directory browser HTMX fragment.
-  - `static/js/terminal.js` — xterm.js manager with WebSocket relay.
+  - `static/js/terminal.js` — xterm.js 6.0 manager with WebSocket relay, WebGL addon, clipboard image paste.
   - `static/js/views.js` — View mode switching, tab management, mobile sidebar drawer.
-  - `static/js/theme.js` — Dark/light theme toggle.
+  - `static/js/theme.js` — 10-theme switcher with localStorage persistence.
   - `static/css/style.css` — Custom styles.
-  - `static/vendor/` — Vendored htmx.min.js, xterm.js, and addons.
+  - `static/vendor/` — Vendored htmx.min.js, xterm.js 6.0, and addons (fit, web-links, webgl).
 
 ### Key implementation details
 

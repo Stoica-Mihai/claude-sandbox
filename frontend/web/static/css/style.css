@@ -175,11 +175,6 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 #mobileInputBar {
     background: var(--terminal-bg);
 }
-/* Fill cell-alignment gap between xterm canvas and mobile button bar */
-@media (max-width: 767px) {
-    #viewSingle { background: var(--terminal-bg); }
-}
-
 /* ===== Theme dropdown — show 5 items, scroll for the rest ===== */
 #themeMenu {
     display: flex;
@@ -201,19 +196,9 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
 }
 @media (max-width: 767px) {
     .xterm { padding: 0; }
-    /* v6 viewport defaults to #000 — make transparent so the terminal
-       container's --terminal-bg shows through the cell-alignment gap */
     .xterm .xterm-viewport { background-color: transparent !important; }
-}
-/* Mobile: bring the scrollable viewport above the canvas screen layer
-   so touches hit the viewport directly. This gives native compositor
-   scrolling (smooth, with momentum) instead of xterm.js's JavaScript-
-   driven scrollTop manipulation which feels clunky on touch devices. */
-@media (max-width: 767px) {
-    /* Hide v6's VS Code-style scrollbar on mobile — touch swipe handles scroll */
-    .xterm .xterm-scrollable-element > .scrollbar {
-        display: none !important;
-    }
+    .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
+    #viewSingle { background: var(--terminal-bg); }
 }
 .xterm-viewport {
     overflow-y: auto !important;
