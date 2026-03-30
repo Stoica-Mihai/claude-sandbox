@@ -3,5 +3,4 @@ mcp-config.json
 node_modules/
 package.json
 package-lock.json
---full-page
 backend/claude-sandbox-backend
