@@ -8,6 +8,19 @@
   "effortLevel": "high",
   "language": "english",
   "model": "opus[1m]",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rtk hook claude"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
@@ -16,7 +29,16 @@
     "example-skills@anthropic-agent-skills": true,
     "cli-anything@cli-anything": true,
     "cli-anything-go@claude-skills": true,
-    "opsx-ext@claude-skills": true
+    "opsx-ext@claude-skills": true,
+    "caveman@caveman": true
+  },
+  "extraKnownMarketplaces": {
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman"
+      }
+    }
   },
   "skipDangerousModePermissionPrompt": true
 }
