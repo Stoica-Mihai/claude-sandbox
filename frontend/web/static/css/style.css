@@ -202,7 +202,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .arow .at1{display:block;font-weight:900;font-style:italic;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .arow .at2{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
 .mfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-top:3px solid var(--line)}
-.mfoot .hint{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.mfoot .hint{font-size:11px;color:var(--muted);font-family:var(--mono);max-width:60%}
+.mfoot .hint.err{color:var(--accent)}
 .mfoot .grp{display:flex;gap:10px}
 .empty{padding:26px 18px;text-align:center;color:var(--muted);font-size:12px}
 

@@ -6,6 +6,13 @@
 // advisor's "Opus 4.8" -> "claude-opus-4-8"), otherwise its label text.
 function optValue(o) { return o.dataset.value !== undefined ? o.dataset.value : o.textContent; }
 
+const SETTINGS_HINT = 'Applies to new sessions';
+// Clear a previous save error from the footer when the user changes anything.
+function clearSettingsError() {
+    const h = document.getElementById('settings-hint');
+    if (h && h.classList.contains('err')) { h.textContent = SETTINGS_HINT; h.classList.remove('err'); }
+}
+
 function settingsPick(opt) {
     const sel = opt.closest('.sel');
     sel.querySelectorAll('.sel-opt').forEach(o => o.classList.remove('sel-on'));
@@ -13,6 +20,7 @@ function settingsPick(opt) {
     sel.querySelector('.sel-cur').textContent = opt.textContent;
     sel.dataset.value = optValue(opt);
     sel.classList.remove('open');
+    clearSettingsError();
 }
 document.addEventListener('click', (e) => {
     const val = e.target.closest('#settingsModal .sel-val');
@@ -45,6 +53,8 @@ function getSel(field) {
 
 async function openSettingsModal() {
     const dlg = document.getElementById('settingsModal');
+    const hint = document.getElementById('settings-hint');
+    if (hint) { hint.textContent = SETTINGS_HINT; hint.classList.remove('err'); }
     try {
         const res = await fetch('/api/settings');
         if (res.ok) {
@@ -69,13 +79,20 @@ async function saveSettings() {
         language: document.getElementById('settings-language').value.trim(),
         alwaysThinkingEnabled: document.getElementById('settings-thinking').classList.contains('on'),
     };
+    const hint = document.getElementById('settings-hint');
+    const defaultHint = hint ? hint.textContent : '';
     try {
         const res = await fetch('/api/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('save failed (' + res.status + ')');
+        if (!res.ok) {
+            let msg = 'Save failed (' + res.status + ')';
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
+            throw new Error(msg);
+        }
+        if (hint) { hint.textContent = defaultHint; hint.classList.remove('err'); }
         btn.classList.add('ok');
         label.textContent = 'SAVED ✓';
         setTimeout(() => {
@@ -84,8 +101,14 @@ async function saveSettings() {
             document.getElementById('settingsModal').close();
         }, 1000);
     } catch (e) {
-        btn.classList.add('err');
-        label.textContent = 'FAILED — RETRY';
-        setTimeout(() => { btn.classList.remove('err'); label.textContent = 'SAVE'; }, 2000);
+        // Surface the backend's reason in the footer; leave Save usable so the
+        // user can fix the value and retry. The message clears on the next edit.
+        if (hint) { hint.textContent = e.message; hint.classList.add('err'); }
+        btn.classList.remove('ok');
+        label.textContent = 'SAVE';
     }
 }
+
+// Clear a stale save error as soon as the user edits the language or toggle.
+document.getElementById('settings-language')?.addEventListener('input', clearSettingsError);
+document.getElementById('settings-thinking')?.addEventListener('click', clearSettingsError);
