@@ -75,7 +75,7 @@ function openSessionSingle(terminalId) {
     // Create a container div for this tab's terminal
     const tabContainer = document.createElement('div');
     tabContainer.id = 'singleTab-' + terminalId;
-    tabContainer.className = 'absolute inset-0 hidden';
+    tabContainer.className = 'term-tab hidden';
     tabContainer.classList.add('terminal-bg');
     wrapper.appendChild(tabContainer);
 
