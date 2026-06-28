@@ -9,12 +9,21 @@
   /* Overlay dim — theme-INDEPENDENT (same light + dark). Never --ink: ink is the
      cream foreground in dark, so an ink scrim would lighten not dim. */
   --scrim:rgba(0,0,0,.55);
+  /* State washes — theme-aware. A saturated accent mixed into a near-black base
+     stays near-black until a high %, so dark needs much higher mixes than light
+     to keep hover/selected/tint perceptible (%s differ per theme block). */
+  --hover-bg:color-mix(in srgb,var(--accent) 14%,var(--surf));
+  --sel-bg:color-mix(in srgb,var(--accent) 26%,var(--surf));
+  --tint:color-mix(in srgb,var(--accent) 12%,var(--surf));
   /* Terminal background — set at runtime by terminal.js to match the xterm theme */
   --terminal-bg:#0d1117;
 }
 [data-theme="dark"]{
   --bg:#16140f; --surf:#211d16; --ink:#efe9dc; --muted:#a89f8e;
   --accent:#ff4d33; --line:#efe9dc; --shadow:#ff4d33; --field:#211d16; --on-accent:#16140f;
+  --hover-bg:color-mix(in srgb,var(--accent) 40%,var(--surf));
+  --sel-bg:color-mix(in srgb,var(--accent) 58%,var(--surf));
+  --tint:color-mix(in srgb,var(--accent) 36%,var(--surf));
 }
 
 /* UI font on body ONLY — never on * or .xterm (breaks xterm grid measurement) */
@@ -221,7 +230,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .crumb .sep{color:var(--muted)}
 .folders{max-height:210px;overflow-y:auto}
 .frow{display:flex;align-items:stretch;border-bottom:2px solid var(--line);cursor:pointer;transition:background var(--fast)}
-.frow:hover{background:color-mix(in srgb,var(--accent) 12%,var(--surf))}
+.frow:hover{background:var(--hover-bg)}
 .frow .fmain{flex:1;display:flex;align-items:center;gap:10px;padding:10px 16px;min-width:0}
 .frow .fico{color:var(--accent);font-weight:900;font-style:italic}
 .frow .fnm{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -234,8 +243,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .actitle{padding:9px 18px 6px;font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--muted)}
 .arow{display:flex;align-items:center;gap:11px;padding:11px 18px;cursor:pointer;border-bottom:2px solid var(--line);transition:background var(--fast)}
 .arow:last-child{border-bottom:none}
-.arow:hover{background:color-mix(in srgb,var(--accent) 10%,var(--surf))}
-.arow.sel{background:color-mix(in srgb,var(--accent) 20%,var(--surf))}
+.arow:hover{background:var(--hover-bg)}
+.arow.sel{background:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
 .arow .aold{width:18px;height:18px;flex:none;color:var(--muted)}
 .arow .atxt{flex:1;min-width:0}
 .arow .at1{display:block;font-weight:900;font-style:italic;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -250,14 +259,14 @@ html,body{height:100dvh;margin:0;overflow:hidden}
    background:var(--row-bg,transparent); these class rules drive that var so the
    inline reset can't clobber the hover/selected highlight. */
 .sa-row{cursor:pointer;transition:background var(--fast)}
-.sa-row:hover{--row-bg:color-mix(in srgb,var(--accent) 14%,var(--surf))}
-.sa-sel,.sa-sel:hover{--row-bg:color-mix(in srgb,var(--accent) 30%,var(--surf))}
+.sa-row:hover{--row-bg:var(--hover-bg)}
+.sa-sel,.sa-sel:hover{--row-bg:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
 
 /* ===== Settings modal: custom select + note ===== */
 .settings-btn{width:34px;height:34px;flex:none}
 .iconbtn svg{width:18px;height:18px}
 .mbody{padding:16px 18px;display:flex;flex-direction:column;gap:16px}
-.note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:color-mix(in srgb,var(--accent) 10%,var(--surf))}
+.note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
 .sel{position:relative;width:100%;font-size:13px;user-select:none}
 .sel-val{background:var(--field);border:2px solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700}
 .sel.open .sel-val{outline:3px solid var(--accent)}
