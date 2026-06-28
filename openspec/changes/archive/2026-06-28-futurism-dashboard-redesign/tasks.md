@@ -1,0 +1,47 @@
+## 1. Foundation — style.css (Futurism tokens + components + responsive)
+
+- [x] 1.1 Replace the contents of `frontend/web/static/css/style.css` with the Futurism token system from `mockup-futurism.html`: `:root` light tokens and `[data-theme="dark"]` carbon tokens (`--bg --surf --ink --muted --accent --line --shadow --field --on-accent --ease --fast --med --font --mono`). Set UI font on `body` only (Helvetica Neue stack) — never on `*` or `.xterm`. Keep `--terminal-bg` var + `.terminal-bg`/`.terminal-controls-bg` (driven by terminal.js).
+- [x] 1.2 Port Futurism component CSS (square corners, 2px `--line` borders, solid offset shadows, single accent): buttons (`.btn .btn-primary .btn-ghost` skewed with counter-skewed `>span`), `.toggle` (and `.themewrap .toggle.on{background:var(--ink)}` so the theme toggle is accent-independent), inputs/focus.
+- [x] 1.3 Add chrome CSS: `.app .hdr .brand .mark .title .sub .right .statpill` (with pulsing `.dot`), `.themewrap`.
+- [x] 1.4 Add accent-picker CSS: `.accpick .acctrig .accpop .acc (.acc.on)` — single trigger swatch + popover grid; popover uses the offset-shadow + scaleY motion; mobile swatches ≥34px touch targets.
+- [x] 1.5 Add sidebar CSS: `.side .shead .list .scard (.scard.active outline) .live(.dead) .nm .acts (hover-reveal) .iconbtn(.kill) .cwd .dur`.
+- [x] 1.6 Add main/terminal CSS: `.main .tabbar .ttab(.on) .tdot(.on) .ctrlbar .keycap .term .welcome .keyhint`. Give `.tabbar` and `.crumb` `overflow-x:auto`.
+- [x] 1.7 Add modal CSS: `.overlay(.open) .modal .mhead .crumb(.seg/.sep/.cur) .folders .frow(.fmain/.fico/.fnm/.drill) .actions .actitle .arow(.sel background-only selection) .atxt(.at1/.at2) .mfoot(.hint/.grp)`, plus the existing `.sa-row`/`.sa-sel` aliases used by views.js (map them to `.arow`/`.arow.sel` styling so dynamically-built rows match).
+- [x] 1.8 Keep + restyle existing concerns to Futurism tokens: `.grain` overlay, `#pullIndicator`, `.mobile-key` (≥36px), `.sidebar-open` drawer rule, scrollbar, and xterm overrides (`.xterm` padding, transparent `.xterm-viewport`, slider). Keep the `data-theme-base="light"` override hooks that terminal.js sets.
+- [x] 1.9 Write responsiveness as plain CSS media queries (no Tailwind prefixes): mobile-first base + `@media (min-width:768px)` + `(min-width:1024px)`. Sidebar off-canvas (`fixed` + `translateX(-100%)`, `.sidebar-open` slides in) on mobile → static at ≥768px (narrow) → wide at ≥1024px. Compact header on mobile (hide `.title`/`.sub`). Hide `.ctrlbar` on mobile. Set `html,body,.app{overflow:hidden}` and ensure no horizontal body scroll at any width.
+
+## 2. layout.html (shell, header, modals)
+
+- [x] 2.1 In `frontend/web/templates/layout.html` `<head>`: remove the Tailwind CDN script, the DaisyUI CDN `<link>`, and the Google Fonts (`Outfit`/`JetBrains Mono`) preconnect+link. Keep favicon, xterm css/js + addons, htmx, sse.js, and the `style.css` link. Keep `<html data-theme="dark">`.
+- [x] 2.2 Rewrite `<body>` shell + header to Futurism markup: `.app` wrapper; `.hdr` with `.brand` (logo `.mark`, `.title`, `.sub`), hamburger button (mobile) calling `toggleSidebar()`, and `.right` containing the `.statpill` session badge (keep `id="session-badge-text"` and the hidden `id="session-count"` contract for terminal.js), the accent picker (`.accpick` > `#acctrig` button + `#accpop`), and the `.themewrap` light/dark `.toggle` calling `flipTheme()`. Keep `#pullIndicator`.
+- [x] 2.3 Rewrite the main layout: `#sidebar` (aside) with `.shead` (label + Futurism `.btn-primary` "New" calling `openNewSessionModal(event)`) and `#session-list` (keep `hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML"` and `{{template "sessions" .}}`); `#sidebarBackdrop`; `.main` with `#singleTabBar`, `#singleControls` (Esc/Ctrl+C/Ctrl+D `.keycap` buttons calling `sendKeyToTerminal(...)`), `#singleTerminal`, `#singleWelcome` (Futurism welcome with real copy + New/Click/Alt+N/Alt+W hints), and `#mobileInputBar` (keep its buttons + `mobileToggleSelect`/`mobileInputSendArrow` hooks).
+- [x] 2.4 Restyle the New Session `<dialog id="newSessionModal">` and Rename `<dialog id="renameModal">` to Futurism (keep `<dialog>` + native showModal, `#dir-picker`, the `.mfoot` Cancel + `#dir-picker-submit` button, `#renameInput`/`#renameSubmit`). Keep the existing inline key-code `<script>` and the three module script tags at the end.
+
+## 3. fragments/sessions.html (session cards)
+
+- [x] 3.1 Rewrite `frontend/web/templates/fragments/sessions.html` to Futurism `.scard` markup, preserving the `{{define "sessions"}}`, the hidden `#session-count` span (`{{len .Sessions}}`), the `{{range .Sessions}}` loop, `data-terminal-id="{{.Name}}"` + `data-session="{{.DisplayName}}"`, `.live`(`{{if .Alive}}`) status dot, `.nm`=`{{.DisplayName}}`, `.cwd`=`{{.CWD}}`, `.dur` with `class="session-duration" data-created="{{.CreatedAt.Unix}}"`=`{{.Duration}}`, and the hover `.iconbtn` rename (pencil → `openRenameModal('{{.Name}}','{{.DisplayName}}')`) + kill (`hx-delete="/api/sessions/{{.Name}}"` + `cleanupKilledSession`). Keep the empty-state branch.
+
+## 4. fragments/directory-picker.html (folder browse)
+
+- [x] 4.1 Rewrite `frontend/web/templates/fragments/directory-picker.html` to Futurism markup, preserving `{{define "directory-picker"}}`, `#dir-picker-form` (`hx-post="/api/sessions" hx-target="#session-list"`), `#dp-breadcrumb` (root `/workspace` link + `{{range .Breadcrumbs}}` `.seg` links), hidden `#dir-picker-cwd` + `#dir-picker-resume`, `#dp-folders` (`{{range .Dirs}}` `.frow` with row button `onclick="dpSelectFolder('{{$.FullPath}}/{{.}}','{{.}}')"` and a separate `.drill` `hx-get="/api/directories?path=..."`), and the empty `#session-actions` container filled by views.js. Restyle breadcrumb/folder rows with `.crumb`/`.seg`/`.frow`/`.fmain`/`.fico`/`.fnm`/`.drill`.
+
+## 5. views.js (dynamic markup builders)
+
+- [x] 5.1 In `frontend/web/static/js/views.js`, rewrite `updateSingleTabBar`'s tab HTML to Futurism `.ttab` markup (`.tdot` active dot, mono name from `data-session`, close `×`), keeping `switchSingleTab`/`closeSingleTab` onclick + middle-click (`onauxclick` button===1) close and `escapeHtml`.
+- [x] 5.2 Rewrite the dir-picker DOM builders to the Futurism vocabulary: in `dpSelectFolder` build the start-new `.arow`/`.atxt`(`.at1`/`.at2` "Fresh conversation in <path>") and previous-session `.arow` rows (speech-bubble svg + `.at1` title + `.at2` `relTime · short`/empty-state), keeping `dirPickerSetSel('new'|'resume', uuid, row)`, the `/api/sessions/history` fetch, and default-select-new. Update `dpResetBrowse`/`dirPickerSetSel`/`dpFooter` to drive the Futurism footer button (`#dir-picker-submit` Launch/Resume) and `.arow.sel` background-only selection. Keep the breadcrumb current-crumb append (`.cur`) and the `htmx:afterRequest` spawn handler / `btn-error`→a Futurism error style.
+- [x] 5.3 Verify no remaining Tailwind/DaisyUI class strings are emitted by views.js (search for `base-content`, `btn-`, `bg-base`, `rounded`, `text-`); replace any with Futurism classes or inline token styles. Keep all IDs, `data-*`, and function signatures unchanged.
+
+## 6. theme.js (light/dark toggle + accent picker)
+
+- [x] 6.1 Replace the 10-theme IIFE in `frontend/web/static/js/theme.js` with: load `localStorage` `theme` (default `dark`) → set `data-theme` + `data-theme-base` (light when `theme==='light'`); a `flipTheme()` bound to the header toggle that flips `data-theme`, persists, toggles `.toggle.on`, then calls `applyAccent()` + `syncTerminalBgVar()` + `TerminalManager.rethemeAll()`.
+- [x] 6.2 Add the accent picker: `ACCENTS` (Red/Amber/Lime/Cyan/Blue/Violet/Pink each `{dark,light}`); load `localStorage` `accent` (default Red); `renderAccents()` fills `#accpop` with `.acc` swatches (preview variant for active base, `.on` for current) and the `#acctrig` reflects current accent; `applyAccent()` sets `--accent` and, dark base only, `--shadow`, then persists; trigger toggles `.accpick.open`; close on outside click; selecting closes. Remove all references to `themeMenu`/`themeCurrentLabel`/multi-theme. Ensure `applyAccent()` runs on initial load after `data-theme` is set.
+
+## 7. terminal.js (badge observer + theme trim)
+
+- [x] 7.1 Update the session-badge `MutationObserver` in `frontend/web/static/js/terminal.js` to write the new `.statpill` badge (set `#session-badge-text` text to `N session(s)` and toggle an active state) instead of the Tailwind `hidden md:inline`/`text-emerald-500 pulse-alive` markup. Keep reading the hidden `#session-count`.
+- [x] 7.2 Trim `terminalThemes` to the `dark` and `light` entries (remove the 8 DaisyUI-named themes now that the multi-theme picker is gone); leave `getTerminalTheme`/`syncTerminalBgVar`/`rethemeAll` logic intact (they key off `data-theme`/`data-theme-base`).
+
+## 8. Verification
+
+- [x] 8.1 Grep the frontend for residual `cdn.tailwindcss.com`, `daisyui`, `fonts.googleapis.com`, and DaisyUI class tokens (`base-content`, `bg-base-`, `btn-ghost btn-sm`, `md:`) — confirm none remain except intended Futurism classes.
+- [x] 8.2 Build + run the frontend (`make restart-frontend`) and smoke test: dashboard loads with no CDN requests; spawn a session, click to open (tab + terminal), rename, kill; open New Session modal → browse → select folder → start-new/resume; toggle theme; pick each accent; verify mobile (≤767px) drawer + compact header + accent popover + no horizontal scroll.

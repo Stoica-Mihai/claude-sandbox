@@ -1,13 +1,11 @@
 {{define "directory-picker"}}
 <form id="dir-picker-form" hx-post="/api/sessions" hx-target="#session-list" hx-swap="innerHTML">
     <!-- Breadcrumb (HTMX navigates the browse level) -->
-    <div id="dp-breadcrumb" class="px-3 py-2 border-b border-base-content/10 flex items-center gap-1.5 text-xs font-mono flex-wrap">
-        <span class="text-primary cursor-pointer hover:underline"
-              hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</span>
+    <div id="dp-breadcrumb" class="crumb">
+        <span class="seg" hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</span>
         {{range .Breadcrumbs}}
-        <span class="text-base-content/30">/</span>
-        <span class="text-primary cursor-pointer hover:underline"
-              hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</span>
+        <span class="sep">/</span>
+        <span class="seg" hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</span>
         {{end}}
     </div>
 
@@ -15,29 +13,28 @@
     <input type="hidden" name="cwd" id="dir-picker-cwd" value="" />
     <input type="hidden" name="resume" id="dir-picker-resume" value="" />
 
-    <!-- Folder list: row click selects the folder; the › arrow drills into it -->
-    <div id="dp-folders" class="max-h-64 overflow-y-auto">
+    <!-- Folder list: row click selects the folder; the › drill button opens its subfolders -->
+    <div id="dp-folders" class="folders">
         {{if .Dirs}}
         {{range .Dirs}}
-        <div class="flex items-center border-b border-base-content/5 hover:bg-base-content/5">
-            <button type="button" class="flex-1 min-w-0 text-left px-3 py-2.5 flex items-center gap-2.5"
+        <div class="frow">
+            <!-- inline resets strip native button chrome so .fmain/.drill render flush like the mockup -->
+            <button type="button" class="fmain" style="background:none;border:none;color:inherit;font:inherit;text-align:left;cursor:pointer"
                     onclick="dpSelectFolder('{{$.FullPath}}/{{.}}', '{{.}}')">
-                <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-                <span class="text-sm truncate select-none">{{.}}</span>
+                <span class="fico">▸</span>
+                <span class="fnm">{{.}}</span>
             </button>
-            <button type="button" class="px-3 py-2.5 text-base-content/30 hover:text-base-content shrink-0"
+            <button type="button" class="drill" style="background:none;border:none;border-left:2px solid var(--line);color:inherit;font:inherit;cursor:pointer"
                     hx-get="/api/directories?path={{$.Path}}{{if $.Path}}/{{end}}{{.}}"
-                    hx-target="#dir-picker" hx-swap="innerHTML" title="Open subfolders">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M9 5l7 7-7 7"/></svg>
-            </button>
+                    hx-target="#dir-picker" hx-swap="innerHTML" title="Open subfolders">›</button>
         </div>
         {{end}}
         {{else}}
-        <div class="px-3 py-6 text-center text-sm text-base-content/30">No subfolders</div>
+        <div class="empty">No subfolders</div>
         {{end}}
     </div>
 
-    <!-- Selected folder's actions (start-new + previous sessions); filled by dpSelectFolder -->
+    <!-- Selected folder's actions (start-new + previous sessions); filled by views.js -->
     <div id="session-actions"></div>
 </form>
 {{end}}

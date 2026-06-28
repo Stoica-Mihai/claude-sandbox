@@ -237,14 +237,12 @@ function updateSingleTabBar(activeTerminalId) {
         const sessionName = card ? card.dataset.session : id.substring(0, 8);
         const isActive = id === activeTerminalId;
         return `
-            <div class="tab-item flex items-center gap-2 px-3 py-1.5 rounded-md text-sm cursor-pointer select-none ${isActive ? 'bg-base-300' : 'text-base-content/50 hover:text-base-content/80 hover:bg-base-300/50 transition-colors'}"
+            <div class="ttab${isActive ? ' on' : ''}"
                  onclick="switchSingleTab('${escapeHtml(id)}')"
                  onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${escapeHtml(id)}');}">
-                <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-base-content/30'}"></span>
-                <span class="font-mono text-xs">${escapeHtml(sessionName)}</span>
-                <button class="ml-1 opacity-40 hover:opacity-100" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
+                <span class="tdot${isActive ? ' on' : ''}"></span>
+                <span style="font-family:var(--mono);font-style:normal">${escapeHtml(sessionName)}</span>
+                <span class="x" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">&times;</span>
             </div>`;
     }).join('');
 }
@@ -323,9 +321,10 @@ document.getElementById('renameSubmit')?.addEventListener('click', () => {
         renameTargetId = null;
     }).catch(err => {
         console.error('Rename failed:', err);
-        document.getElementById('renameInput').classList.add('input-error');
+        document.getElementById('renameInput').style.outline = '3px solid #d22f1a';
         setTimeout(() => {
-            document.getElementById('renameInput')?.classList.remove('input-error');
+            const el = document.getElementById('renameInput');
+            if (el) el.style.outline = '';
         }, 2000);
     });
 });
@@ -401,10 +400,10 @@ async function dpSelectFolder(path, name) {
     const bc = document.getElementById('dp-breadcrumb');
     if (bc && !bc.querySelector('.dp-cur')) {
         const sep = document.createElement('span');
-        sep.className = 'text-base-content/30';
+        sep.className = 'sep';
         sep.textContent = '/';
         const cur = document.createElement('span');
-        cur.className = 'dp-cur text-base-content';
+        cur.className = 'dp-cur seg cur';
         cur.textContent = name;
         bc.appendChild(sep);
         bc.appendChild(cur);
@@ -414,9 +413,10 @@ async function dpSelectFolder(path, name) {
     actions.innerHTML = '';
     const newRow = document.createElement('button');
     newRow.type = 'button';
-    newRow.className = 'sa-row w-full text-left px-3 py-3 border-t border-base-content/10';
-    newRow.innerHTML = '<div class="text-sm font-medium">Start a new session</div>'
-        + '<div class="text-xs text-base-content/50">Fresh conversation in ' + escapeHtml(path) + '</div>';
+    newRow.className = 'arow sa-row';
+    newRow.style.cssText = 'width:100%;background:transparent;border:none;text-align:left;font-family:inherit;color:inherit';
+    newRow.innerHTML = '<div class="atxt"><div class="at1">Start a new session</div>'
+        + '<div class="at2">Fresh conversation in ' + escapeHtml(path) + '</div></div>';
     newRow.onclick = () => dirPickerSetSel('new', null, newRow);
     actions.appendChild(newRow);
 
@@ -427,8 +427,9 @@ async function dpSelectFolder(path, name) {
     } catch (e) { /* list stays empty */ }
 
     const label = document.createElement('div');
-    label.className = 'px-3 pt-3 pb-1 text-[11px] uppercase tracking-wider text-base-content/40 flex justify-between';
-    label.innerHTML = '<span>Previous sessions</span><span class="font-mono normal-case">' + (entries.length || 'none') + '</span>';
+    label.className = 'actitle';
+    label.style.cssText = 'display:flex;justify-content:space-between';
+    label.innerHTML = '<span>Previous sessions</span><span style="font-family:var(--mono)">' + (entries.length || 'none') + '</span>';
     actions.appendChild(label);
 
     if (entries.length) {
@@ -438,18 +439,19 @@ async function dpSelectFolder(path, name) {
             const sub = s.name ? (relTime(s.created) + ' · ' + short) : short;
             const row = document.createElement('button');
             row.type = 'button';
-            row.className = 'sa-row w-full text-left px-3 py-2.5 flex items-center gap-2.5 border-t border-base-content/5';
-            row.innerHTML = '<svg class="w-3.5 h-3.5 text-base-content/40 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
-                + '<span class="min-w-0"><span class="block text-sm truncate">' + escapeHtml(title) + '</span>'
-                + '<span class="block text-xs text-base-content/50 font-mono">' + escapeHtml(sub) + '</span></span>';
+            row.className = 'arow sa-row';
+            row.style.cssText = 'width:100%;background:transparent;border:none;border-bottom:2px solid var(--line);text-align:left;font-family:inherit;color:inherit';
+            row.innerHTML = '<svg class="aold" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                + '<span class="atxt"><span class="at1">' + escapeHtml(title) + '</span>'
+                + '<span class="at2">' + escapeHtml(sub) + '</span></span>';
             row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
             actions.appendChild(row);
         });
     } else {
         const empty = document.createElement('div');
-        empty.className = 'px-3 py-6 text-center';
-        empty.innerHTML = '<div class="text-sm text-base-content/40">No previous sessions in this folder</div>'
-            + '<div class="text-xs text-base-content/30 mt-1">Start a new one above — it\'ll show here next time.</div>';
+        empty.className = 'empty';
+        empty.innerHTML = 'No previous sessions in this folder'
+            + '<br><span style="opacity:.7">Start a new one above — it\'ll show here next time.</span>';
         actions.appendChild(empty);
     }
 
@@ -467,10 +469,12 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (xhr.status >= 400) {
         const submitBtn = document.getElementById('dir-picker-submit');
         if (submitBtn) {
-            submitBtn.classList.add('btn-error');
+            submitBtn.style.background = '#d22f1a';
+            submitBtn.style.color = '#efe9dc';
             submitBtn.textContent = 'Failed — try again';
             setTimeout(() => {
-                submitBtn.classList.remove('btn-error');
+                submitBtn.style.background = '';
+                submitBtn.style.color = '';
                 submitBtn.textContent = dirPickerSel.kind === 'resume' ? 'Resume' : 'Launch';
             }, 2000);
         }

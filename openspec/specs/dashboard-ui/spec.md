@@ -92,7 +92,7 @@ The dashboard SHALL support three view modes for the main content area, toggled 
 - **THEN** the main area SHALL display all sessions as cards in a responsive grid (2 columns on medium screens, scaling with viewport). Each card SHALL show the session name, PID, duration, status badge, and a mini terminal preview showing recent output. Clicking a card SHALL switch to single view and open that session's terminal.
 
 ### Requirement: Spawn new session via HTMX
-The dashboard SHALL provide a "New" button in the sidebar header and a "+" placeholder card in grid view to spawn a new Claude Code session. A DaisyUI modal SHALL present a directory picker for selecting a directory under `/workspace`.
+The dashboard SHALL provide a "New" button in the sidebar header and a "+" placeholder card in grid view to spawn a new Claude Code session. A modal dialog SHALL present a directory picker for selecting a directory under `/workspace`.
 
 #### Scenario: Create new session via UI
 - **WHEN** the user clicks "New", selects a directory from the picker, and confirms
@@ -104,7 +104,7 @@ The dashboard SHALL provide a "New" button in the sidebar header and a "+" place
 
 #### Scenario: Directory picker browsing
 - **WHEN** the user opens the directory picker
-- **THEN** HTMX SHALL GET the directory listing endpoint and render directories under `/workspace` inside a DaisyUI modal with breadcrumb navigation, allowing drill-down into subdirectories via `hx-get` with `hx-target` swaps. Directory names SHALL NOT be selectable as text (`user-select: none`). The current browsed directory SHALL be the default selection (via hidden input). Subdirectories SHALL use toggleable checkboxes (not radio buttons) — clicking a checkbox selects that subdirectory, clicking again deselects and reverts to the current directory default. Only one checkbox may be checked at a time. Navigating into a subdirectory or clicking a breadcrumb SHALL re-render the picker with clean (unchecked) state, defaulting to the new current directory.
+- **THEN** HTMX SHALL GET the directory listing endpoint and render folders under `/workspace` inside the modal dialog with breadcrumb navigation, allowing drill-down into subfolders via `hx-get` with `hx-target` swaps. Folder names SHALL NOT be selectable as text (`user-select: none`). Selection and confirmation behavior is defined by the "New Session modal browses folders and resumes past sessions" and "Select-then-confirm with a single morphing action" requirements.
 
 ### Requirement: Terminal control buttons (desktop)
 On desktop (>=768px), a control bar SHALL appear below the tab bar with `Esc`, `Ctrl+C`, and `Ctrl+D` buttons styled as DaisyUI `kbd` (keyboard key cap) elements on the terminal dark background. In split view, `Esc` and `^C` buttons SHALL appear in each pane's header. Buttons SHALL send the raw byte directly to the PTY WebSocket as a `Uint8Array` (e.g., `[27]` for Escape, `[3]` for Ctrl+C) and re-focus the terminal after clicking. The control bar SHALL be hidden on mobile (the mobile input bar provides these controls instead).
@@ -174,45 +174,49 @@ The dashboard SHALL allow users to terminate any session from the sidebar. The k
 - **THEN** HTMX SHALL send a DELETE request, the server SHALL terminate the session's process group, push an SSE update event, all connected clients SHALL receive the updated session list, AND the terminal tab/view SHALL be cleaned up (xterm instance destroyed, tab bar cleared, welcome screen shown if no remaining tabs)
 
 ### Requirement: Dark/light theme toggle
-The dashboard SHALL support dark and light themes using DaisyUI's `data-theme` attribute. The toggle SHALL appear in the header. The user's preference SHALL persist in localStorage.
+The dashboard SHALL support exactly two themes — dark and light — implemented via the Futurism token system on the `data-theme` attribute (`dark` = carbon, `light` = paper). A single toggle control in the header SHALL switch between them; there SHALL be no multi-theme dropdown. The user's preference SHALL persist in localStorage and be restored on reload. Switching the theme SHALL also update the terminal background CSS variable and re-theme open xterm.js instances.
 
 #### Scenario: Toggle theme
-- **WHEN** the user clicks the theme toggle button
-- **THEN** the `data-theme` attribute on the HTML element SHALL switch between `light` and `dark`, and the preference SHALL be saved to localStorage
+- **WHEN** the user clicks the theme toggle
+- **THEN** the `data-theme` attribute on the HTML element SHALL switch between `light` and `dark`, the preference SHALL be saved to localStorage, and open terminals SHALL be re-themed
 
 #### Scenario: Theme persistence
 - **WHEN** the user reloads the dashboard
-- **THEN** the theme SHALL be restored from localStorage
+- **THEN** the theme SHALL be restored from localStorage (defaulting to dark when unset)
+
+#### Scenario: No multi-theme picker
+- **WHEN** the user opens the theme control
+- **THEN** it SHALL be a binary light/dark toggle, not a list of named DaisyUI themes
 
 ### Requirement: Terminal font rendering
-The xterm.js terminal SHALL use system monospace fonts (Menlo, Monaco, Consolas, Liberation Mono) instead of web fonts. Global CSS font rules SHALL NOT use the `*` universal selector, as this interferes with xterm.js's internal character grid measurement. The `body` selector SHALL be used for UI fonts instead.
+The xterm.js terminal SHALL use system monospace fonts (Menlo, Monaco, Consolas, Liberation Mono) instead of web fonts. UI typography SHALL use the Futurism `Helvetica Neue` system stack (not a web font such as Outfit), and monospace UI text (cwd, duration, tab labels) SHALL use a system monospace stack. Global CSS font rules SHALL NOT use the `*` universal selector, as this interferes with xterm.js's internal character grid measurement; the `body` selector SHALL be used for UI fonts instead.
 
 #### Scenario: Terminal text renders correctly
 - **WHEN** a Claude Code session is displayed in the xterm.js terminal
 - **THEN** all characters SHALL render with correct monospace spacing with no extra gaps or misaligned characters
 
 #### Scenario: CSS does not interfere with xterm.js
-- **WHEN** custom CSS sets a UI font (e.g., Outfit)
+- **WHEN** custom CSS sets a UI font (Helvetica Neue)
 - **THEN** the font rule SHALL be scoped to `body` (not `*`) so xterm.js internal measurement elements are not affected
 
 ### Requirement: Responsive layout
-The dashboard SHALL be responsive across mobile (<768px), tablet (768-1024px), and desktop (>1024px) using Tailwind CSS responsive prefixes.
+The dashboard SHALL be responsive across mobile (<768px), tablet (768-1024px), and desktop (>1024px) using plain CSS media queries (no utility-framework responsive prefixes). There SHALL be no horizontal scrolling of the page body at any width; wide content SHALL scroll within its own container.
 
 #### Scenario: Mobile layout
 - **WHEN** the viewport is narrower than 768px (e.g., phone in portrait)
-- **THEN** the sidebar SHALL be hidden as a slide-out drawer accessible via a hamburger menu (☰) in the header. The header SHALL show only the hamburger, logo icon (no text), session count with a terminal icon (no "sessions" label), and theme toggle. View mode buttons and session badge text SHALL be hidden. Split and grid views SHALL be forced to single view. The drawer width SHALL be `w-56` (224px). A semi-transparent backdrop SHALL overlay the content when the drawer is open. Clicking a session in the drawer SHALL close the drawer and open the terminal.
+- **THEN** the sidebar SHALL be hidden as a slide-out drawer accessible via a hamburger menu (☰) in the header. The header SHALL show only the hamburger, logo mark, session count, theme toggle, and the accent picker collapsed to its compact trigger. A semi-transparent backdrop SHALL overlay the content when the drawer is open. Clicking a session in the drawer SHALL close the drawer and open the terminal. Control buttons SHALL meet a minimum 36px touch target.
 
 #### Scenario: Tablet layout
 - **WHEN** the viewport is between 768px and 1024px
-- **THEN** the sidebar SHALL be visible with a narrower width (`w-56`). All view modes (single, split, grid) SHALL be available. The header SHALL show full text and all controls.
+- **THEN** the sidebar SHALL be visible with a narrower width. The header SHALL show full text and all controls.
 
 #### Scenario: Desktop layout
 - **WHEN** the viewport is wider than 1024px
-- **THEN** the sidebar SHALL be full width (`w-72`). All features SHALL be available unchanged.
+- **THEN** the sidebar SHALL be full width. All features SHALL be available unchanged.
 
-#### Scenario: Resize from desktop to mobile
-- **WHEN** the browser window is resized from desktop to mobile width
-- **THEN** the view SHALL be forced to single, the sidebar SHALL collapse to a drawer, and the sidebar SHALL close if open.
+#### Scenario: No horizontal body scroll
+- **WHEN** the dashboard is viewed at any width, including the narrowest mobile widths
+- **THEN** the page body SHALL NOT scroll horizontally; any wide content (breadcrumb, tab bar) SHALL scroll within its own `overflow-x` container
 
 ### Requirement: Pull to refresh
 The dashboard SHALL support pull-to-refresh on touch devices. The implementation SHALL match the tunnel-hub style: an inline text element that expands from zero height showing "Pull to refresh" → "Release to refresh" → "Refreshing..." — no floating indicators, no icons. Touch-only (no mouse support). The pull gesture SHALL NOT activate inside terminal areas.
@@ -230,11 +234,15 @@ The dashboard SHALL support pull-to-refresh on touch devices. The implementation
 - **THEN** the pull-to-refresh gesture SHALL NOT activate (to avoid interfering with terminal scrolling)
 
 ### Requirement: Self-contained application with embedded assets
-The dashboard SHALL be served from a single Go binary with core JS assets (htmx.js, xterm.js) embedded via `go:embed`. Tailwind CSS and DaisyUI SHALL be loaded from CDN. No external CDN dependencies for core interactivity.
+The dashboard SHALL be served from a single Go binary with core JS assets (htmx.js, the htmx SSE extension, xterm.js + addons) embedded via `go:embed`. All visual styling SHALL be self-contained: the dashboard SHALL NOT load any third-party CSS framework or font from a CDN (no Tailwind, no DaisyUI, no Google Fonts). Styling SHALL come solely from the embedded `style.css` (Futurism token system), and UI typography SHALL use system font stacks.
 
 #### Scenario: Load dashboard
 - **WHEN** the user navigates to `http://host:8080/`
-- **THEN** the browser SHALL load the dashboard with HTMX and xterm.js from embedded assets and Tailwind/DaisyUI from CDN
+- **THEN** the browser SHALL load the dashboard with HTMX and xterm.js from embedded assets and all styling from the embedded `style.css`, making no requests to any CSS, font, or framework CDN
+
+#### Scenario: No external styling dependencies
+- **WHEN** the dashboard page is served
+- **THEN** the HTML SHALL contain no `<link>` or `<script>` tags pointing to `cdn.tailwindcss.com`, `daisyui`, `fonts.googleapis.com`, or `unpkg.com`
 
 ### Requirement: Dashboard supports keyboard shortcuts for tab and view management
 

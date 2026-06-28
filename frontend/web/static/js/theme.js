@@ -1,71 +1,91 @@
-// Theme switcher — 10 themes with localStorage persistence
-(function() {
-    const themes = ['dark', 'light', 'synthwave', 'cupcake', 'dracula', 'forest', 'sunset', 'autumn', 'coffee', 'business'];
-    const themeLabels = {
-        dark: 'Dark',
-        light: 'Light',
-        synthwave: 'Synthwave',
-        cupcake: 'Cupcake',
-        dracula: 'Dracula',
-        forest: 'Forest',
-        sunset: 'Sunset',
-        autumn: 'Autumn',
-        coffee: 'Coffee',
-        business: 'Business',
-    };
+// Theme: light/dark toggle + accent picker, persisted to localStorage.
 
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    const validTheme = themes.includes(savedTheme) ? savedTheme : 'dark';
-    document.documentElement.setAttribute('data-theme', validTheme);
+var ACCENTS = [
+    { name: 'Red',    dark: '#ff4d33', light: '#d22f1a' },
+    { name: 'Amber',  dark: '#ffb02e', light: '#c97a00' },
+    { name: 'Lime',   dark: '#9ae600', light: '#5d8a00' },
+    { name: 'Cyan',   dark: '#2ee6d6', light: '#0a8f86' },
+    { name: 'Blue',   dark: '#4d8bff', light: '#1f5fd6' },
+    { name: 'Violet', dark: '#b06bff', light: '#7a3fd6' },
+    { name: 'Pink',   dark: '#ff5fae', light: '#d62f86' },
+];
 
-    // Set base attribute for CSS (light vs dark base)
-    const lightThemes = ['light', 'cupcake', 'autumn'];
-    document.documentElement.setAttribute('data-theme-base', lightThemes.includes(validTheme) ? 'light' : 'dark');
+function currentBaseIsDark() {
+    return document.documentElement.getAttribute('data-theme') !== 'light';
+}
 
-    // Set terminal bg CSS var early (before terminals load)
-    // terminal.js defines terminalThemes — this runs after it
+var savedAccent = localStorage.getItem('accent') || 'Red';
+var curAccent = ACCENTS.find(function(a) { return a.name === savedAccent; }) || ACCENTS[0];
+
+function renderAccents() {
+    var dark = currentBaseIsDark();
+    var pop = document.getElementById('accpop');
+    var trig = document.getElementById('acctrig');
+    if (trig) trig.style.background = dark ? curAccent.dark : curAccent.light;
+    if (!pop) return;
+    pop.innerHTML = '';
+    ACCENTS.forEach(function(a) {
+        var s = document.createElement('button');
+        s.className = 'acc' + (a.name === curAccent.name ? ' on' : '');
+        s.style.background = dark ? a.dark : a.light;
+        s.title = a.name;
+        s.onclick = function() {
+            curAccent = a;
+            applyAccent();
+            var pick = document.getElementById('accpick');
+            if (pick) pick.classList.remove('open');
+        };
+        pop.appendChild(s);
+    });
+}
+
+function applyAccent() {
+    var dark = currentBaseIsDark();
+    var col = dark ? curAccent.dark : curAccent.light;
+    var r = document.documentElement.style;
+    r.setProperty('--accent', col);
+    // dark base uses accent as the offset-shadow; light base keeps ink
+    r.setProperty('--shadow', dark ? col : '#1a1714');
+    localStorage.setItem('accent', curAccent.name);
+    renderAccents();
+}
+
+function flipTheme() {
+    var r = document.documentElement;
+    var dark = r.getAttribute('data-theme') === 'dark';
+    var next = dark ? 'light' : 'dark';
+    r.setAttribute('data-theme', next);
+    r.setAttribute('data-theme-base', next === 'light' ? 'light' : 'dark');
+    localStorage.setItem('theme', next);
+    var t = document.getElementById('themeToggle');
+    if (t) t.classList.toggle('on', !dark);
+    applyAccent();
     if (typeof syncTerminalBgVar === 'function') {
         syncTerminalBgVar();
     }
-
-    // Populate dropdown items
-    const menu = document.getElementById('themeMenu');
-    const currentLabel = document.getElementById('themeCurrentLabel');
-    if (menu && currentLabel) {
-        currentLabel.textContent = themeLabels[validTheme];
-
-        menu.innerHTML = '';
-        for (const t of themes) {
-            const li = document.createElement('li');
-            const btn = document.createElement('button');
-            btn.textContent = themeLabels[t];
-            btn.className = t === validTheme ? 'active' : '';
-            btn.addEventListener('click', () => applyTheme(t));
-            li.appendChild(btn);
-            menu.appendChild(li);
-        }
+    if (typeof TerminalManager !== 'undefined') {
+        TerminalManager.rethemeAll();
     }
+}
 
-    function applyTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        document.documentElement.setAttribute('data-theme-base', lightThemes.includes(theme) ? 'light' : 'dark');
-        localStorage.setItem('theme', theme);
+document.addEventListener('click', function(e) {
+    var p = document.getElementById('accpick');
+    if (p && !p.contains(e.target)) p.classList.remove('open');
+});
 
-        // Update dropdown label and active state
-        if (currentLabel) currentLabel.textContent = themeLabels[theme];
-        if (menu) {
-            const buttons = menu.querySelectorAll('button');
-            themes.forEach((t, i) => {
-                buttons[i].className = t === theme ? 'active' : '';
-            });
-        }
+(function() {
+    var savedTheme = localStorage.getItem('theme') || 'dark';
+    var theme = savedTheme === 'light' ? 'light' : 'dark';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-theme-base', theme === 'light' ? 'light' : 'dark');
 
-        // Close the dropdown
-        document.activeElement?.blur();
+    var t = document.getElementById('themeToggle');
+    if (t) t.classList.toggle('on', theme === 'dark');
 
-        // Re-theme terminals
-        if (typeof TerminalManager !== 'undefined') {
-            TerminalManager.rethemeAll();
-        }
+    applyAccent();
+
+    if (typeof syncTerminalBgVar === 'function') {
+        syncTerminalBgVar();
     }
 })();

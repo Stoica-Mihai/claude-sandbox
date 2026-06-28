@@ -11,7 +11,7 @@ This repository is a Docker-based sandbox for running Claude Code inside a conta
 Two Go services, each its own container:
 
 - **`backend/`** — API + session manager. Owns session lifecycle (spawn/kill/discover), the per-session relay, SSE, and the WebSocket terminal endpoint. Listens on `:8081` (`BACKEND_PORT`), no exposed host ports — reachable only on the internal compose network.
-- **`frontend/`** — Dashboard UI (HTMX + Tailwind/DaisyUI templates + static assets) and a reverse proxy to the backend for `/api`, `/events` (SSE), and `/ws` (WebSocket). Listens on `DASHBOARD_PORT` (default 8080), the only published port. `BACKEND_URL=http://backend:8081`.
+- **`frontend/`** — Dashboard UI (HTMX templates + a self-contained Futurism stylesheet, no CSS-framework CDN) and a reverse proxy to the backend for `/api`, `/events` (SSE), and `/ws` (WebSocket). Listens on `DASHBOARD_PORT` (default 8080), the only published port. `BACKEND_URL=http://backend:8081`.
 
 Supporting files:
 
@@ -54,13 +54,14 @@ One relay per session connects the dtach session to WebSocket viewers.
 - Copy-on-select: xterm has no built-in `copyOnSelect`, so `terminal.js` copies the selection on `mouseup` via the async Clipboard API (with an `execCommand` fallback).
 - `GET /healthz` returns `{"status":"ok"}`; Docker healthchecks probe it.
 - CSS font rules must use the `body` selector, NOT `*` — the universal selector breaks xterm.js character grid measurement.
+- The dashboard uses the self-contained **Futurism** design system (`style.css` tokens: square corners, 2px ink borders, solid offset shadows, single `--accent`, Helvetica Neue UI font) — no Tailwind/DaisyUI/Google-Fonts CDNs. Theme is a binary light/dark toggle (`theme.js`, `data-theme`/`data-theme-base`, localStorage); a separate accent picker overrides `--accent` (+ `--shadow` in dark) from 7 colors, persisted to localStorage.
 - A background poller re-discovers sessions every 5s, syncs relays, and publishes SSE so card durations/activity stay fresh.
 - Session cards show a `DisplayName` (custom name or dir basename), CWD, and a live-ticking duration. Rename via `PUT /api/sessions/{terminalId}/name` (custom names persisted to a 0600 file in the metadata dir).
 
 ### Frontend assets (`frontend/web/`, `go:embed`)
 - `templates/layout.html`, `templates/fragments/{sessions,directory-picker}.html`
 - `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `views.js`, `theme.js`
-- `static/css/style.css`, `static/vendor/` (htmx, xterm.js 6.0 + fit/web-links/webgl addons)
+- `static/css/style.css` (Futurism design system: tokens, components, responsive media queries), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons)
 
 ## Common Commands
 

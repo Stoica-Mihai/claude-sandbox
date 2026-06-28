@@ -11,7 +11,7 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
   - Full interactive terminal via xterm.js with WebSocket relay
   - Single, split, and grid view modes
   - Session detach/reattach with scrollback replay
-  - Dark/light theme with DaisyUI
+  - Self-contained Futurism design system (no CSS-framework CDN); dark/light theme toggle + 7-color accent picker
   - Responsive mobile layout with touch input bar
   - Real-time session updates via Server-Sent Events
 - Pre-configured for **Opus 1M** with high effort, always-thinking, and agent teams enabled
@@ -76,7 +76,7 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 - **Tabbed terminals** — open multiple sessions as tabs, switch between them
 - **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory
 - **Mobile support** — responsive layout with slide-out drawer and touch input bar
-- **Theme toggle** — dark/light mode with localStorage persistence
+- **Theme toggle** — dark/light mode with localStorage persistence, plus a separate accent-color picker (7 colors, persisted)
 - **Real-time updates** — SSE pushes session changes to all connected clients
 
 The dashboard has no built-in authentication — it's designed to sit behind an auth proxy.
