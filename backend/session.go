@@ -119,9 +119,17 @@ func (sm *SessionManager) GetSessionName(sessionName string) string {
 	return sm.index.name(readSessionMeta(sessionName).SessionID)
 }
 
-// History returns the previous sessions recorded for a folder (newest first).
+// History returns the previous RESUMABLE sessions for a folder (newest first).
+// Sessions that were spawned but never messaged have no claude transcript and
+// would exit immediately on resume, so they are filtered out.
 func (sm *SessionManager) History(cwd string) []SessionHistoryEntry {
-	return sm.index.listByCwd(cwd)
+	out := []SessionHistoryEntry{}
+	for _, e := range sm.index.listByCwd(cwd) {
+		if hasTranscript(e.UUID) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // syncRelays ensures every live session has a running relay and relays for gone

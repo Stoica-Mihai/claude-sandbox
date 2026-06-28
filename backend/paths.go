@@ -76,6 +76,17 @@ func containerSettingsPath() string {
 	return "/home/claude/container-settings.json"
 }
 
+// hasTranscript reports whether claude has recorded a conversation transcript
+// for this uuid (a `<uuid>.jsonl` under any projects/ subdir). A session that
+// was spawned but never messaged has none and cannot be resumed — claude exits
+// immediately, so such sessions are excluded from the resume list. Matched by
+// our uuid filename, not the cwd encoding, so it survives claude layout changes
+// (worst case: no matches -> the resume list is empty, never broken).
+func hasTranscript(uuid string) bool {
+	matches, _ := filepath.Glob(filepath.Join(claudeConfigDir(), "projects", "*", uuid+".jsonl"))
+	return len(matches) > 0
+}
+
 // settingsJSONPath is the live settings file claude reads at session spawn.
 // entrypoint.sh seeds it from container-settings.json on boot; the settings
 // editor refreshes it so saved changes apply without a container restart.

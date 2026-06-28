@@ -1,9 +1,31 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 )
+
+func TestHasTranscript(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	proj := filepath.Join(dir, "projects", "-workspace-foo")
+	if err := os.MkdirAll(proj, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	withTx := "11111111-1111-4111-8111-111111111111"
+	without := "22222222-2222-4222-8222-222222222222"
+	if err := os.WriteFile(filepath.Join(proj, withTx+".jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !hasTranscript(withTx) {
+		t.Error("expected transcript to be found")
+	}
+	if hasTranscript(without) {
+		t.Error("expected no transcript for never-messaged uuid")
+	}
+}
 
 func TestNewUUIDFormat(t *testing.T) {
 	re := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
