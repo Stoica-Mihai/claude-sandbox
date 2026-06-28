@@ -188,7 +188,11 @@
             <p class="text-base-content/50 text-sm mb-4">Select a directory under /workspace</p>
             <div id="dir-picker" class="bg-base-300 rounded-lg border border-base-content/10 overflow-hidden" hx-get="/api/directories" hx-trigger="load" hx-swap="innerHTML">
             </div>
-            <div class="modal-action">
+            <div class="modal-action justify-between">
+                <button type="submit" form="dir-picker-form" id="dir-picker-submit" class="btn btn-primary btn-sm gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg>
+                    Launch Session
+                </button>
                 <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
             </div>
         </div>
