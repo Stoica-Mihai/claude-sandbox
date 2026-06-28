@@ -1,5 +1,6 @@
 .env
 mcp-config.json
+container-settings.json
 node_modules/
 package.json
 package-lock.json

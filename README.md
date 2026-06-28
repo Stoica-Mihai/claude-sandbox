@@ -87,7 +87,8 @@ The dashboard has no built-in authentication — it's designed to sit behind an 
 |------|---------|
 | `.env` | Host UID/GID and `WORKSPACE_PATH` (gitignored, auto-generated) |
 | `docker-compose.yml` | Service definition, volume mounts, port 8080, env passthrough |
-| `container-settings.json` | Claude Code settings (model, plugins, permissions) |
+| `container-settings.json` | Claude Code settings (model, plugins, permissions) — gitignored, seeded from the example by setup |
+| `container-settings.example.json` | Baseline container settings template (committed) |
 | `mcp-config.json` | User-provided MCP server definitions (gitignored) |
 | `mcp-config.example.json` | Example MCP server config template |
 | `backend/` | Go API + session manager (dtach sessions, relay, WebSocket) |

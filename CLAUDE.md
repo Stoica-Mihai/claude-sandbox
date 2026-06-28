@@ -18,12 +18,12 @@ Supporting files:
 - **Dockerfile.backend** — Multi-stage. Builder compiles the backend binary; runtime is Debian-based with bash, git, curl, dtach, bubblewrap, qrencode, npm, Go, gcc, uv, OpenSpec, and Claude Code + plugins. Non-root user `claude`.
 - **Dockerfile.frontend** — Multi-stage; minimal runtime (no tmux/socat/claude), just the frontend binary.
 - **docker-compose.yml** — Defines `backend` and `frontend` services. Mounts the workspace at `/workspace` and a scoped, host-isolated Claude config dir (`~/.claude-sandbox`) into the backend; injects `container-settings.json` read-only. Does NOT mount the host's real `~/.claude` / `~/.claude.json`. Has healthchecks, log rotation, resource limits.
-- **container-settings.json** — Claude Code settings for the container (plugins, MCP servers, permissions). Mounted read-only and copied by the entrypoint into the scoped config dir's `settings.json`.
+- **container-settings.json** — Claude Code settings for the container (plugins, MCP servers, permissions). Gitignored; seeded from `container-settings.example.json` by `generate-env.sh` (the `setup` target) on first run. Mounted read-only and copied by the entrypoint into the scoped config dir's `settings.json`. Edit it locally to change model/effort/etc.
 - **entrypoint.sh** — Backend entrypoint; on first run seeds the scoped config dir (`$CLAUDE_CONFIG_DIR`) with the image's baked plugins + registration, and refreshes `settings.json` from `container-settings.json`.
 - **mcp-config.json** — User-provided MCP server definitions (gitignored). See `mcp-config.example.json`.
 - **.env** — Host UID/GID for Docker build args (file permission compatibility).
 - **Makefile** — Convenience targets (`up`, `down`, `shell`, `watch`, `build`, `rebuild`, `restart-backend`, `restart-frontend`).
-- **generate-env.sh** — Creates `.env` from `.env.example` with auto-detected UID/GID.
+- **generate-env.sh** — Creates `.env` from `.env.example` with auto-detected UID/GID, and seeds `container-settings.json` from `container-settings.example.json` if missing.
 
 ## Sessions (dtach)
 
