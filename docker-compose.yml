@@ -22,7 +22,10 @@ services:
         - action: rebuild
           path: ./backend/
     security_opt:
-      - apparmor:unconfined
+      # seccomp must stay unconfined: Claude Code's bubblewrap sandbox needs
+      # unprivileged user namespaces, which Docker's default seccomp profile
+      # blocks. AppArmor's default profile does NOT block it, so we keep
+      # AppArmor enabled (only seccomp is relaxed).
       - seccomp:unconfined
 
     volumes:
