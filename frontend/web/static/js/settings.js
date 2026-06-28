@@ -80,7 +80,13 @@ async function saveSettings() {
         alwaysThinkingEnabled: document.getElementById('settings-thinking').classList.contains('on'),
     };
     const hint = document.getElementById('settings-hint');
-    const defaultHint = hint ? hint.textContent : '';
+    const defaultHint = hint && !hint.classList.contains('err') ? hint.textContent : SETTINGS_HINT;
+    if (btn.dataset.busy) return; // guard against double-submit
+    // Immediate in-flight feedback — the write + settings.json refresh can take 1-2s.
+    btn.dataset.busy = '1';
+    btn.classList.remove('ok', 'err');
+    btn.classList.add('saving');
+    label.textContent = 'SAVING…';
     try {
         const res = await fetch('/api/settings', {
             method: 'PUT',
@@ -93,19 +99,22 @@ async function saveSettings() {
             throw new Error(msg);
         }
         if (hint) { hint.textContent = defaultHint; hint.classList.remove('err'); }
+        btn.classList.remove('saving');
         btn.classList.add('ok');
         label.textContent = 'SAVED ✓';
         setTimeout(() => {
             btn.classList.remove('ok');
             label.textContent = 'SAVE';
+            delete btn.dataset.busy;
             document.getElementById('settingsModal').close();
-        }, 1000);
+        }, 900);
     } catch (e) {
         // Surface the backend's reason in the footer; leave Save usable so the
         // user can fix the value and retry. The message clears on the next edit.
         if (hint) { hint.textContent = e.message; hint.classList.add('err'); }
-        btn.classList.remove('ok');
+        btn.classList.remove('saving');
         label.textContent = 'SAVE';
+        delete btn.dataset.busy;
     }
 }
 
