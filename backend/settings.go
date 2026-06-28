@@ -8,7 +8,25 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 )
+
+// modelRank ranks a model family by capability so the advisor can be required
+// to be strictly more capable than the main model (claude rejects the request
+// otherwise). Works on both main aliases ("opus[1m]") and advisor ids
+// ("claude-opus-4-8"). Unknown families rank 0.
+func modelRank(s string) int {
+	s = strings.ToLower(s)
+	switch {
+	case strings.Contains(s, "opus"):
+		return 3
+	case strings.Contains(s, "sonnet"):
+		return 2
+	case strings.Contains(s, "haiku"):
+		return 1
+	}
+	return 0
+}
 
 // allowedModels is the allowlist for the model / advisorModel fields. Extend
 // here as new model ids ship.
@@ -113,6 +131,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// main-model aliases like "opus[1m]" are NOT valid advisor values.
 	if req.AdvisorModel != "" && !canonicalModelID.MatchString(req.AdvisorModel) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid advisorModel"})
+		return
+	}
+	// The advisor must be strictly more capable than the main model, else claude
+	// rejects every request ("cannot be used as an advisor when the request model
+	// is ..."). e.g. Sonnet main + Opus advisor is valid; Opus main needs no advisor.
+	if req.AdvisorModel != "" && modelRank(req.AdvisorModel) <= modelRank(req.Model) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisor model must be more capable than the main model (e.g. Sonnet main + Opus advisor); with Opus as the main model, set the advisor to none"})
 		return
 	}
 	if !slices.Contains(allowedEffort, req.EffortLevel) {

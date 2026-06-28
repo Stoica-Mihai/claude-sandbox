@@ -41,6 +41,19 @@ func TestAllowlists(t *testing.T) {
 	}
 }
 
+func TestModelRankAdvisorRule(t *testing.T) {
+	// advisor must outrank main
+	if !(modelRank("claude-opus-4-8") > modelRank("sonnet")) {
+		t.Error("opus advisor should outrank sonnet main")
+	}
+	if modelRank("claude-sonnet-4-6") > modelRank("opus[1m]") {
+		t.Error("sonnet advisor must NOT outrank opus main (the broken combo)")
+	}
+	if modelRank("haiku") != 1 || modelRank("sonnet") != 2 || modelRank("opus[1m]") != 3 {
+		t.Errorf("ranks off: haiku=%d sonnet=%d opus=%d", modelRank("haiku"), modelRank("sonnet"), modelRank("opus[1m]"))
+	}
+}
+
 func TestCanonicalModelID(t *testing.T) {
 	valid := []string{"claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"}
 	invalid := []string{"opus[1m]", "opus", "sonnet", "haiku", "gpt-4", "", "claude-foo-1"}
