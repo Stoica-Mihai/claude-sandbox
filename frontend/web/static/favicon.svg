@@ -1,10 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#10b981"/>
-      <stop offset="100%" stop-color="#0d9488"/>
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" rx="7" fill="url(#g)"/>
-  <text x="6" y="22" font-family="monospace" font-weight="bold" font-size="18" fill="white">$_</text>
+  <!-- Futurism logo mark: skewed red square, solid cream offset shadow, on-accent ">_" glyph (matches .hdr .mark, dark theme). -->
+  <g transform="translate(16 16) skewX(-8) translate(-16 -16)">
+    <rect x="6" y="6" width="22" height="22" fill="#efe9dc"/>
+    <rect x="4" y="4" width="22" height="22" fill="#ff4d33"/>
+  </g>
+  <text x="15" y="20" text-anchor="middle" font-family="'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-weight="900" font-size="13" fill="#16140f">&gt;_</text>
 </svg>
