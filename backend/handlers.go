@@ -43,6 +43,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	}
 
 	mux.HandleFunc("GET /api/sessions", s.handleListSessions)
+	mux.HandleFunc("GET /api/sessions/history", s.handleHistory)
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
@@ -72,28 +73,46 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessions)
 }
 
-// handleSpawn creates a new Claude Code session as a detached dtach master.
+// handleSpawn starts a new conversation, or resumes one when "resume" (a
+// conversation uuid) is present.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CWD string `json:"cwd"`
+		CWD    string `json:"cwd"`
+		Resume string `json:"resume"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-	if req.CWD == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing cwd parameter"})
-		return
-	}
 
-	sessionName, err := s.sm.Spawn(req.CWD)
+	var sessionName string
+	var err error
+	if req.Resume != "" {
+		sessionName, err = s.sm.Resume(req.Resume)
+	} else {
+		if req.CWD == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing cwd parameter"})
+			return
+		}
+		sessionName, err = s.sm.Spawn(req.CWD)
+	}
 	if err != nil {
-		slog.Error("failed to spawn session", "cwd", req.CWD, "error", err)
+		slog.Error("failed to start session", "cwd", req.CWD, "resume", req.Resume, "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{"session_name": sessionName})
+}
+
+// handleHistory returns the previous sessions recorded for a folder.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	cwd := r.URL.Query().Get("cwd")
+	if cwd == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing cwd parameter"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.sm.History(cwd))
 }
 
 // handleKill terminates a session.

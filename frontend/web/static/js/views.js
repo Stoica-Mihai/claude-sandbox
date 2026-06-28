@@ -292,9 +292,13 @@ function cleanupKilledSession(terminalId) {
     }
 }
 
-// Open the New Session modal
+// Open the New Session modal, resetting the picker to a fresh browse state
+// (re-fetch the root folder list) so it never reopens in a stale/selected state.
 function openNewSessionModal(event) {
     document.getElementById('newSessionModal').showModal();
+    if (window.htmx) {
+        htmx.ajax('GET', '/api/directories', { target: '#dir-picker', swap: 'innerHTML' });
+    }
 }
 
 // Open the Rename Session modal
@@ -338,7 +342,119 @@ document.addEventListener('htmx:afterSwap', (event) => {
     if (event.target?.id === 'session-list') {
         updateSessionCardStates();
     }
+    if (event.target?.id === 'dir-picker') {
+        dpResetBrowse(); // a fresh folder-list level → browse state, nothing selected
+    }
 });
+
+// --- New Session modal: browse folders → select one → start new / resume ---
+
+let dirPickerSel = { kind: null, uuid: null };
+
+function relTime(unix) {
+    const s = Math.floor(Date.now() / 1000) - unix;
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+}
+
+function dpFooter(label, enabled) {
+    const b = document.getElementById('dir-picker-submit');
+    if (!b) return;
+    b.textContent = label;
+    b.disabled = !enabled;
+}
+
+// Browse state: folder list visible, no folder selected, action disabled.
+function dpResetBrowse() {
+    dirPickerSel = { kind: null, uuid: null };
+    const actions = document.getElementById('session-actions');
+    if (actions) actions.innerHTML = '';
+    const folders = document.getElementById('dp-folders');
+    if (folders) folders.classList.remove('hidden');
+    const cwd = document.getElementById('dir-picker-cwd');
+    if (cwd) cwd.value = '';
+    const resume = document.getElementById('dir-picker-resume');
+    if (resume) resume.value = '';
+    dpFooter('Launch', false);
+}
+
+// Choose start-new vs a previous session; relabel the footer in place.
+function dirPickerSetSel(kind, uuid, rowEl) {
+    dirPickerSel = { kind, uuid: uuid || null };
+    document.querySelectorAll('#session-actions .sa-row').forEach(r => r.classList.remove('sa-sel'));
+    if (rowEl) rowEl.classList.add('sa-sel');
+    const resume = document.getElementById('dir-picker-resume');
+    if (resume) resume.value = kind === 'resume' ? uuid : '';
+    dpFooter(kind === 'resume' ? 'Resume' : 'Launch', true);
+}
+
+// Selecting a folder hides the folder list and shows that folder's start-new +
+// previous sessions. (The › arrow on a row drills into subfolders instead.)
+async function dpSelectFolder(path, name) {
+    document.getElementById('dir-picker-cwd').value = path;
+    const folders = document.getElementById('dp-folders');
+    if (folders) folders.classList.add('hidden');
+
+    // Append the selected folder to the breadcrumb as the current (non-link) crumb.
+    const bc = document.getElementById('dp-breadcrumb');
+    if (bc && !bc.querySelector('.dp-cur')) {
+        const sep = document.createElement('span');
+        sep.className = 'text-base-content/30';
+        sep.textContent = '/';
+        const cur = document.createElement('span');
+        cur.className = 'dp-cur text-base-content';
+        cur.textContent = name;
+        bc.appendChild(sep);
+        bc.appendChild(cur);
+    }
+
+    const actions = document.getElementById('session-actions');
+    actions.innerHTML = '';
+    const newRow = document.createElement('button');
+    newRow.type = 'button';
+    newRow.className = 'sa-row w-full text-left px-3 py-3 border-t border-base-content/10';
+    newRow.innerHTML = '<div class="text-sm font-medium">Start a new session</div>'
+        + '<div class="text-xs text-base-content/50">Fresh conversation in ' + escapeHtml(path) + '</div>';
+    newRow.onclick = () => dirPickerSetSel('new', null, newRow);
+    actions.appendChild(newRow);
+
+    let entries = [];
+    try {
+        const res = await fetch('/api/sessions/history?cwd=' + encodeURIComponent(path));
+        if (res.ok) entries = await res.json();
+    } catch (e) { /* list stays empty */ }
+
+    const label = document.createElement('div');
+    label.className = 'px-3 pt-3 pb-1 text-[11px] uppercase tracking-wider text-base-content/40 flex justify-between';
+    label.innerHTML = '<span>Previous sessions</span><span class="font-mono normal-case">' + (entries.length || 'none') + '</span>';
+    actions.appendChild(label);
+
+    if (entries.length) {
+        entries.forEach(s => {
+            const short = (s.uuid || '').slice(0, 8);
+            const title = s.name ? s.name : relTime(s.created);
+            const sub = s.name ? (relTime(s.created) + ' · ' + short) : short;
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'sa-row w-full text-left px-3 py-2.5 flex items-center gap-2.5 border-t border-base-content/5';
+            row.innerHTML = '<svg class="w-3.5 h-3.5 text-base-content/40 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                + '<span class="min-w-0"><span class="block text-sm truncate">' + escapeHtml(title) + '</span>'
+                + '<span class="block text-xs text-base-content/50 font-mono">' + escapeHtml(sub) + '</span></span>';
+            row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
+            actions.appendChild(row);
+        });
+    } else {
+        const empty = document.createElement('div');
+        empty.className = 'px-3 py-6 text-center';
+        empty.innerHTML = '<div class="text-sm text-base-content/40">No previous sessions in this folder</div>'
+            + '<div class="text-xs text-base-content/30 mt-1">Start a new one above — it\'ll show here next time.</div>';
+        actions.appendChild(empty);
+    }
+
+    dirPickerSetSel('new', null, newRow); // default to "start new"
+}
 
 // Listen for HTMX responses from spawn to auto-open the new terminal
 document.addEventListener('htmx:afterRequest', (event) => {
@@ -355,7 +471,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
             submitBtn.textContent = 'Failed — try again';
             setTimeout(() => {
                 submitBtn.classList.remove('btn-error');
-                submitBtn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14m-7-7h14"/></svg> Launch Session';
+                submitBtn.textContent = dirPickerSel.kind === 'resume' ? 'Resume' : 'Launch';
             }, 2000);
         }
         return;

@@ -53,6 +53,7 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
+	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
 
 	// Pure proxy routes.
 	mux.HandleFunc("GET /events", s.handleSSEProxy)
@@ -128,15 +129,17 @@ func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) 
 // fetches the updated session list and renders the sessions fragment.
 // The form sends cwd as a form field; we convert it to JSON for the backend.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
-	// The HTMX form sends application/x-www-form-urlencoded with "cwd" field.
+	// The HTMX form sends application/x-www-form-urlencoded with "cwd" and an
+	// optional "resume" (conversation uuid) field.
 	cwd := r.FormValue("cwd")
-	if cwd == "" {
+	resume := r.FormValue("resume")
+	if cwd == "" && resume == "" {
 		http.Error(w, "missing cwd parameter", http.StatusBadRequest)
 		return
 	}
 
 	// Forward as JSON to backend.
-	payload, _ := json.Marshal(map[string]string{"cwd": cwd})
+	payload, _ := json.Marshal(map[string]string{"cwd": cwd, "resume": resume})
 	resp, err := s.backendRequest(r.Context(), "POST", "/api/sessions", bytes.NewReader(payload))
 	if err != nil {
 		slog.Error("failed to spawn session via backend", "error", err)
@@ -256,6 +259,24 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, "directory-picker", dirData)
+}
+
+// handleHistoryProxy proxies GET /api/sessions/history (JSON) to the backend.
+func (s *Server) handleHistoryProxy(w http.ResponseWriter, r *http.Request) {
+	path := "/api/sessions/history"
+	if q := r.URL.RawQuery; q != "" {
+		path += "?" + q
+	}
+	resp, err := s.backendRequest(r.Context(), "GET", path, nil)
+	if err != nil {
+		slog.Error("failed to fetch history from backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // --- Pure proxy routes ---

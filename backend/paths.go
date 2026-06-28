@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -46,6 +48,33 @@ func initPaths() error {
 		}
 	}
 	return nil
+}
+
+// claudeConfigDir returns Claude Code's config dir ($CLAUDE_CONFIG_DIR), which
+// is host-mounted and persistent. Falls back to ~/.claude-sandbox.
+func claudeConfigDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".claude-sandbox")
+	}
+	return "/home/claude/.claude-sandbox"
+}
+
+// sessionIndexPath is the dashboard-owned session index (uuid → cwd/created/name),
+// in the persistent config dir so it survives container restarts.
+func sessionIndexPath() string { return filepath.Join(claudeConfigDir(), "dashboard-sessions.json") }
+
+// newUUID returns a random RFC 4122 v4 UUID string.
+func newUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // sockPath returns the dtach socket path for a session.
@@ -104,8 +133,9 @@ func removeSessionFiles(name string) {
 //
 // sessionMeta is the per-session metadata sidecar contents.
 type sessionMeta struct {
-	CWD     string `json:"cwd"`
-	Created int64  `json:"created"`
+	CWD       string `json:"cwd"`
+	Created   int64  `json:"created"`
+	SessionID string `json:"session_id,omitempty"` // claude conversation uuid (--session-id)
 }
 
 // createdTime returns the session creation time, falling back to the socket

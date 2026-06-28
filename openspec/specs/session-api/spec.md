@@ -2,7 +2,6 @@
 
 ## Purpose
 HTTP API for managing Claude Code sessions — listing, spawning, killing, and browsing directories.
-
 ## Requirements
 ### Requirement: List active Claude Code sessions across all directories
 The system SHALL expose a `GET /api/sessions` endpoint that returns all currently running Claude Code sessions inside the container, regardless of which working directory they were started in. Session discovery SHALL scan the per-session PID sidecars in the metadata directory and filter to sessions with the `claude-` name prefix. The endpoint SHALL return session name, working directory, creation time, and whether a dashboard WebSocket is currently attached.
@@ -27,19 +26,15 @@ The system SHALL discover sessions by scanning the PID sidecars in the metadata 
 - **THEN** the system SHALL treat that session as dead, unlink its socket and sidecars, and exclude it from the returned list
 
 ### Requirement: Spawn a new Claude Code session
-The system SHALL expose a `POST /api/sessions` endpoint to create a new interactive Claude Code session in a specified directory, accepting a JSON body `{"cwd": ...}`. Sessions SHALL be created only from the dashboard; direct CLI `claude` is disabled inside the container. The session SHALL be spawned as a detached dtach master (`dtach -n`) running `claude --dangerously-skip-permissions`. The session name SHALL follow the pattern `claude-<hex>` (8 hex characters). The working directory MUST exist inside the container and MUST be under `/workspace`. The spawned session name SHALL be returned as the terminal ID for WebSocket attachment.
+The system SHALL expose `POST /api/sessions` to create a session. The JSON body SHALL include `cwd` (a directory under `/workspace`) and MAY include `resume` (a conversation uuid). When `resume` is absent the system SHALL start a new conversation (`claude --session-id <new-uuid>`). When `resume` is present the system SHALL reopen that conversation (`claude --resume <uuid>`) in its recorded cwd. The response SHALL return the new dtach session name for WebSocket attachment.
 
-#### Scenario: Valid directory
-- **WHEN** a POST request is made to `/api/sessions` with body `{"cwd":"/workspace/my-project"}`
-- **THEN** the system SHALL spawn a detached dtach session running claude in the specified directory, publish an SSE update event, and return a JSON body `{"session_name": ...}` whose value is the `claude-<hex>` terminal ID for WebSocket attachment
+#### Scenario: Start a new session
+- **WHEN** `POST /api/sessions` is called with `{"cwd":"/workspace/cmux"}`
+- **THEN** the system SHALL spawn a new conversation and return its session name
 
-#### Scenario: Directory does not exist
-- **WHEN** a POST request is made to `/api/sessions` with a `cwd` that does not exist
-- **THEN** the system SHALL respond with HTTP 400 and an error message
-
-#### Scenario: Directory outside /workspace
-- **WHEN** a POST request is made to `/api/sessions` with a `cwd` outside `/workspace`
-- **THEN** the system SHALL respond with HTTP 400 and an error message indicating the directory must be under `/workspace`
+#### Scenario: Resume a previous session
+- **WHEN** `POST /api/sessions` is called with `{"cwd":"/workspace/cmux","resume":"<uuid>"}`
+- **THEN** the system SHALL spawn a dtach session running `claude --resume <uuid>` in `/workspace/cmux` and return its session name
 
 ### Requirement: Kill a Claude Code session
 The system SHALL expose a `DELETE /api/sessions/{terminalId}` endpoint to terminate a running session by its session name. The system SHALL read the session's PID sidecar and signal the inner process group to terminate the session. All running `claude-` prefixed sessions SHALL be killable.
@@ -109,19 +104,11 @@ The `ListSessions` method SHALL enrich each `DisplaySession` with a `DisplayName
 - **THEN** `DisplaySession.DisplayName` SHALL be `DirName` (directory basename)
 
 ### Requirement: Session rename endpoint
-The system SHALL provide a `PUT /api/sessions/{terminalId}/name` endpoint that accepts a JSON body `{"name":"..."}` and updates the session's display name in memory. An empty name SHALL clear the custom name. After updating, the system SHALL publish an SSE event so all clients refresh. If the session does not exist, the server SHALL return HTTP 404. Session names SHALL be cleaned up from the map when sessions are removed in `syncRelays`.
+The system SHALL expose `PUT /api/sessions/{terminalId}/name` to set or clear a session's custom name. The name SHALL be stored in the session index keyed by the session's conversation uuid (resolved from the live session's metadata sidecar), so it persists and appears in both the sidebar and the resume list. Clearing the name SHALL remove it.
 
-#### Scenario: Set a custom name
-- **WHEN** a PUT request with `{"name":"my-project"}` is sent to `/api/sessions/claude-abc123/name`
-- **THEN** the session's display name SHALL be "my-project" and an SSE update SHALL be published
-
-#### Scenario: Clear a custom name
-- **WHEN** a PUT request with `{"name":""}` is sent
-- **THEN** the custom name SHALL be removed and the session SHALL revert to showing its directory basename
-
-#### Scenario: Rename nonexistent session
-- **WHEN** a PUT request targets a session that does not exist
-- **THEN** the server SHALL return HTTP 404
+#### Scenario: Rename persists by conversation uuid
+- **WHEN** a live session is renamed to "relay fixes"
+- **THEN** the system SHALL set the name on that conversation's index entry, and the name SHALL appear in the sidebar and in that folder's resume list
 
 ### Requirement: Health check endpoint
 The system SHALL expose a `GET /healthz` endpoint that returns HTTP 200 when the dashboard server is running and able to accept requests. This endpoint is used by Docker's health check mechanism to detect unresponsive containers.
@@ -137,3 +124,15 @@ The system SHALL expose a `GET /healthz` endpoint that returns HTTP 200 when the
 #### Scenario: Health check does not require authentication
 - **WHEN** a GET request is made to `/healthz` from any origin
 - **THEN** the server SHALL respond without requiring any authentication headers or cookies
+
+### Requirement: Session history endpoint
+The system SHALL expose `GET /api/sessions/history?cwd=<path>` returning the previous sessions recorded for that working directory, as a JSON array of `{uuid, created, name}` sorted by creation time descending. The list SHALL come from the dashboard session index, not from claude's transcript files.
+
+#### Scenario: List a folder's previous sessions
+- **WHEN** `GET /api/sessions/history?cwd=/workspace/cmux` is called and three sessions were created there
+- **THEN** the system SHALL return those three entries (uuid, created, optional name), newest first
+
+#### Scenario: Folder with no history
+- **WHEN** `GET /api/sessions/history?cwd=/workspace/empty` is called and no sessions were created there
+- **THEN** the system SHALL return an empty array
+

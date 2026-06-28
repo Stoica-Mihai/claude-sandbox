@@ -1,84 +1,43 @@
 {{define "directory-picker"}}
 <form id="dir-picker-form" hx-post="/api/sessions" hx-target="#session-list" hx-swap="innerHTML">
-    <!-- Breadcrumb -->
-    <div class="px-3 py-2 border-b border-base-content/10 flex items-center gap-1.5 text-xs font-mono">
+    <!-- Breadcrumb (HTMX navigates the browse level) -->
+    <div id="dp-breadcrumb" class="px-3 py-2 border-b border-base-content/10 flex items-center gap-1.5 text-xs font-mono flex-wrap">
         <span class="text-primary cursor-pointer hover:underline"
-              hx-get="/api/directories?path="
-              hx-target="#dir-picker"
-              hx-swap="innerHTML">/workspace</span>
+              hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</span>
         {{range .Breadcrumbs}}
         <span class="text-base-content/30">/</span>
         <span class="text-primary cursor-pointer hover:underline"
-              hx-get="/api/directories?path={{.Path}}"
-              hx-target="#dir-picker"
-              hx-swap="innerHTML">{{.Name}}</span>
+              hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</span>
         {{end}}
     </div>
 
-    <!-- Hidden input that holds the actual selected cwd value -->
-    <input type="hidden" name="cwd" id="dir-picker-cwd" value="{{.FullPath}}" />
+    <!-- cwd = selected folder; resume = uuid when a previous session is selected -->
+    <input type="hidden" name="cwd" id="dir-picker-cwd" value="" />
+    <input type="hidden" name="resume" id="dir-picker-resume" value="" />
 
-    <!-- Directory list -->
-    <div class="max-h-64 overflow-y-auto">
+    <!-- Folder list: row click selects the folder; the › arrow drills into it -->
+    <div id="dp-folders" class="max-h-64 overflow-y-auto">
         {{if .Dirs}}
         {{range .Dirs}}
-        <label class="dir-item px-3 py-2.5 flex items-center gap-2.5 cursor-pointer border-b border-base-content/5"
-               onclick="toggleDirSelect(this, '{{$.FullPath}}/{{.}}')">
-            <input type="checkbox" class="checkbox checkbox-primary checkbox-xs dir-check" data-path="{{$.FullPath}}/{{.}}" />
-            <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-            <span class="text-sm flex-1 select-none">{{.}}</span>
-            <span class="text-primary text-[10px] font-mono hidden dir-selected-label">selected</span>
-            <button type="button"
-                    class="btn btn-ghost btn-xs btn-circle opacity-30 hover:opacity-100 shrink-0"
+        <div class="flex items-center border-b border-base-content/5 hover:bg-base-content/5">
+            <button type="button" class="flex-1 min-w-0 text-left px-3 py-2.5 flex items-center gap-2.5"
+                    onclick="dpSelectFolder('{{$.FullPath}}/{{.}}', '{{.}}')">
+                <svg class="w-4 h-4 text-amber-400/70 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                <span class="text-sm truncate select-none">{{.}}</span>
+            </button>
+            <button type="button" class="px-3 py-2.5 text-base-content/30 hover:text-base-content shrink-0"
                     hx-get="/api/directories?path={{$.Path}}{{if $.Path}}/{{end}}{{.}}"
-                    hx-target="#dir-picker"
-                    hx-swap="innerHTML"
-                    onclick="event.preventDefault(); event.stopPropagation();"
-                    title="Browse subdirectories">
+                    hx-target="#dir-picker" hx-swap="innerHTML" title="Open subfolders">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" d="M9 5l7 7-7 7"/></svg>
             </button>
-        </label>
-        {{end}}
-        {{else}}
-        <div class="px-3 py-6 text-center text-sm text-base-content/30">
-            No subdirectories
         </div>
         {{end}}
+        {{else}}
+        <div class="px-3 py-6 text-center text-sm text-base-content/30">No subfolders</div>
+        {{end}}
     </div>
 
-    <!-- Current directory indicator -->
-    <div class="px-3 py-2 border-t border-base-content/10">
-        <span class="text-xs text-base-content/40" id="dir-picker-status">Default: <span class="font-mono">{{.FullPath}}</span></span>
-    </div>
+    <!-- Selected folder's actions (start-new + previous sessions); filled by dpSelectFolder -->
+    <div id="session-actions"></div>
 </form>
-
-<script>
-function toggleDirSelect(label, path) {
-    const cb = label.querySelector('.dir-check');
-    const wasChecked = cb.checked;
-    // Uncheck all others first
-    label.closest('form').querySelectorAll('.dir-check').forEach(c => {
-        c.checked = false;
-        c.closest('label').classList.remove('bg-primary/10');
-    });
-    // Toggle the clicked one
-    cb.checked = !wasChecked;
-    const cwdInput = document.getElementById('dir-picker-cwd');
-    const status = document.getElementById('dir-picker-status');
-    if (cb.checked) {
-        label.classList.add('bg-primary/10');
-        cwdInput.value = path;
-        status.innerHTML = 'Selected: <span class="font-mono text-primary">' + path + '</span>';
-    } else {
-        label.classList.remove('bg-primary/10');
-        cwdInput.value = '{{.FullPath}}';
-        status.innerHTML = 'Default: <span class="font-mono">{{.FullPath}}</span>';
-    }
-}
-</script>
-
-<style>
-    .dir-item:has(input:checked) .dir-selected-label { display: inline; }
-    .dir-item:has(input:checked) { font-weight: 500; }
-</style>
 {{end}}

@@ -36,9 +36,6 @@ const (
 	killGracePeriod = 2 * time.Second
 )
 
-// sessionNamesPath is the persisted custom-display-names file (0600, not in /tmp).
-func sessionNamesPath() string { return filepath.Join(metaDir, "session-names.json") }
-
 // DisplaySession is the view used by API responses.
 type DisplaySession struct {
 	Name           string    `json:"name"`
@@ -52,6 +49,7 @@ type DisplaySession struct {
 	RecentActivity bool      `json:"recent_activity"`
 	DisplayName    string    `json:"display_name"`
 	Hue            int       `json:"hue"`
+	SessionID      string    `json:"-"` // claude conversation uuid (for name lookup)
 }
 
 // sessionHues is a hand-picked palette of 12 maximally distinct hues.
@@ -80,7 +78,7 @@ type SessionManager struct {
 	cachedAt     time.Time
 	cachedSig    string // discovery signature for change detection
 	relays       map[string]*Relay
-	sessionNames map[string]string // custom display names keyed by session name
+	index        *SessionIndex // persisted uuid → {cwd,created,name}
 	broker       *Broker
 	stopPoll     chan struct{}
 }
@@ -89,12 +87,11 @@ type SessionManager struct {
 // starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
-		relays:       make(map[string]*Relay),
-		sessionNames: make(map[string]string),
-		broker:       broker,
-		stopPoll:     make(chan struct{}),
+		relays:   make(map[string]*Relay),
+		index:    loadSessionIndex(),
+		broker:   broker,
+		stopPoll: make(chan struct{}),
 	}
-	sm.loadSessionNames()
 	sm.syncRelays(discoverSessions())
 	go sm.pollLoop()
 	return sm
@@ -107,61 +104,24 @@ func (sm *SessionManager) GetRelay(sessionName string) *Relay {
 	return sm.relays[sessionName]
 }
 
-// SetSessionName sets or clears a custom display name for a session.
+// SetSessionName stores a custom name on the live session's conversation (keyed
+// by its uuid in the persistent index), so it shows in the sidebar and resume list.
 func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
-	sm.mu.Lock()
-	if displayName == "" {
-		delete(sm.sessionNames, sessionName)
-	} else {
-		sm.sessionNames[sessionName] = displayName
+	uuid := readSessionMeta(sessionName).SessionID
+	if uuid == "" {
+		return
 	}
-	sm.mu.Unlock()
-	sm.saveSessionNames()
+	sm.index.setName(uuid, displayName)
 }
 
-// GetSessionName returns the custom display name for a session, or "" if unset.
+// GetSessionName returns the custom name for a live session via its conversation uuid.
 func (sm *SessionManager) GetSessionName(sessionName string) string {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.sessionNames[sessionName]
+	return sm.index.name(readSessionMeta(sessionName).SessionID)
 }
 
-// loadSessionNames reads persisted display names from disk.
-func (sm *SessionManager) loadSessionNames() {
-	data, err := os.ReadFile(sessionNamesPath())
-	if err != nil {
-		return // file doesn't exist yet — normal on first run
-	}
-	var names map[string]string
-	if err := json.Unmarshal(data, &names); err != nil {
-		slog.Warn("failed to parse session names file", "error", err)
-		return
-	}
-	sm.mu.Lock()
-	for k, v := range names {
-		sm.sessionNames[k] = v
-	}
-	sm.mu.Unlock()
-	slog.Info("loaded session names", "count", len(names))
-}
-
-// saveSessionNames writes current display names to disk (0600).
-func (sm *SessionManager) saveSessionNames() {
-	sm.mu.RLock()
-	names := make(map[string]string, len(sm.sessionNames))
-	for k, v := range sm.sessionNames {
-		names[k] = v
-	}
-	sm.mu.RUnlock()
-
-	data, err := json.Marshal(names)
-	if err != nil {
-		slog.Warn("failed to marshal session names", "error", err)
-		return
-	}
-	if err := os.WriteFile(sessionNamesPath(), data, 0o600); err != nil {
-		slog.Warn("failed to save session names", "error", err)
-	}
+// History returns the previous sessions recorded for a folder (newest first).
+func (sm *SessionManager) History(cwd string) []SessionHistoryEntry {
+	return sm.index.listByCwd(cwd)
 }
 
 // syncRelays ensures every live session has a running relay and relays for gone
@@ -187,19 +147,14 @@ func (sm *SessionManager) syncRelays(sessions []DisplaySession) {
 		}
 	}
 
-	var namesChanged bool
 	for name, relay := range sm.relays {
 		if !currentNames[name] || relay.IsStopped() {
 			relay.Stop()
 			delete(sm.relays, name)
-			if _, had := sm.sessionNames[name]; had {
-				delete(sm.sessionNames, name)
-				namesChanged = true
-			}
+			// Custom names live in the persistent index (keyed by conversation
+			// uuid) and intentionally survive a session ending — they drive the
+			// resume list.
 		}
-	}
-	if namesChanged {
-		go sm.saveSessionNames()
 	}
 }
 
@@ -230,7 +185,7 @@ func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySes
 			sessions[i].LastActiveStr = humanRelativeTime(lastActivity)
 			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < recentActivityThreshold
 		}
-		if customName := sm.sessionNames[sessions[i].Name]; customName != "" {
+		if customName := sm.index.name(sessions[i].SessionID); customName != "" {
 			sessions[i].DisplayName = customName
 		} else {
 			sessions[i].DisplayName = sessions[i].DirName
@@ -263,8 +218,38 @@ func (sm *SessionManager) invalidateCache() {
 	sm.mu.Unlock()
 }
 
-// Spawn creates a new Claude Code session as a detached dtach master.
+// Spawn creates a new Claude Code conversation in cwd. It generates a uuid and
+// passes it to claude via --session-id so the dashboard owns the conversation id.
 func (sm *SessionManager) Spawn(cwd string) (string, error) {
+	absPath, err := validWorkspaceDir(cwd)
+	if err != nil {
+		return "", err
+	}
+	uuid := newUUID()
+	name, err := sm.spawnDtach(absPath, uuid, "--session-id "+uuid)
+	if err != nil {
+		return "", err
+	}
+	sm.index.add(uuid, absPath, time.Now().Unix())
+	return name, nil
+}
+
+// Resume reopens a previously recorded conversation by uuid (only uuids in the
+// index can be resumed, which gates the shell-interpolated value).
+func (sm *SessionManager) Resume(uuid string) (string, error) {
+	cwd, ok := sm.index.cwd(uuid)
+	if !ok {
+		return "", fmt.Errorf("unknown session: %s", uuid)
+	}
+	absPath, err := validWorkspaceDir(cwd)
+	if err != nil {
+		return "", err
+	}
+	return sm.spawnDtach(absPath, uuid, "--resume "+uuid)
+}
+
+// validWorkspaceDir resolves cwd and ensures it is an existing directory under /workspace.
+func validWorkspaceDir(cwd string) (string, error) {
 	absPath, err := filepath.Abs(cwd)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
@@ -276,7 +261,13 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", fmt.Errorf("directory does not exist: %s", absPath)
 	}
+	return absPath, nil
+}
 
+// spawnDtach launches a dtach session running claude with the given flag
+// (`--session-id <uuid>` or `--resume <uuid>`), records the uuid in the meta
+// sidecar, starts the relay, and returns the dtach session name.
+func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, error) {
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
 		claudePath = "claude"
@@ -288,12 +279,12 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 			continue // name collision, retry
 		}
 
-		if err := writeSessionMeta(sessionName, absPath); err != nil {
+		if err := writeSessionMeta(sessionName, absPath, uuid); err != nil {
 			slog.Warn("failed to write session metadata", "session", sessionName, "error", err)
 		}
 
-		innerScript := fmt.Sprintf("echo $$ > %q; exec %q --dangerously-skip-permissions",
-			pidPath(sessionName), claudePath)
+		innerScript := fmt.Sprintf("echo $$ > %q; exec %q %s --dangerously-skip-permissions",
+			pidPath(sessionName), claudePath, claudeFlag)
 		cmd := exec.Command("dtach", "-n", sockPath(sessionName), "-E", "-z",
 			"bash", "-c", innerScript)
 		cmd.Dir = absPath
@@ -306,7 +297,7 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 			continue
 		}
 
-		slog.Info("spawned session", "session", sessionName, "cwd", absPath)
+		slog.Info("spawned session", "session", sessionName, "cwd", absPath, "uuid", uuid)
 
 		relay := NewRelay(sessionName)
 		if err := relay.Start(); err != nil {
@@ -354,7 +345,6 @@ func (sm *SessionManager) Kill(sessionName string) error {
 		relay.Stop()
 		delete(sm.relays, sessionName)
 	}
-	delete(sm.sessionNames, sessionName)
 	sm.mu.Unlock()
 
 	removeSessionFiles(sessionName)
@@ -403,8 +393,8 @@ func (sm *SessionManager) pollLoop() {
 }
 
 // writeSessionMeta writes the per-session metadata sidecar.
-func writeSessionMeta(name, cwd string) error {
-	m := sessionMeta{CWD: cwd, Created: time.Now().Unix()}
+func writeSessionMeta(name, cwd, sessionID string) error {
+	m := sessionMeta{CWD: cwd, Created: time.Now().Unix(), SessionID: sessionID}
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -459,6 +449,7 @@ func discoverSessions() []DisplaySession {
 			Duration:  humanDuration(now.Sub(createdAt)),
 			Alive:     true,
 			Hue:       computeHue(name),
+			SessionID: meta.SessionID,
 		})
 	}
 

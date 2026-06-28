@@ -176,3 +176,8 @@ html, body { height: 100dvh; margin: 0; overflow: hidden; }
     border-radius: 3px;
     width: 5px !important;
 }
+
+/* New Session modal — start-new / previous-session rows */
+.sa-row { cursor: pointer; }
+.sa-row:hover { background: rgba(255, 255, 255, 0.05); }
+.sa-sel, .sa-sel:hover { background: rgba(47, 129, 247, 0.20); }
