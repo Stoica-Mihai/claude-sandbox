@@ -31,10 +31,11 @@ services:
     volumes:
       # Project files
       - ${WORKSPACE_PATH:-../}:/workspace
-      - ./container-settings.json:/home/claude/.claude/settings.json:ro
-      # Host session/auth files
-      - ${HOME}/.claude.json:/home/claude/.claude.json
-      - ${HOME}/.claude/.credentials.json:/home/claude/.claude/.credentials.json:ro
+      # Scoped Claude config (auth + sessions persist here, isolated from the
+      # host's real ~/.claude). Seeded with plugins on first run by entrypoint.
+      - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
+      # Container settings; entrypoint copies this into the scoped config dir
+      - ./container-settings.json:/home/claude/container-settings.json:ro
 
     environment:
       - HOME=/home/claude

@@ -104,9 +104,16 @@ MSG
 }
 BASHEOF
 
-# Copy the pre-built backend binary
+# Scoped, host-isolated Claude config dir (mounted from the host, persists auth
+# and sessions for this sandbox without touching the host's real ~/.claude).
+ENV CLAUDE_CONFIG_DIR=/home/claude/.claude-sandbox
+
+# Copy the pre-built backend binary + entrypoint (seeds the scoped config dir)
 COPY --from=builder /backend-server /home/claude/backend-server
+COPY --chown=claude:claude entrypoint.sh /home/claude/entrypoint.sh
+RUN chmod +x /home/claude/entrypoint.sh
 
 WORKDIR /workspace
 
+ENTRYPOINT ["/home/claude/entrypoint.sh"]
 CMD ["/home/claude/backend-server"]

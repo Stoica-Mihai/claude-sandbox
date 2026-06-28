@@ -17,8 +17,9 @@ Supporting files:
 
 - **Dockerfile.backend** — Multi-stage. Builder compiles the backend binary; runtime is Debian-based with bash, git, curl, dtach, bubblewrap, qrencode, npm, Go, gcc, uv, OpenSpec, and Claude Code + plugins. Non-root user `claude`.
 - **Dockerfile.frontend** — Multi-stage; minimal runtime (no tmux/socat/claude), just the frontend binary.
-- **docker-compose.yml** — Defines `backend` and `frontend` services. Maps host Claude session/auth files in, injects container settings + MCP config as read-only volumes, mounts the workspace at `/workspace`. Has healthchecks, log rotation, resource limits.
-- **container-settings.json** — Claude Code settings for the container (plugins, MCP servers, permissions). Mounted read-only at `/home/claude/.claude/settings.json`.
+- **docker-compose.yml** — Defines `backend` and `frontend` services. Mounts the workspace at `/workspace` and a scoped, host-isolated Claude config dir (`~/.claude-sandbox`) into the backend; injects `container-settings.json` read-only. Does NOT mount the host's real `~/.claude` / `~/.claude.json`. Has healthchecks, log rotation, resource limits.
+- **container-settings.json** — Claude Code settings for the container (plugins, MCP servers, permissions). Mounted read-only and copied by the entrypoint into the scoped config dir's `settings.json`.
+- **entrypoint.sh** — Backend entrypoint; on first run seeds the scoped config dir (`$CLAUDE_CONFIG_DIR`) with the image's baked plugins + registration, and refreshes `settings.json` from `container-settings.json`.
 - **mcp-config.json** — User-provided MCP server definitions (gitignored). See `mcp-config.example.json`.
 - **.env** — Host UID/GID for Docker build args (file permission compatibility).
 - **Makefile** — Convenience targets (`up`, `down`, `shell`, `watch`, `build`, `rebuild`, `restart-backend`, `restart-frontend`).
@@ -87,6 +88,7 @@ Pre-installed in the container:
 
 ## Notes
 
+- **Scoped auth/config:** Claude state (auth, sessions, projects, config) lives in `$CLAUDE_CONFIG_DIR=/home/claude/.claude-sandbox`, mounted from the host's `~/.claude-sandbox` — isolated from the host's real `~/.claude`. On first run authenticate inside a dashboard session (OAuth URL → paste code); the token persists in `~/.claude-sandbox` for this sandbox only. To refresh pre-installed plugins after an image rebuild, delete `~/.claude-sandbox` (it re-seeds on next start).
 - The container creates a non-root user `claude` with the host UID/GID (from `.env`) to avoid mounted-volume permission issues.
 - Tokens in `mcp-config.json` and `container-settings.json` are plaintext — do not commit these to a shared remote.
 - The dashboard sits behind an external auth proxy — no authentication is built in.
