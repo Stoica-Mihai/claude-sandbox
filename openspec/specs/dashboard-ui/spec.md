@@ -4,14 +4,14 @@
 TBD - created by archiving change web-dashboard. Update Purpose after archive.
 ## Requirements
 ### Requirement: Sidebar session list with SSE real-time updates
-The dashboard SHALL display a persistent left sidebar listing all Claude Code sessions (discovered via tmux). The sidebar SHALL remain visible in all view modes. The list SHALL auto-update via Server-Sent Events — when session state changes, the server SHALL push an SSE event that triggers HTMX to re-fetch and swap the session list HTML fragment. All sessions SHALL have uniform styling — there is no "external" or "managed" distinction.
+The dashboard SHALL display a persistent left sidebar listing all Claude Code sessions (discovered via the backend). The sidebar SHALL remain visible in all view modes. The list SHALL auto-update via Server-Sent Events — when session state changes, the server SHALL push an SSE event that triggers HTMX to re-fetch and swap the session list HTML fragment. All sessions SHALL have uniform styling — there is no "external" or "managed" distinction.
 
 #### Scenario: Dashboard loads with active sessions
-- **WHEN** the user opens the dashboard and tmux sessions are running
+- **WHEN** the user opens the dashboard and sessions are running
 - **THEN** the sidebar SHALL render all sessions with directory, session name, duration, and emerald "active" status
 
 #### Scenario: Dashboard loads with no sessions
-- **WHEN** the user opens the dashboard and no tmux sessions exist
+- **WHEN** the user opens the dashboard and no sessions exist
 - **THEN** the sidebar SHALL display an empty state prompting to create a new session
 
 #### Scenario: Session status updates via SSE
@@ -20,10 +20,10 @@ The dashboard SHALL display a persistent left sidebar listing all Claude Code se
 
 #### Scenario: Click any session to open terminal
 - **WHEN** the user clicks on any session card in the sidebar
-- **THEN** an xterm.js terminal SHALL initialize and connect to that session's WebSocket endpoint, displaying the current terminal state via tmux's pane replay. There SHALL be no dimmed or non-interactive session entries.
+- **THEN** an xterm.js terminal SHALL initialize and connect to that session's WebSocket endpoint, displaying the current terminal state via the relay's scrollback replay. There SHALL be no dimmed or non-interactive session entries.
 
 ### Requirement: Session card display
-Each session card in the sidebar SHALL display: the tmux session name, a live-ticking duration (updated every second client-side from the `CreatedAt` timestamp), a `DisplayName` as the primary label (custom name or directory basename), the full CWD path as secondary text, and an "active"/"stopped" status label. The pulsing status dot indicator SHALL be removed — the text label is sufficient.
+Each session card in the sidebar SHALL display: the session name, a live-ticking duration (updated every second client-side from the `CreatedAt` timestamp), a `DisplayName` as the primary label (custom name or directory basename), the full CWD path as secondary text, and an "active"/"stopped" status label. The pulsing status dot indicator SHALL be removed — the text label is sufficient.
 
 #### Scenario: Session card layout
 - **WHEN** a session card is rendered
@@ -167,11 +167,11 @@ When the WebSocket connection drops unexpectedly (close code != 1000), the termi
 - **THEN** the terminal SHALL display "[Connection lost]" in red text and stop retrying
 
 ### Requirement: Kill session from UI
-The dashboard SHALL allow users to terminate any session from the sidebar. The kill button SHALL appear on hover for all sessions (not just dashboard-spawned ones). Clicking the kill button SHALL send a DELETE request which runs `tmux kill-session` on the server.
+The dashboard SHALL allow users to terminate any session from the sidebar. The kill button SHALL appear on hover for all sessions. Clicking the kill button SHALL send a DELETE request to `/api/sessions/{name}` which terminates the session's process group on the server.
 
 #### Scenario: Kill a running session
 - **WHEN** the user clicks the kill button on any session entry
-- **THEN** HTMX SHALL send a DELETE request, the server SHALL terminate the tmux session, push an SSE update event, all connected clients SHALL receive the updated session list, AND the terminal tab/view SHALL be cleaned up (xterm instance destroyed, tab bar cleared, welcome screen shown if no remaining tabs)
+- **THEN** HTMX SHALL send a DELETE request, the server SHALL terminate the session's process group, push an SSE update event, all connected clients SHALL receive the updated session list, AND the terminal tab/view SHALL be cleaned up (xterm instance destroyed, tab bar cleared, welcome screen shown if no remaining tabs)
 
 ### Requirement: Dark/light theme toggle
 The dashboard SHALL support dark and light themes using DaisyUI's `data-theme` attribute. The toggle SHALL appear in the header. The user's preference SHALL persist in localStorage.

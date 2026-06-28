@@ -44,19 +44,19 @@
 ## 6. Cleanup and docs
 
 - [x] 6.1 Remove any remaining tmux references in `session.go`/`relay.go`/comments
-- [ ] 6.2 Update `CLAUDE.md` architecture section (tmux → dtach; socat removed)
-- [ ] 6.3 Update `README.md` if it references tmux
+- [x] 6.2 Update `CLAUDE.md` architecture section (tmux → dtach; socat removed)
+- [x] 6.3 Update `README.md` if it references tmux
 
 ## 7. Verification
 
 - [x] 7.1 `go build ./...` and `go vet ./...` pass in `backend/`
 - [x] 7.2 `go test -race ./...` passes (add a relay reconnect/race smoke test)
-- [ ] 7.3 `Dockerfile.backend` builds; `dtach` present, `tmux`/`socat` absent
-- [ ] 7.4 Spawn from dashboard → session is interactive
-- [ ] 7.5 Browser highlight-and-copy works on scrollback (no modifier) and on live TUI lines (Shift)
-- [ ] 7.6 Resize: terminal adopts the connecting viewer's size on connect
-- [ ] 7.7 Restart the backend container → session still listed and attachable with state intact
-- [ ] 7.8 Two viewers on one session: both see output, active typist's size wins, non-active not garbled
-- [ ] 7.9 Kill from dashboard removes the session and closes viewers
-- [ ] 7.10 CLI `claude` appears in the dashboard with correct cwd; detach/reattach works
-- [ ] 7.11 Crash a master (kill -9) → discovery unlinks the stale socket within one poll cycle
+- [x] 7.3 `Dockerfile.backend` builds; `dtach` present, `tmux`/`socat` absent
+- [x] 7.4 Spawn from dashboard → session is interactive
+- [x] 7.5 Browser highlight-and-copy works on scrollback (no modifier) and on live TUI lines (Shift)
+- [x] 7.6 Resize: terminal adopts the connecting viewer's size on connect
+- [x] 7.7 Restart the backend container → session still listed and attachable with state intact
+- [x] 7.8 Two viewers on one session: both see output, active typist's size wins, non-active not garbled
+- [x] 7.9 Kill from dashboard removes the session and closes viewers
+- [x] 7.10 CLI `claude` appears in the dashboard with correct cwd; detach/reattach works
+- [x] 7.11 Crash a master (kill -9) → discovery unlinks the stale socket within one poll cycle

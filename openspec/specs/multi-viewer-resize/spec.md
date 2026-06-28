@@ -1,7 +1,7 @@
 # multi-viewer-resize Specification
 
 ## Purpose
-Per-viewer terminal dimension tracking and active-viewer-based tmux resizing for multi-viewer relay sessions.
+Per-viewer terminal dimension tracking and active-viewer-based session resizing (via `pty.Setsize` on the relay's owned `dtach -a` attach PTY) for multi-viewer relay sessions.
 
 ## Requirements
 ### Requirement: Per-viewer dimension tracking
@@ -20,23 +20,23 @@ The relay SHALL track each connected viewer's terminal dimensions (cols, rows) i
 - **THEN** the relay SHALL remove the stored dimensions for that viewer
 
 ### Requirement: Active-viewer resize on input
-The relay SHALL track which viewer is the "active" viewer (the one whose terminal dimensions match the current tmux window size). When a viewer sends terminal input and is not the active viewer, the relay SHALL resize the tmux window to that viewer's stored dimensions before forwarding the input.
+The relay SHALL track which viewer is the "active" viewer (the one whose terminal dimensions the attach PTY currently matches). When a viewer sends terminal input and is not the active viewer, the relay SHALL resize the session by calling `pty.Setsize` on the owned `dtach -a` attach PTY (which dtach forwards to the session as SIGWINCH) to that viewer's stored dimensions before forwarding the input. This mimics tmux "window-size latest" behavior, but the mechanism is `pty.Setsize`, not tmux. The relay SHALL impose a size only when at least one viewer is present; a session with no viewers SHALL keep its current size.
 
 #### Scenario: First viewer becomes active
 - **WHEN** the first viewer connects and sends a resize message
-- **THEN** the relay SHALL set that viewer as the active viewer and resize tmux to their dimensions
+- **THEN** the relay SHALL set that viewer as the active viewer and resize the attach PTY (via `pty.Setsize`) to their dimensions
 
 #### Scenario: Non-active viewer sends input
 - **WHEN** a viewer that is not the active viewer sends a BinaryMessage (terminal input)
-- **THEN** the relay SHALL set that viewer as the active viewer, resize the tmux window to that viewer's stored dimensions, and forward the input to the tmux pane
+- **THEN** the relay SHALL set that viewer as the active viewer, resize the attach PTY (via `pty.Setsize`) to that viewer's stored dimensions, and forward the input to the attach PTY
 
 #### Scenario: Active viewer sends input
 - **WHEN** the active viewer sends a BinaryMessage (terminal input)
-- **THEN** the relay SHALL forward the input without resizing tmux
+- **THEN** the relay SHALL forward the input without resizing the attach PTY
 
 #### Scenario: Non-active viewer sends resize message
 - **WHEN** a viewer that is not the active viewer sends a resize control message (TextMessage)
-- **THEN** the relay SHALL store the dimensions but SHALL NOT resize tmux and SHALL NOT change the active viewer
+- **THEN** the relay SHALL store the dimensions but SHALL NOT resize the attach PTY and SHALL NOT change the active viewer
 
 ### Requirement: Viewer suspension
 When the active viewer changes, the relay SHALL suspend all non-active viewers. Suspended viewers SHALL NOT receive broadcast output data. Suspended viewers SHALL receive control messages (text frames).
@@ -46,7 +46,7 @@ When the active viewer changes, the relay SHALL suspend all non-active viewers. 
 - **THEN** the relay SHALL mark all other viewers as suspended
 
 #### Scenario: Broadcast skips suspended viewers
-- **WHEN** the relay broadcasts output from the tmux pane
+- **WHEN** the relay broadcasts output from the attach PTY
 - **THEN** suspended viewers SHALL NOT receive the broadcast data
 
 #### Scenario: Suspended viewer receives deactivation notification
