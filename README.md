@@ -24,7 +24,8 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 ## Prerequisites
 
 - **Docker** and **Docker Compose** installed
-- **Claude Code** installed and logged in on the host — the container mounts your auth files (`~/.claude.json` and `~/.claude/.credentials.json`) to authenticate
+
+The sandbox keeps its own Claude auth/config in `~/.claude-sandbox` on the host, isolated from your real `~/.claude`. You authenticate once inside the sandbox (below) — no host login is mounted.
 
 ## Setup
 
@@ -34,20 +35,13 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
    cd claude-sandbox
    ```
 
-2. Make sure you've logged into Claude Code on the host at least once so the auth files exist:
-   ```bash
-   # These files must exist before starting the container:
-   # ~/.claude.json
-   # ~/.claude/.credentials.json
-   ```
-
-3. Build and start:
+2. Build and start:
    ```bash
    make up
    ```
-   This auto-generates `.env` with your UID/GID, builds the dashboard, and starts the container.
+   This auto-generates `.env` with your UID/GID, creates `~/.claude-sandbox`, builds backend + frontend, and starts them.
 
-4. Open the dashboard at `http://localhost:8080`
+3. Open the dashboard at `http://localhost:8080`, spawn a session, and **log in once** when Claude prompts (open the OAuth URL, paste the code back). The token persists in `~/.claude-sandbox` for this sandbox only.
 
 ## Usage
 
