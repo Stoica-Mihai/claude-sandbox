@@ -49,7 +49,7 @@ func buildBackendURL(base string, r *http.Request) string {
 // in both directions until one side closes.
 func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin: checkWSOrigin,
 	}
 
 	// Build backend WebSocket URL.

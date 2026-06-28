@@ -35,6 +35,8 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
+	initAllowedWSOrigins()
+
 	mux := http.NewServeMux()
 
 	srv, err := NewServer(backendURL, mux)

@@ -72,6 +72,7 @@ services:
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
       - BACKEND_URL=http://backend:8081
+      - ALLOWED_WS_ORIGINS=${ALLOWED_WS_ORIGINS:-}
 
     ports:
       - "${DASHBOARD_PORT:-8080}:${DASHBOARD_PORT:-8080}"
