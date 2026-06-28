@@ -52,18 +52,19 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 ## Usage
 
 ```bash
-make up        # Auto-generate .env, build and start the container
-make shell     # Open a bash shell
-make claude    # Run Claude Code
-make down      # Stop the container
+make up        # Auto-generate .env, build and start backend + frontend
+make shell     # Open a bash shell in the backend container
+make watch     # Rebuild/sync on source change
+make down      # Stop the containers
 make rebuild   # Full rebuild with no cache
-make up-clean  # Rebuild from scratch and start
 ```
+
+Create and manage Claude Code sessions from the dashboard — direct CLI `claude`
+inside the container is disabled.
 
 Or use docker directly:
 ```bash
-docker exec -it claude_workspace bash
-docker exec -it claude_workspace claude
+docker exec -it claude_backend bash
 docker compose down
 ```
 
@@ -95,7 +96,8 @@ The dashboard has no built-in authentication — it's designed to sit behind an 
 | `container-settings.json` | Claude Code settings (model, plugins, permissions) |
 | `mcp-config.json` | User-provided MCP server definitions (gitignored) |
 | `mcp-config.example.json` | Example MCP server config template |
-| `dashboard/` | Go web dashboard source (built into container image) |
+| `backend/` | Go API + session manager (dtach sessions, relay, WebSocket) |
+| `frontend/` | Go dashboard UI + reverse proxy to the backend |
 
 ## License
 

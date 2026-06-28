@@ -27,6 +27,11 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
+	if err := initPaths(); err != nil {
+		slog.Error("failed to initialize session directories", "error", err)
+		os.Exit(1)
+	}
+
 	broker := NewBroker()
 	sm := NewSessionManager(broker)
 	mux := http.NewServeMux()

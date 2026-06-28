@@ -13,29 +13,33 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
-const sessionNamesFile = "/tmp/claude-session-names.json"
-
 const (
-	// sessionPrefix identifies dashboard-relevant tmux sessions.
+	// sessionPrefix identifies dashboard-relevant sessions.
 	sessionPrefix = "claude-"
 	// workspaceRoot is the base directory users may spawn sessions in.
 	workspaceRoot = "/workspace"
-	// cacheTTL is how long tmux list-sessions results are cached.
+	// cacheTTL is how long discovery results are cached.
 	cacheTTL = 2 * time.Second
 	// pollInterval is how often the background poller checks for session changes.
 	pollInterval = 5 * time.Second
-	// maxSpawnRetries is the number of retries on tmux session name collision.
+	// maxSpawnRetries is the number of retries on session-name collision.
 	maxSpawnRetries = 3
-	// recentActivityThreshold is how recently a session must have had output to be considered "active".
+	// recentActivityThreshold is how recently a session must have had output to be "active".
 	recentActivityThreshold = 5 * time.Second
 	// termType is the TERM environment variable set for new sessions.
 	termType = "xterm-256color"
+	// killGracePeriod is how long Kill waits after SIGTERM before SIGKILL.
+	killGracePeriod = 2 * time.Second
 )
 
-// DisplaySession is the view used by API responses. All sessions are tmux sessions.
+// sessionNamesPath is the persisted custom-display-names file (0600, not in /tmp).
+func sessionNamesPath() string { return filepath.Join(metaDir, "session-names.json") }
+
+// DisplaySession is the view used by API responses.
 type DisplaySession struct {
 	Name           string    `json:"name"`
 	CWD            string    `json:"cwd"`
@@ -53,16 +57,14 @@ type DisplaySession struct {
 // sessionHues is a hand-picked palette of 12 maximally distinct hues.
 var sessionHues = []int{0, 30, 60, 120, 170, 210, 260, 300, 330, 45, 150, 240}
 
-// computeHue returns a deterministic hue from a fixed palette of visually distinct
-// colors, derived from the session name's hex suffix.
+// computeHue returns a deterministic hue from a fixed palette, derived from the
+// session name's hex suffix.
 func computeHue(name string) int {
-	// Parse the hex suffix after "claude-" as an integer for a clean index.
 	suffix := strings.TrimPrefix(name, sessionPrefix)
 	var idx uint64
 	if v, err := strconv.ParseUint(suffix, 16, 64); err == nil {
 		idx = v
 	} else {
-		// Fallback: sum bytes.
 		for _, b := range []byte(name) {
 			idx += uint64(b)
 		}
@@ -70,21 +72,21 @@ func computeHue(name string) int {
 	return sessionHues[int(idx%uint64(len(sessionHues)))]
 }
 
-// SessionManager discovers tmux sessions, manages relays, and provides
+// SessionManager discovers dtach sessions, manages relays, and provides
 // spawn/kill operations.
 type SessionManager struct {
 	mu           sync.RWMutex
 	cached       []DisplaySession
 	cachedAt     time.Time
-	cachedRaw    string // raw tmux output for change detection
+	cachedSig    string // discovery signature for change detection
 	relays       map[string]*Relay
 	sessionNames map[string]string // custom display names keyed by session name
 	broker       *Broker
 	stopPoll     chan struct{}
 }
 
-// NewSessionManager creates a SessionManager wired to the given SSE broker
-// and starts the background polling goroutine.
+// NewSessionManager creates a SessionManager wired to the given SSE broker and
+// starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
 		relays:       make(map[string]*Relay),
@@ -93,8 +95,7 @@ func NewSessionManager(broker *Broker) *SessionManager {
 		stopPoll:     make(chan struct{}),
 	}
 	sm.loadSessionNames()
-	// Start relays for any existing sessions.
-	sm.syncRelays()
+	sm.syncRelays(discoverSessions())
 	go sm.pollLoop()
 	return sm
 }
@@ -127,7 +128,7 @@ func (sm *SessionManager) GetSessionName(sessionName string) string {
 
 // loadSessionNames reads persisted display names from disk.
 func (sm *SessionManager) loadSessionNames() {
-	data, err := os.ReadFile(sessionNamesFile)
+	data, err := os.ReadFile(sessionNamesPath())
 	if err != nil {
 		return // file doesn't exist yet — normal on first run
 	}
@@ -144,7 +145,7 @@ func (sm *SessionManager) loadSessionNames() {
 	slog.Info("loaded session names", "count", len(names))
 }
 
-// saveSessionNames writes current display names to disk.
+// saveSessionNames writes current display names to disk (0600).
 func (sm *SessionManager) saveSessionNames() {
 	sm.mu.RLock()
 	names := make(map[string]string, len(sm.sessionNames))
@@ -158,15 +159,15 @@ func (sm *SessionManager) saveSessionNames() {
 		slog.Warn("failed to marshal session names", "error", err)
 		return
 	}
-	if err := os.WriteFile(sessionNamesFile, data, 0644); err != nil {
+	if err := os.WriteFile(sessionNamesPath(), data, 0o600); err != nil {
 		slog.Warn("failed to save session names", "error", err)
 	}
 }
 
-// syncRelays ensures every discovered tmux session has a running relay,
-// and relays for gone sessions are stopped.
-func (sm *SessionManager) syncRelays() {
-	sessions := discoverTmuxSessions()
+// syncRelays ensures every live session has a running relay and relays for gone
+// sessions are stopped. The caller supplies the discovered session list to avoid
+// a redundant directory scan.
+func (sm *SessionManager) syncRelays(sessions []DisplaySession) {
 	currentNames := make(map[string]bool, len(sessions))
 	for _, s := range sessions {
 		currentNames[s.Name] = true
@@ -175,7 +176,6 @@ func (sm *SessionManager) syncRelays() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Start relays for new sessions.
 	for name := range currentNames {
 		if _, exists := sm.relays[name]; !exists {
 			relay := NewRelay(name)
@@ -187,7 +187,6 @@ func (sm *SessionManager) syncRelays() {
 		}
 	}
 
-	// Stop relays for gone sessions.
 	var namesChanged bool
 	for name, relay := range sm.relays {
 		if !currentNames[name] || relay.IsStopped() {
@@ -204,8 +203,8 @@ func (sm *SessionManager) syncRelays() {
 	}
 }
 
-// ListSessions returns all claude-prefixed tmux sessions, using cache if fresh.
-// Enrichment (activity timestamps, display names) is applied on every call.
+// ListSessions returns all sessions, using cache if fresh. Enrichment (activity
+// timestamps, display names) is applied on every call.
 func (sm *SessionManager) ListSessions() []DisplaySession {
 	sm.mu.RLock()
 	if time.Since(sm.cachedAt) < cacheTTL {
@@ -219,33 +218,37 @@ func (sm *SessionManager) ListSessions() []DisplaySession {
 	return sm.enrichSessions(sm.refreshSessions())
 }
 
-// enrichSessions adds live activity data and display names to a session list copy.
+// enrichSessions adds live activity data and display names to a session list
+// copy. Hue is set at discovery time (pure function of the immutable name).
 func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySession {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	for i := range sessions {
-		if relay := sm.GetRelay(sessions[i].Name); relay != nil {
+		if relay := sm.relays[sessions[i].Name]; relay != nil {
 			lastActivity := relay.GetLastActivity()
 			sessions[i].LastActivity = lastActivity
 			sessions[i].LastActiveStr = humanRelativeTime(lastActivity)
 			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < recentActivityThreshold
 		}
-		if customName := sm.GetSessionName(sessions[i].Name); customName != "" {
+		if customName := sm.sessionNames[sessions[i].Name]; customName != "" {
 			sessions[i].DisplayName = customName
 		} else {
 			sessions[i].DisplayName = sessions[i].DirName
 		}
-		sessions[i].Hue = computeHue(sessions[i].Name)
 	}
 	return sessions
 }
 
-// refreshSessions queries tmux and updates the cache. Returns a copy of the
-// new list (safe to mutate without affecting the cache).
+// refreshSessions queries discovery and updates the cache. Returns a copy of the
+// new list.
 func (sm *SessionManager) refreshSessions() []DisplaySession {
-	sessions := discoverTmuxSessions()
+	sessions := discoverSessions()
+	sig := sessionsSignature(sessions)
 
 	sm.mu.Lock()
 	sm.cached = sessions
 	sm.cachedAt = time.Now()
+	sm.cachedSig = sig
 	sm.mu.Unlock()
 
 	result := make([]DisplaySession, len(sessions))
@@ -253,20 +256,20 @@ func (sm *SessionManager) refreshSessions() []DisplaySession {
 	return result
 }
 
-// invalidateCache forces the next ListSessions call to query tmux.
+// invalidateCache forces the next ListSessions call to re-discover.
 func (sm *SessionManager) invalidateCache() {
 	sm.mu.Lock()
 	sm.cachedAt = time.Time{}
 	sm.mu.Unlock()
 }
 
-// Spawn creates a new Claude Code session inside a tmux session.
+// Spawn creates a new Claude Code session as a detached dtach master.
 func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	absPath, err := filepath.Abs(cwd)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
-	if !strings.HasPrefix(absPath, workspaceRoot) {
+	if absPath != workspaceRoot && !strings.HasPrefix(absPath, workspaceRoot+"/") {
 		return "", fmt.Errorf("directory must be under %s", workspaceRoot)
 	}
 	info, err := os.Stat(absPath)
@@ -279,32 +282,32 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 		claudePath = "claude"
 	}
 
-	var sessionName string
 	for i := 0; i < maxSpawnRetries; i++ {
-		sessionName = generateSessionName()
-		cmd := exec.Command("tmux", "new-session",
-			"-d",
-			"-s", sessionName,
-			"-c", absPath,
-			"--", claudePath, "--dangerously-skip-permissions",
-		)
-		cmd.Env = append(os.Environ(), "TERM=" + termType)
+		sessionName := generateSessionName()
+		if _, statErr := os.Stat(sockPath(sessionName)); statErr == nil {
+			continue // name collision, retry
+		}
+
+		if err := writeSessionMeta(sessionName, absPath); err != nil {
+			slog.Warn("failed to write session metadata", "session", sessionName, "error", err)
+		}
+
+		innerScript := fmt.Sprintf("echo $$ > %q; exec %q --dangerously-skip-permissions",
+			pidPath(sessionName), claudePath)
+		cmd := exec.Command("dtach", "-n", sockPath(sessionName), "-E", "-z",
+			"bash", "-c", innerScript)
+		cmd.Dir = absPath
+		cmd.Env = append(os.Environ(), "TERM="+termType)
 
 		if err := cmd.Run(); err != nil {
-			slog.Warn("tmux new-session failed, retrying",
-				"session", sessionName,
-				"attempt", i+1,
-				"error", err,
-			)
+			slog.Warn("dtach spawn failed, retrying",
+				"session", sessionName, "attempt", i+1, "error", err)
+			removeSessionFiles(sessionName)
 			continue
 		}
 
-		slog.Info("spawned tmux session",
-			"session", sessionName,
-			"cwd", absPath,
-		)
+		slog.Info("spawned session", "session", sessionName, "cwd", absPath)
 
-		// Start relay for the new session.
 		relay := NewRelay(sessionName)
 		if err := relay.Start(); err != nil {
 			slog.Warn("failed to start relay for new session", "session", sessionName, "error", err)
@@ -319,50 +322,55 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 		return sessionName, nil
 	}
 
-	return "", fmt.Errorf("failed to create tmux session after %d attempts", maxSpawnRetries)
+	return "", fmt.Errorf("failed to create session after %d attempts", maxSpawnRetries)
 }
 
-// Kill terminates a tmux session by name.
+// Kill terminates a session by signalling its process group via the PID sidecar.
 func (sm *SessionManager) Kill(sessionName string) error {
-	if !sm.sessionExists(sessionName) {
+	if !sessionAlive(sessionName) {
 		return fmt.Errorf("session not found: %s", sessionName)
 	}
 
-	cmd := exec.Command("tmux", "kill-session", "-t", sessionName)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to kill session %s: %w", sessionName, err)
+	if pid := sessionPID(sessionName); pid > 0 {
+		// Signal the process group (negative pid); the inner bash is the session
+		// leader, so this reaps claude and any children it spawned.
+		_ = syscall.Kill(-pid, syscall.SIGTERM)
+		deadline := time.Now().Add(killGracePeriod)
+		for time.Now().Before(deadline) {
+			if !processAlive(pid) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if processAlive(pid) {
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+		}
 	}
 
-	slog.Info("killed tmux session", "session", sessionName)
+	slog.Info("killed session", "session", sessionName)
 
-	// Stop relay for the killed session.
 	sm.mu.Lock()
 	if relay, ok := sm.relays[sessionName]; ok {
 		relay.Stop()
 		delete(sm.relays, sessionName)
 	}
+	delete(sm.sessionNames, sessionName)
 	sm.mu.Unlock()
 
+	removeSessionFiles(sessionName)
 	sm.invalidateCache()
 	sm.broker.Publish()
 	return nil
 }
 
-// sessionExists checks if a tmux session with the given name exists.
-func (sm *SessionManager) sessionExists(name string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", name)
-	return cmd.Run() == nil
-}
-
-// Shutdown stops the polling goroutine. tmux sessions are NOT killed —
-// they persist for reconnection after dashboard restart.
+// Shutdown stops the polling goroutine. Sessions are NOT killed — they persist
+// for reconnection after dashboard restart.
 func (sm *SessionManager) Shutdown() {
 	close(sm.stopPoll)
-	slog.Info("session manager shut down (tmux sessions preserved)")
+	slog.Info("session manager shut down (sessions preserved)")
 }
 
-// pollLoop periodically checks tmux for session changes and publishes SSE
-// events when the session list changes.
+// pollLoop periodically re-discovers sessions and publishes SSE events on change.
 func (sm *SessionManager) pollLoop() {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -370,26 +378,23 @@ func (sm *SessionManager) pollLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			raw := rawTmuxOutput()
+			sessions := discoverSessions()
+			sig := sessionsSignature(sessions)
 
 			sm.mu.RLock()
-			changed := raw != sm.cachedRaw
+			changed := sig != sm.cachedSig
 			sm.mu.RUnlock()
 
 			if changed {
-				sessions := parseTmuxOutput(raw)
-
 				sm.mu.Lock()
 				sm.cached = sessions
 				sm.cachedAt = time.Now()
-				sm.cachedRaw = raw
+				sm.cachedSig = sig
 				sm.mu.Unlock()
 
-				// Sync relays for new/gone sessions.
-				sm.syncRelays()
+				sm.syncRelays(sessions)
 			}
 
-			// Always publish so activity timestamps and pulse states refresh.
 			sm.broker.Publish()
 		case <-sm.stopPoll:
 			return
@@ -397,59 +402,63 @@ func (sm *SessionManager) pollLoop() {
 	}
 }
 
-// discoverTmuxSessions queries tmux and returns all claude-prefixed sessions.
-func discoverTmuxSessions() []DisplaySession {
-	raw := rawTmuxOutput()
-	return parseTmuxOutput(raw)
-}
-
-// rawTmuxOutput runs tmux list-sessions and returns the raw stdout string.
-func rawTmuxOutput() string {
-	cmd := exec.Command("tmux", "list-sessions",
-		"-F", "#{session_name}|#{session_created}|#{pane_current_path}",
-	)
-	out, err := cmd.Output()
+// writeSessionMeta writes the per-session metadata sidecar.
+func writeSessionMeta(name, cwd string) error {
+	m := sessionMeta{CWD: cwd, Created: time.Now().Unix()}
+	data, err := json.Marshal(m)
 	if err != nil {
-		// tmux not running or no sessions — not an error.
-		return ""
+		return err
 	}
-	return string(out)
+	return os.WriteFile(metaPath(name), data, 0o600)
 }
 
-// parseTmuxOutput parses raw tmux list-sessions output into DisplaySessions.
-func parseTmuxOutput(raw string) []DisplaySession {
-	if raw == "" {
+// readSessionMeta reads the per-session metadata sidecar (zero value if absent).
+func readSessionMeta(name string) sessionMeta {
+	var m sessionMeta
+	data, err := os.ReadFile(metaPath(name))
+	if err != nil {
+		return m
+	}
+	_ = json.Unmarshal(data, &m)
+	return m
+}
+
+// discoverSessions scans the PID sidecars for live claude-* sessions, unlinking
+// the sidecars of any whose process is gone. Discovery keys off the PID sidecar
+// (which the backend owns) rather than the socket: dtach removes its own socket
+// when the inner process exits, so a socket scan would miss dead sessions and
+// leak their metadata sidecars.
+func discoverSessions() []DisplaySession {
+	entries, err := os.ReadDir(metaDir)
+	if err != nil {
 		return nil
 	}
 
 	now := time.Now()
 	var sessions []DisplaySession
 
-	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
-		if line == "" {
+	for _, e := range entries {
+		n := e.Name()
+		if !strings.HasPrefix(n, sessionPrefix) || !strings.HasSuffix(n, ".pid") {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) != 3 {
-			continue
-		}
-
-		name := parts[0]
-		if !strings.HasPrefix(name, sessionPrefix) {
+		name := strings.TrimSuffix(n, ".pid")
+		if !sessionAlive(name) {
+			removeSessionFiles(name)
 			continue
 		}
 
-		created, _ := strconv.ParseInt(parts[1], 10, 64)
-		cwd := parts[2]
-		createdAt := time.Unix(created, 0)
+		meta := readSessionMeta(name)
+		createdAt := meta.createdTime(name)
 
 		sessions = append(sessions, DisplaySession{
 			Name:      name,
-			CWD:       cwd,
-			DirName:   filepath.Base(cwd),
+			CWD:       meta.CWD,
+			DirName:   filepath.Base(meta.CWD),
 			CreatedAt: createdAt,
 			Duration:  humanDuration(now.Sub(createdAt)),
 			Alive:     true,
+			Hue:       computeHue(name),
 		})
 	}
 
@@ -460,7 +469,19 @@ func parseTmuxOutput(raw string) []DisplaySession {
 	return sessions
 }
 
-// generateSessionName creates a tmux session name like "claude-a1b2c3d4".
+// sessionsSignature builds a deterministic change-detection signature.
+func sessionsSignature(sessions []DisplaySession) string {
+	var b strings.Builder
+	for _, s := range sessions {
+		b.WriteString(s.Name)
+		b.WriteByte('|')
+		b.WriteString(strconv.FormatInt(s.CreatedAt.Unix(), 10))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// generateSessionName creates a session name like "claude-a1b2c3d4".
 func generateSessionName() string {
 	buf := make([]byte, 4)
 	if _, err := rand.Read(buf); err != nil {
@@ -469,7 +490,7 @@ func generateSessionName() string {
 	return sessionPrefix + hex.EncodeToString(buf)
 }
 
-// humanRelativeTime formats a time as a relative string like "3s ago" or "5m ago".
+// humanRelativeTime formats a time as a relative string like "3s ago".
 func humanRelativeTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -485,8 +506,7 @@ func humanRelativeTime(t time.Time) string {
 	}
 }
 
-// humanDuration formats a duration into a human-readable string like "2h 15m"
-// or "45s" for short durations.
+// humanDuration formats a duration like "2h 15m" or "45s".
 func humanDuration(d time.Duration) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%ds", int(d.Seconds()))

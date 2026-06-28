@@ -22,13 +22,12 @@ RUN cd /src/backend && go build -o /backend-server .
 # ── Runtime stage ──
 FROM debian:bookworm-slim
 
-# Runtime packages — everything Claude Code and tmux sessions need
+# Runtime packages — everything Claude Code and dtach sessions need
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     curl \
-    socat \
-    tmux \
+    dtach \
     bubblewrap \
     qrencode \
     npm \
@@ -56,8 +55,9 @@ RUN groupadd -g ${GID} claude && \
     useradd -m -u ${UID} -g claude claude
 USER claude
 
-# tmux configuration
-COPY --chown=claude:claude tmux.conf /home/claude/.tmux.conf
+# Session socket + metadata storage (shared by the backend and the `claude` shell function)
+ENV CLAUDE_SOCK_DIR=/home/claude/.local/state/claude/sock
+ENV CLAUDE_META_DIR=/home/claude/.local/state/claude/meta
 
 # Install Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -91,14 +91,16 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install opsx-ext@claude-skills && \
     claude plugin install caveman@caveman
 
-# Shell function: wraps every `claude` invocation in a tmux session
+# Shell function: direct CLI `claude` is disabled — sessions are created and
+# managed from the dashboard, which spawns the real binary itself.
 RUN cat >> /home/claude/.bashrc <<'BASHEOF'
 claude() {
-  local claude_bin
-  claude_bin=$(command -v claude)
-  local session_name="claude-$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')"
-  tmux new-session -d -s "$session_name" -- "$claude_bin" --dangerously-skip-permissions "$@"
-  TMUX= tmux attach -t "$session_name"
+  cat >&2 <<'MSG'
+Direct `claude` sessions are disabled in this container.
+Create and open sessions from the dashboard:
+  http://localhost:8080  (or the host's DASHBOARD_PORT)
+MSG
+  return 1
 }
 BASHEOF
 

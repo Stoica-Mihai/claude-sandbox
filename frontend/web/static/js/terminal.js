@@ -5,6 +5,17 @@ document.addEventListener('cancel', (e) => {
     }
 }, true);
 
+// Clipboard fallback for contexts where the async Clipboard API is unavailable.
+function copyFallback(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* best effort */ }
+    document.body.removeChild(ta);
+}
+
 // ANSI escape codes for terminal status messages
 const ANSI_RED = '\x1b[31m';
 const ANSI_GREEN = '\x1b[32m';
@@ -279,7 +290,6 @@ const TerminalManager = {
         const mobile = isMobile();
         const term = new Terminal({
             cursorBlink: true,
-            copyOnSelect: !mobile,
             rightClickSelectsWord: !mobile,
             fontSize: 14,
             fontFamily: "Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
@@ -327,6 +337,21 @@ const TerminalManager = {
         });
 
         term.open(containerEl);
+
+        // Copy-on-select (desktop): xterm has no built-in copyOnSelect, so copy
+        // the final selection on mouseup. Uses the async Clipboard API with an
+        // execCommand fallback for non-secure contexts.
+        if (!mobile) {
+            containerEl.addEventListener('mouseup', () => {
+                const sel = term.getSelection();
+                if (!sel) return;
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(sel).catch(() => copyFallback(sel));
+                } else {
+                    copyFallback(sel);
+                }
+            });
+        }
 
         // Prevent Escape from unfocusing the terminal.
         // The browser blurs the textarea on Escape at a level preventDefault can't stop.
@@ -452,7 +477,7 @@ const TerminalManager = {
             } catch(e) {}
         });
 
-        // Track whether another viewer resized tmux (our display is garbled).
+        // Track whether another viewer resized the session (our display is garbled).
         let needsRefresh = false;
 
         // Reconnection state
@@ -551,10 +576,10 @@ const TerminalManager = {
         term.onData((data) => {
             const ws = instance.ws;
             if (ws && ws.readyState === WebSocket.OPEN) {
-                // If another viewer resized tmux, clear our garbled display.
-                // The input triggers ResizeToViewer on the server, which
-                // resizes tmux back to our dimensions. tmux redraws and we
-                // get clean content through normal broadcast.
+                // If another viewer resized the session, clear our garbled
+                // display. The input triggers ResizeToViewer on the server,
+                // which resizes the PTY back to our dimensions; the redraw
+                // arrives through normal broadcast.
                 if (needsRefresh) {
                     needsRefresh = false;
                     term.clear();

@@ -66,13 +66,13 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleListSessions returns all claude-prefixed tmux sessions as JSON.
+// handleListSessions returns all claude-prefixed sessions as JSON.
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.sm.ListSessions()
 	writeJSON(w, http.StatusOK, sessions)
 }
 
-// handleSpawn creates a new Claude Code session inside a tmux session.
+// handleSpawn creates a new Claude Code session as a detached dtach master.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CWD string `json:"cwd"`
@@ -96,7 +96,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"session_name": sessionName})
 }
 
-// handleKill terminates a tmux session.
+// handleKill terminates a session.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
@@ -215,7 +215,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpload accepts an image file upload and saves it to a temp directory
-// accessible from the tmux session. Returns the file path as JSON.
+// accessible from the session. Returns the file path as JSON.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
@@ -331,8 +331,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 // handleWebSocket upgrades the HTTP connection to a WebSocket and registers
 // the viewer with the session's relay. Output comes from the relay's ring
-// buffer (replay) and live pipe-pane stream. Input is sent via the relay's
-// unix socket. No tmux attach process is spawned.
+// buffer (replay) and the live attach PTY. Input is sent via the relay's
+// attach PTY.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
@@ -397,10 +397,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case websocket.BinaryMessage:
 			// Resume broadcast delivery if this viewer was suspended.
 			relay.UnsuspendViewer(conn)
-			// Resize tmux to this viewer's dimensions if it wasn't the last
-			// to resize (mimics tmux's "window-size latest" behavior).
+			// Resize to this viewer's dimensions if it wasn't the last to
+			// resize (mimics tmux's "window-size latest" behavior).
 			relay.ResizeToViewer(conn)
-			// Terminal input — send to tmux pane via relay.
+			// Terminal input — send to the session via relay.
 			if err := relay.SendInput(data); err != nil {
 				slog.Debug("relay input failed", "session", sessionName, "error", err)
 				return

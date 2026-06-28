@@ -92,21 +92,6 @@ services:
 
     logging: *logging
 
-  mdns:
-    build:
-      context: .
-      dockerfile: Dockerfile.mdns
-    container_name: claude_mdns
-    network_mode: host
-    environment:
-      - MDNS_HOSTNAME=${MDNS_HOSTNAME:-claude}
-      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
-    restart: unless-stopped
-    depends_on:
-      frontend:
-        condition: service_healthy
-    logging: *logging
-
 networks:
   claude-net:
     driver: bridge

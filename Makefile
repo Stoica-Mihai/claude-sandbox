@@ -28,4 +28,5 @@ shell:
 	docker exec -it claude_backend bash
 
 claude:
-	docker exec -it claude_backend claude
+	@echo "Direct CLI claude is disabled — sessions are created from the dashboard:"
+	@echo "  http://localhost:$${DASHBOARD_PORT:-8080}"

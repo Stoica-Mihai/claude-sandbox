@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,20 +11,24 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
 
 const (
-	// termReset is the escape sequence to reset the terminal to initial state.
+	// termReset resets the terminal to its initial state.
 	termReset = "\x1bc"
-	// socatConnectTimeout is how long to wait for socat to connect.
-	socatConnectTimeout = 5 * time.Second
+	// attachWaitTimeout bounds how long Start waits for the dtach socket to appear.
+	attachWaitTimeout = 5 * time.Second
 	// resizeActivityWindow suppresses activity stamping after resize redraws.
 	resizeActivityWindow = 2 * time.Second
 	// inputActivityWindow suppresses activity stamping for keystroke echoes.
 	inputActivityWindow = 500 * time.Millisecond
-	// maxReconnectAttempts is the number of relay reconnect attempts before giving up.
+	// maxReconnectAttempts is the number of attach reconnect attempts before giving up.
 	maxReconnectAttempts = 3
+	// defaultCols/defaultRows seed the PTY before a viewer reports real dimensions.
+	defaultCols = 80
+	defaultRows = 24
 )
 
 // Alternate screen sequences to detect and strip.
@@ -60,98 +63,125 @@ type viewer struct {
 	suspended atomic.Bool // when true, broadcast skips this viewer
 }
 
-// Relay manages bidirectional I/O between WebSocket viewers and a tmux
-// session via pipe-pane + socat over a unix socket.
+// Relay manages bidirectional I/O between WebSocket viewers and a session via a
+// directly-owned `dtach -a` attach PTY.
 type Relay struct {
 	SessionName string
-	socketPath  string
+	sockPath    string
 	ringBuf     *RingBuffer
 
 	mu          sync.RWMutex
 	viewers     map[*websocket.Conn]*viewer
 	lastResizer *websocket.Conn // viewer that last triggered a resize
 
-	listener  net.Listener
-	socatConn net.Conn
+	ptmx      atomic.Pointer[os.File] // current attach PTY master (swapped on reconnect)
+	attachCmd atomic.Pointer[exec.Cmd]
+	attachMu  sync.Mutex   // serializes reconnect/attach lifecycle
+	generation atomic.Int64 // identifies the live read loop; stale loops exit
 
 	lastActivity   time.Time
 	lastActivityMu sync.RWMutex
-	lastResizeAt time.Time // suppress activity stamping after resize redraws
-	lastInputAt  time.Time // suppress activity stamping for keystroke echoes
+	lastResizeAt   atomic.Int64 // unix-nano; suppress activity stamping after resizes
+	lastInputAt    atomic.Int64 // unix-nano; suppress activity stamping for echoes
+	lastCols       atomic.Uint32
+	lastRows       atomic.Uint32
 
-	inAltScreen bool   // true when Claude Code is in alternate screen mode
-	partial     []byte // partial escape sequence from previous read chunk
+	inAltScreen atomic.Bool // true when Claude Code is in alternate screen mode
+	partial     []byte      // partial escape sequence from previous read chunk (readLoop only)
 
 	done     chan struct{} // closed when relay is stopped
 	stopOnce sync.Once
 }
 
-// NewRelay creates a relay for the given tmux session.
+// NewRelay creates a relay for the given session.
 func NewRelay(sessionName string) *Relay {
 	return &Relay{
 		SessionName: sessionName,
-		socketPath:  fmt.Sprintf("/tmp/relay-%s.sock", sessionName),
+		sockPath:    sockPath(sessionName),
 		ringBuf:     NewRingBuffer(defaultBufferCapacity),
 		viewers:     make(map[*websocket.Conn]*viewer),
 		done:        make(chan struct{}),
 	}
 }
 
-// Start sets up the unix socket, starts pipe-pane with socat, and begins
-// reading output into the ring buffer.
+// waitForSocket blocks until the dtach socket exists or the timeout elapses.
+func (r *Relay) waitForSocket() error {
+	deadline := time.Now().Add(attachWaitTimeout)
+	for {
+		if _, err := os.Stat(r.sockPath); err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("dtach socket %s did not appear", r.sockPath)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// startAttach launches `dtach -a` under a new PTY the relay owns and applies the
+// last known window size. Callers hold attachMu (or call before any read loop).
+func (r *Relay) startAttach() (*os.File, *exec.Cmd, error) {
+	if err := r.waitForSocket(); err != nil {
+		return nil, nil, err
+	}
+	cmd := exec.Command("dtach", "-a", r.sockPath, "-E", "-z", "-r", "none")
+	f, err := pty.Start(cmd)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dtach attach failed: %w", err)
+	}
+	// Only impose a size when a browser viewer is present. Otherwise leave the
+	// PTY at whatever an interactive CLI client set, so the relay doesn't
+	// clobber a CLI-owned session's dimensions.
+	r.mu.RLock()
+	hasViewers := len(r.viewers) > 0
+	r.mu.RUnlock()
+	if hasViewers {
+		r.applySize(f)
+	}
+	return f, cmd, nil
+}
+
+// applySize sets the PTY window size to the last reported dimensions (or the
+// default seed). dtach does not adopt a fresh client's size automatically, so
+// this must run on every attach.
+func (r *Relay) applySize(f *os.File) {
+	cols := uint16(r.lastCols.Load())
+	rows := uint16(r.lastRows.Load())
+	if cols == 0 || rows == 0 {
+		cols, rows = defaultCols, defaultRows
+	}
+	_ = pty.Setsize(f, &pty.Winsize{Rows: rows, Cols: cols})
+}
+
+// Start attaches to the session and begins reading output into the ring buffer.
 func (r *Relay) Start() error {
-	// Clean up any stale socket file.
-	os.Remove(r.socketPath)
-
-	var err error
-	r.listener, err = net.Listen("unix", r.socketPath)
+	f, cmd, err := r.startAttach()
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", r.socketPath, err)
+		return err
 	}
-
-	// Start pipe-pane with socat in the background.
-	if err := r.startPipePaneCmd(); err != nil {
-		r.listener.Close()
-		os.Remove(r.socketPath)
-		return fmt.Errorf("failed to start pipe-pane: %w", err)
-	}
-
-	// Accept the socat connection (with timeout).
-	r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(socatConnectTimeout))
-	r.socatConn, err = r.listener.Accept()
-	if err != nil {
-		r.stopPipePaneCmd()
-		r.listener.Close()
-		os.Remove(r.socketPath)
-		return fmt.Errorf("socat did not connect: %w", err)
-	}
-	// Clear deadline for normal operation.
-	r.listener.(*net.UnixListener).SetDeadline(time.Time{})
+	r.ptmx.Store(f)
+	r.attachCmd.Store(cmd)
 
 	slog.Info("relay started", "session", r.SessionName)
 
-	// Start the output reader goroutine.
-	go r.readLoop()
-
+	gen := r.generation.Add(1)
+	go r.readLoop(gen)
 	return nil
 }
 
-// Stop tears down the relay: stops pipe-pane, closes connections, removes socket.
+// Stop tears down the relay's attach and closes all viewers. It does NOT remove
+// the dtach socket — the master owns it and removes it on exit.
 func (r *Relay) Stop() {
 	r.stopOnce.Do(func() {
 		close(r.done)
 
-		r.stopPipePaneCmd()
-
-		if r.socatConn != nil {
-			r.socatConn.Close()
+		if cmd := r.attachCmd.Load(); cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
 		}
-		if r.listener != nil {
-			r.listener.Close()
+		if f := r.ptmx.Load(); f != nil {
+			f.Close()
 		}
-		os.Remove(r.socketPath)
 
-		// Close all viewer WebSockets.
 		r.mu.Lock()
 		for conn, v := range r.viewers {
 			v.writeMu.Lock()
@@ -166,7 +196,6 @@ func (r *Relay) Stop() {
 		r.viewers = make(map[*websocket.Conn]*viewer)
 		r.mu.Unlock()
 
-		// Clean up uploaded files for this session.
 		uploadPath := filepath.Join(uploadDir, r.SessionName)
 		if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
 			slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
@@ -176,17 +205,14 @@ func (r *Relay) Stop() {
 	})
 }
 
-// AddViewer registers a WebSocket connection, replays the ring buffer,
-// and adds it to the broadcast list.
+// AddViewer registers a WebSocket connection, replays the ring buffer, and adds
+// it to the broadcast list.
 func (r *Relay) AddViewer(conn *websocket.Conn) {
-	// Send terminal reset — safe to write directly since the viewer
-	// isn't in the map yet (broadcast can't reach it).
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(termReset)); err != nil {
 		slog.Debug("failed to send reset to viewer", "session", r.SessionName, "error", err)
 		return
 	}
 
-	// Replay ring buffer (normal-mode conversation history).
 	scrollback := r.ringBuf.Bytes()
 	if len(scrollback) > 0 {
 		if err := conn.WriteMessage(websocket.BinaryMessage, scrollback); err != nil {
@@ -195,13 +221,10 @@ func (r *Relay) AddViewer(conn *websocket.Conn) {
 		}
 	}
 
-	// If currently in alt screen (Claude Code TUI), tell the viewer to
-	// enter alt screen so live TUI output renders in the correct buffer.
-	if r.inAltScreen {
+	if r.inAltScreen.Load() {
 		_ = conn.WriteMessage(websocket.BinaryMessage, altScreenEnter[0])
 	}
 
-	// Add to viewers.
 	r.mu.Lock()
 	r.viewers[conn] = &viewer{}
 	r.mu.Unlock()
@@ -217,17 +240,18 @@ func (r *Relay) RemoveViewer(conn *websocket.Conn) {
 	r.mu.Unlock()
 }
 
-// SendInput writes user input bytes to the tmux pane via the socat connection.
+// SendInput writes user input bytes to the session via the attach PTY.
 func (r *Relay) SendInput(data []byte) error {
-	if r.socatConn == nil {
-		return fmt.Errorf("socat not connected")
+	f := r.ptmx.Load()
+	if f == nil {
+		return fmt.Errorf("attach not connected")
 	}
-	r.lastInputAt = time.Now()
-	_, err := r.socatConn.Write(data)
+	r.lastInputAt.Store(time.Now().UnixNano())
+	_, err := f.Write(data)
 	return err
 }
 
-// Resize stores a viewer's terminal dimensions and resizes tmux only if this
+// Resize stores a viewer's terminal dimensions and resizes the PTY only if this
 // viewer is the active one (last to type). It does NOT change who the active
 // viewer is — only ResizeToViewer (input-triggered) does that.
 func (r *Relay) Resize(conn *websocket.Conn, cols, rows uint16) {
@@ -235,7 +259,6 @@ func (r *Relay) Resize(conn *websocket.Conn, cols, rows uint16) {
 	if v, ok := r.viewers[conn]; ok {
 		v.size = viewerSize{cols, rows}
 	}
-	// First viewer to connect becomes the active one.
 	if r.lastResizer == nil {
 		r.lastResizer = conn
 	}
@@ -243,19 +266,18 @@ func (r *Relay) Resize(conn *websocket.Conn, cols, rows uint16) {
 	r.mu.Unlock()
 
 	if isActive {
-		r.resizeTmux(cols, rows)
+		r.applyResize(cols, rows)
 	}
 }
 
-// deactivatedMsg is sent to non-active viewers so their client knows
-// the display is frozen and needs a clear on next input.
+// deactivatedMsg tells a non-active viewer its display is frozen and needs a
+// clear on next input.
 var deactivatedMsg = []byte(`{"type":"deactivated"}`)
 
-// ResizeToViewer resizes the tmux window to match the given viewer's dimensions
-// if that viewer is not already the last resizer. This mimics tmux's
-// "window-size latest" behavior — the active typist's size wins.
-// Non-active viewers are suspended (broadcast skips them) and receive a
-// "deactivated" text message so the client clears on next input.
+// ResizeToViewer resizes the PTY to match the given viewer's dimensions if that
+// viewer is not already the last resizer. Mimics tmux "window-size latest" — the
+// active typist's size wins. Non-active viewers are suspended (broadcast skips
+// them) and receive a "deactivated" message so the client clears on next input.
 func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
 	r.mu.RLock()
 	if r.lastResizer == conn {
@@ -273,9 +295,6 @@ func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
 	r.lastResizer = conn
 	r.mu.Unlock()
 
-	// Suspend non-active viewers and notify them. Suspended viewers
-	// don't receive broadcast data, so their display freezes at the
-	// last correct state instead of showing garbled content.
 	r.mu.RLock()
 	for c, vw := range r.viewers {
 		if c == conn {
@@ -288,7 +307,7 @@ func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
 	}
 	r.mu.RUnlock()
 
-	r.resizeTmux(v.size.cols, v.size.rows)
+	r.applyResize(v.size.cols, v.size.rows)
 }
 
 // UnsuspendViewer resumes broadcast delivery for a viewer.
@@ -301,16 +320,16 @@ func (r *Relay) UnsuspendViewer(conn *websocket.Conn) {
 	}
 }
 
-// resizeTmux runs the tmux resize-window command.
-func (r *Relay) resizeTmux(cols, rows uint16) {
-	r.lastResizeAt = time.Now()
-	cmd := exec.Command("tmux", "resize-window",
-		"-t", r.SessionName,
-		"-x", fmt.Sprintf("%d", cols),
-		"-y", fmt.Sprintf("%d", rows),
-	)
-	if err := cmd.Run(); err != nil {
-		slog.Debug("resize failed", "session", r.SessionName, "error", err)
+// applyResize records the dimensions and resizes the attach PTY, which dtach
+// forwards to the inner program as SIGWINCH.
+func (r *Relay) applyResize(cols, rows uint16) {
+	r.lastCols.Store(uint32(cols))
+	r.lastRows.Store(uint32(rows))
+	r.lastResizeAt.Store(time.Now().UnixNano())
+	if f := r.ptmx.Load(); f != nil {
+		if err := pty.Setsize(f, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+			slog.Debug("resize failed", "session", r.SessionName, "error", err)
+		}
 	}
 }
 
@@ -331,93 +350,86 @@ func (r *Relay) GetLastActivity() time.Time {
 	return r.lastActivity
 }
 
-// readLoop continuously reads from the socat connection, processes alternate
-// screen tracking, writes to ring buffer, and broadcasts to viewers.
-func (r *Relay) readLoop() {
+// readLoop reads from the attach PTY, tracks alternate screen state, writes to
+// the ring buffer, and broadcasts to viewers. It exits when the relay stops or a
+// newer generation supersedes it.
+func (r *Relay) readLoop(gen int64) {
 	buf := make([]byte, 4096)
 	for {
-		n, err := r.socatConn.Read(buf)
+		f := r.ptmx.Load()
+		if f == nil {
+			return
+		}
+		n, err := f.Read(buf)
 		if n > 0 {
 			r.processOutput(buf[:n])
 		}
 		if err != nil {
 			slog.Debug("relay read ended", "session", r.SessionName, "error", err)
-			// Attempt reconnect if relay hasn't been stopped.
-			if !r.IsStopped() {
-				r.reconnect()
+			if r.IsStopped() || gen != r.generation.Load() {
+				return
 			}
+			r.reconnect()
 			return
 		}
 	}
 }
 
-// processOutput handles alternate screen tracking, ring buffer writes,
-// and viewer broadcast for a chunk of output data.
+// processOutput handles alternate screen tracking, ring buffer writes, and
+// viewer broadcast for a chunk of output data.
 func (r *Relay) processOutput(data []byte) {
-	// Track alt screen state and extract normal-mode segments for ring buffer.
-	_, segments := r.trackAltScreen(data)
+	segments := r.trackAltScreen(data)
 
-	// Broadcast raw data to viewers (including alt-screen sequences so
-	// xterm.js handles alternate screen properly — no viewport jumps).
 	r.broadcast(data)
 
-	// Stamp activity only when there's real content (normal-mode segments),
-	// not cursor blinks, and not resize-triggered redraws (which are just
-	// tmux re-rendering existing content, not new output).
-	if len(segments) > 0 && time.Since(r.lastResizeAt) > resizeActivityWindow && time.Since(r.lastInputAt) > inputActivityWindow {
+	// Stamp activity only for real content, not resize redraws or input echoes.
+	if len(segments) > 0 &&
+		time.Since(time.Unix(0, r.lastResizeAt.Load())) > resizeActivityWindow &&
+		time.Since(time.Unix(0, r.lastInputAt.Load())) > inputActivityWindow {
 		r.lastActivityMu.Lock()
 		r.lastActivity = time.Now()
 		r.lastActivityMu.Unlock()
 	}
 
-	// Write only normal-mode segments to the ring buffer.
 	for _, seg := range segments {
 		r.ringBuf.Write(seg)
 	}
 }
 
-// trackAltScreen scans data for alternate screen sequences, strips them,
-// toggles the inAltScreen flag, and returns:
-//   - cleaned: the data with alt screen sequences removed (for viewers)
-//   - normalSegments: slices of data that were in normal screen mode (for ring buffer)
-func (r *Relay) trackAltScreen(data []byte) (cleaned []byte, normalSegments [][]byte) {
-	// Prepend any partial sequence from previous chunk.
+// trackAltScreen scans data for alternate screen sequences, toggles the
+// inAltScreen flag, and returns the normal-mode segments (for the ring buffer).
+// Viewers receive the raw stream directly, so no cleaned copy is built here.
+func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 	if len(r.partial) > 0 {
 		data = append(r.partial, data...)
 		r.partial = nil
 	}
 
-	cleaned = make([]byte, 0, len(data))
 	var currentNormal []byte
-	if !r.inAltScreen {
+	if !r.inAltScreen.Load() {
 		currentNormal = make([]byte, 0, len(data))
 	}
 
 	i := 0
 	for i < len(data) {
-		// Check if we're at the start of an escape sequence.
 		if data[i] == '\x1b' {
-			// Check for partial match at end of buffer.
 			remaining := data[i:]
 			matched := false
 
 			for _, seq := range allAltScreenSeqs {
 				if len(remaining) < len(seq) {
-					// Could be a partial match — check prefix.
 					if bytes.HasPrefix(seq, remaining) {
 						r.partial = make([]byte, len(remaining))
 						copy(r.partial, remaining)
-						// Flush current normal segment.
-						if !r.inAltScreen && len(currentNormal) > 0 {
+						if !r.inAltScreen.Load() && len(currentNormal) > 0 {
 							normalSegments = append(normalSegments, currentNormal)
 						}
-						return cleaned, normalSegments
+						return normalSegments
 					}
 					continue
 				}
 
 				if bytes.Equal(remaining[:len(seq)], seq) {
-					// Found a full match — strip it and toggle state.
 					isEnter := false
 					for _, enterSeq := range altScreenEnter {
 						if bytes.Equal(seq, enterSeq) {
@@ -427,14 +439,13 @@ func (r *Relay) trackAltScreen(data []byte) (cleaned []byte, normalSegments [][]
 					}
 
 					if isEnter {
-						// Flush normal segment before entering alt screen.
-						if !r.inAltScreen && len(currentNormal) > 0 {
+						if !r.inAltScreen.Load() && len(currentNormal) > 0 {
 							normalSegments = append(normalSegments, currentNormal)
 							currentNormal = nil
 						}
-						r.inAltScreen = true
+						r.inAltScreen.Store(true)
 					} else {
-						r.inAltScreen = false
+						r.inAltScreen.Store(false)
 						currentNormal = make([]byte, 0, len(data)-i)
 					}
 
@@ -449,20 +460,17 @@ func (r *Relay) trackAltScreen(data []byte) (cleaned []byte, normalSegments [][]
 			}
 		}
 
-		// Regular byte — add to cleaned output and conditionally to normal buffer.
-		cleaned = append(cleaned, data[i])
-		if !r.inAltScreen {
+		if !r.inAltScreen.Load() {
 			currentNormal = append(currentNormal, data[i])
 		}
 		i++
 	}
 
-	// Flush remaining normal segment.
-	if !r.inAltScreen && len(currentNormal) > 0 {
+	if !r.inAltScreen.Load() && len(currentNormal) > 0 {
 		normalSegments = append(normalSegments, currentNormal)
 	}
 
-	return cleaned, normalSegments
+	return normalSegments
 }
 
 // broadcast sends data to all connected, non-suspended WebSocket viewers.
@@ -482,22 +490,13 @@ func (r *Relay) broadcast(data []byte) {
 	}
 }
 
-// startPipePaneCmd runs tmux pipe-pane to connect the pane's I/O to socat.
-func (r *Relay) startPipePaneCmd() error {
-	cmd := exec.Command("tmux", "pipe-pane", "-IO", "-t", r.SessionName,
-		fmt.Sprintf("socat - UNIX-CONNECT:%s", r.socketPath),
-	)
-	return cmd.Run()
-}
-
-// stopPipePaneCmd disconnects pipe-pane from the session.
-func (r *Relay) stopPipePaneCmd() {
-	cmd := exec.Command("tmux", "pipe-pane", "-t", r.SessionName)
-	_ = cmd.Run()
-}
-
-// reconnect attempts to re-establish the socat connection after a drop.
+// reconnect re-establishes the attach PTY after a drop, swapping it under
+// attachMu and starting a fresh read loop. If the session master is gone, it
+// stops the relay.
 func (r *Relay) reconnect() {
+	r.attachMu.Lock()
+	defer r.attachMu.Unlock()
+
 	for attempt := 1; attempt <= maxReconnectAttempts; attempt++ {
 		select {
 		case <-r.done:
@@ -505,42 +504,38 @@ func (r *Relay) reconnect() {
 		default:
 		}
 
-		slog.Info("relay reconnecting", "session", r.SessionName, "attempt", attempt)
-		time.Sleep(time.Duration(attempt) * time.Second)
-
-		// Check if the session still exists.
-		check := exec.Command("tmux", "has-session", "-t", r.SessionName)
-		if check.Run() != nil {
+		if !sessionAlive(r.SessionName) {
 			slog.Info("session gone, stopping relay", "session", r.SessionName)
 			r.Stop()
 			return
 		}
 
-		// Clean up old connection.
-		if r.socatConn != nil {
-			r.socatConn.Close()
-		}
+		slog.Info("relay reconnecting", "session", r.SessionName, "attempt", attempt)
+		time.Sleep(time.Duration(attempt) * time.Second)
 
-		// Restart pipe-pane.
-		if err := r.startPipePaneCmd(); err != nil {
-			slog.Warn("reconnect pipe-pane failed", "session", r.SessionName, "error", err)
-			continue
-		}
-
-		// Accept new socat connection.
-		r.listener.(*net.UnixListener).SetDeadline(time.Now().Add(socatConnectTimeout))
-		conn, err := r.listener.Accept()
+		f, cmd, err := r.startAttach()
 		if err != nil {
-			slog.Warn("reconnect accept failed", "session", r.SessionName, "error", err)
+			slog.Warn("reconnect attach failed", "session", r.SessionName, "error", err)
 			continue
 		}
-		r.listener.(*net.UnixListener).SetDeadline(time.Time{})
-		r.socatConn = conn
+
+		if r.IsStopped() {
+			f.Close()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			return
+		}
+
+		if old := r.ptmx.Swap(f); old != nil {
+			old.Close()
+		}
+		r.attachCmd.Store(cmd)
 
 		slog.Info("relay reconnected", "session", r.SessionName)
 
-		// Restart read loop.
-		go r.readLoop()
+		gen := r.generation.Add(1)
+		go r.readLoop(gen)
 		return
 	}
 
