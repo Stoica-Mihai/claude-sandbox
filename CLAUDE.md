@@ -88,7 +88,7 @@ Pre-installed in the container:
 
 ## Notes
 
-- **Scoped auth/config:** Claude state (auth, sessions, projects, config) lives in `$CLAUDE_CONFIG_DIR=/home/claude/.claude-sandbox`, mounted from the host's `~/.claude-sandbox` — isolated from the host's real `~/.claude`. On first run authenticate inside a dashboard session (OAuth URL → paste code); the token persists in `~/.claude-sandbox` for this sandbox only. To refresh pre-installed plugins after an image rebuild, delete `~/.claude-sandbox` (it re-seeds on next start).
+- **Scoped auth/config:** the host directory `~/.claude-sandbox` is bind-mounted into the backend container at `/home/claude/.claude-sandbox` (the in-container `claude` user's home) and set as `$CLAUDE_CONFIG_DIR`. All Claude state (auth, sessions, projects, config) lives there — on the host it's just `~/.claude-sandbox`, isolated from the host's real `~/.claude`. There is no second host user; `/home/claude` exists only inside the container. On first run authenticate inside a dashboard session (OAuth URL → paste code); the token persists in `~/.claude-sandbox` for this sandbox only. To refresh pre-installed plugins after an image rebuild, delete `~/.claude-sandbox` (it re-seeds on next start).
 - The container creates a non-root user `claude` with the host UID/GID (from `.env`) to avoid mounted-volume permission issues.
 - Tokens in `mcp-config.json` and `container-settings.json` are plaintext — do not commit these to a shared remote.
 - The dashboard sits behind an external auth proxy — no authentication is built in.
