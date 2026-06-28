@@ -291,6 +291,7 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 		if err := writeSessionMeta(sessionName, absPath); err != nil {
 			slog.Warn("failed to write session metadata", "session", sessionName, "error", err)
 		}
+		acceptFolderTrust(absPath)
 
 		innerScript := fmt.Sprintf("echo $$ > %q; exec %q --dangerously-skip-permissions",
 			pidPath(sessionName), claudePath)
@@ -399,6 +400,52 @@ func (sm *SessionManager) pollLoop() {
 		case <-sm.stopPoll:
 			return
 		}
+	}
+}
+
+var trustMu sync.Mutex
+
+// acceptFolderTrust pre-accepts Claude Code's folder-trust dialog for cwd by
+// setting projects[cwd].hasTrustDialogAccepted in the scoped .claude.json.
+// Dashboard-spawned sessions are always the user's own /workspace directories,
+// so the interactive trust prompt is redundant. No-op if already trusted.
+func acceptFolderTrust(cwd string) {
+	trustMu.Lock()
+	defer trustMu.Unlock()
+
+	path := filepath.Join(claudeConfigDir(), ".claude.json")
+	cfg := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &cfg)
+	}
+
+	projects, ok := cfg["projects"].(map[string]any)
+	if !ok {
+		projects = map[string]any{}
+		cfg["projects"] = projects
+	}
+	entry, ok := projects[cwd].(map[string]any)
+	if !ok {
+		entry = map[string]any{}
+		projects[cwd] = entry
+	}
+	if t, _ := entry["hasTrustDialogAccepted"].(bool); t {
+		return // already trusted — avoid rewriting (and clobbering concurrent writes)
+	}
+	entry["hasTrustDialogAccepted"] = true
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		slog.Warn("failed to marshal .claude.json for trust", "error", err)
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		slog.Warn("failed to write trust temp file", "error", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("failed to commit folder trust", "error", err)
 	}
 }
 

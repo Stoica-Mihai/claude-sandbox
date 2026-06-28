@@ -48,6 +48,18 @@ func initPaths() error {
 	return nil
 }
 
+// claudeConfigDir returns Claude Code's config dir ($CLAUDE_CONFIG_DIR), where
+// .claude.json lives. Falls back to ~/.claude-sandbox.
+func claudeConfigDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".claude-sandbox")
+	}
+	return "/home/claude/.claude-sandbox"
+}
+
 // sockPath returns the dtach socket path for a session.
 func sockPath(name string) string { return filepath.Join(sockDir, name) }
 
