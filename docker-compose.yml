@@ -28,14 +28,23 @@ services:
       # AppArmor enabled (only seccomp is relaxed).
       - seccomp:unconfined
 
+    # Disable IPv6 in the container. api.anthropic.com is dual-stack; with no
+    # usable IPv6 egress, claude's (Bun) startup fetches intermittently attempt
+    # the AAAA address and stall on the connect timeout (10-30s blank screen)
+    # before falling back to IPv4. Removing the v6 stack forces IPv4 instantly.
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+
     volumes:
       # Project files
       - ${WORKSPACE_PATH:-../}:/workspace
       # Scoped Claude config (auth + sessions persist here, isolated from the
       # host's real ~/.claude). Seeded with plugins on first run by entrypoint.
       - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
-      # Container settings; entrypoint copies this into the scoped config dir
-      - ./container-settings.json:/home/claude/container-settings.json:ro
+      # Container settings; entrypoint copies this into the scoped config dir.
+      # Read-write so the in-dashboard settings editor can persist edits.
+      - ./container-settings.json:/home/claude/container-settings.json
 
     environment:
       - HOME=/home/claude

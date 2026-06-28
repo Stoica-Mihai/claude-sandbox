@@ -48,6 +48,8 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)

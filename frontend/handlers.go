@@ -54,6 +54,8 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
+	mux.HandleFunc("GET /api/settings", s.handleSettingsProxy)
+	mux.HandleFunc("PUT /api/settings", s.handleSettingsProxy)
 
 	// Pure proxy routes.
 	mux.HandleFunc("GET /events", s.handleSSEProxy)
@@ -298,6 +300,11 @@ func (s *Server) handleUploadProxy(w http.ResponseWriter, r *http.Request) {
 
 // handleHealthzProxy proxies the health check to the backend.
 func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
+	httpProxy(w, r, s.backendURL)
+}
+
+// handleSettingsProxy proxies GET/PUT /api/settings (JSON) to the backend.
+func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
 	httpProxy(w, r, s.backendURL)
 }
 

@@ -66,6 +66,21 @@ func claudeConfigDir() string {
 // in the persistent config dir so it survives container restarts.
 func sessionIndexPath() string { return filepath.Join(claudeConfigDir(), "dashboard-sessions.json") }
 
+// containerSettingsPath is the authoritative container settings file the
+// settings editor reads and writes ($CONTAINER_SETTINGS_PATH, default the
+// compose bind-mount location).
+func containerSettingsPath() string {
+	if p := os.Getenv("CONTAINER_SETTINGS_PATH"); p != "" {
+		return p
+	}
+	return "/home/claude/container-settings.json"
+}
+
+// settingsJSONPath is the live settings file claude reads at session spawn.
+// entrypoint.sh seeds it from container-settings.json on boot; the settings
+// editor refreshes it so saved changes apply without a container restart.
+func settingsJSONPath() string { return filepath.Join(claudeConfigDir(), "settings.json") }
+
 // newUUID returns a random RFC 4122 v4 UUID string.
 func newUUID() string {
 	var b [16]byte

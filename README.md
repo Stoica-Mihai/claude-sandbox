@@ -77,6 +77,7 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 - **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory
 - **Mobile support** — responsive layout with slide-out drawer and touch input bar
 - **Theme toggle** — dark/light mode with localStorage persistence, plus a separate accent-color picker (7 colors, persisted)
+- **Settings editor** — header gear opens a modal to edit the container's Claude prefs (model, effort, thinking, language, advisor) — saved to `container-settings.json`, applied to new sessions
 - **Real-time updates** — SSE pushes session changes to all connected clients
 
 The dashboard has no built-in authentication — it's designed to sit behind an auth proxy.

@@ -40,6 +40,10 @@
                 <div class="accpop" id="accpop"></div>
             </div>
 
+            <button class="iconbtn settings-btn" title="Settings" aria-label="Settings" onclick="openSettingsModal()">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+
             <div class="themewrap">
                 <span>Light</span>
                 <div class="toggle" id="themeToggle" onclick="flipTheme()"><i></i></div>
@@ -160,6 +164,76 @@
     </div>
 </dialog>
 
+<!-- ===== SETTINGS MODAL ===== -->
+<dialog id="settingsModal">
+    <form method="dialog" class="dialog-backdrop" style="position:fixed;inset:0;z-index:-1;margin:0"><button aria-label="Close" style="position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default"></button></form>
+    <div class="modal">
+        <div class="mhead">
+            <div class="kick">Container Settings</div>
+            <h2>SETTINGS.</h2>
+        </div>
+        <div class="mbody" style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+            <div class="note">Applies to <b>new sessions</b> — running sessions keep their current config.</div>
+
+            <div>
+                <label>Model</label>
+                <div class="sel" data-field="model">
+                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list">
+                        <div class="sel-opt" onclick="settingsPick(this)">opus[1m]</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">opus</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">sonnet</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">haiku</div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label>Advisor model</label>
+                <div class="sel" data-field="advisorModel">
+                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list">
+                        <div class="sel-opt" data-value="" onclick="settingsPick(this)">(none)</div>
+                        <div class="sel-opt" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
+                        <div class="sel-opt" data-value="claude-sonnet-4-6" onclick="settingsPick(this)">Sonnet 4.6</div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label>Effort level</label>
+                <div class="sel" data-field="effortLevel">
+                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list">
+                        <div class="sel-opt" onclick="settingsPick(this)">low</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">medium</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">high</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">xhigh</div>
+                        <div class="sel-opt" onclick="settingsPick(this)">max</div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label>Language</label>
+                <input id="settings-language" autocomplete="off" />
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+                <label style="margin-bottom:0">Always thinking</label>
+                <div class="toggle" id="settings-thinking" onclick="this.classList.toggle('on')"><i></i></div>
+            </div>
+        </div>
+        <div class="mfoot">
+            <span class="hint" id="settings-hint">Applies to new sessions</span>
+            <div class="grp">
+                <form method="dialog"><button class="btn btn-ghost"><span>CANCEL</span></button></form>
+                <button id="settings-save" class="btn btn-primary" onclick="saveSettings()"><span>SAVE</span></button>
+            </div>
+        </div>
+    </div>
+</dialog>
+
 <script>
 // Key codes for terminal control buttons
 const KEY_ESCAPE = 27;
@@ -170,5 +244,6 @@ const KEY_BACKSPACE = 127;
 <script src="/static/js/terminal.js"></script>
 <script src="/static/js/views.js"></script>
 <script src="/static/js/theme.js"></script>
+<script src="/static/js/settings.js"></script>
 </body>
 </html>

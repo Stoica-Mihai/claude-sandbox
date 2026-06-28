@@ -1,0 +1,203 @@
+package main
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+)
+
+// allowedModels is the allowlist for the model / advisorModel fields. Extend
+// here as new model ids ship.
+var allowedModels = []string{"opus[1m]", "opus", "sonnet", "haiku"}
+
+// allowedEffort is the allowlist for effortLevel.
+var allowedEffort = []string{"low", "medium", "high", "xhigh", "max"}
+
+// canonicalModelID matches a full Claude model id (e.g. claude-opus-4-8),
+// the shape the advisor accepts — version-agnostic so it survives new releases.
+var canonicalModelID = regexp.MustCompile(`^claude-(opus|sonnet|haiku)-[0-9][0-9-]*$`)
+
+// editableSettings is the whitelisted preference subset the dashboard may
+// read and write. All other keys in container-settings.json are off-limits.
+type editableSettings struct {
+	Model                 string `json:"model"`
+	EffortLevel           string `json:"effortLevel"`
+	AlwaysThinkingEnabled bool   `json:"alwaysThinkingEnabled"`
+	Language              string `json:"language"`
+	AdvisorModel          string `json:"advisorModel"`
+}
+
+// editableKeys are the JSON keys the editor owns; everything else in the file
+// is preserved untouched on write.
+var editableKeys = []string{"model", "effortLevel", "alwaysThinkingEnabled", "language", "advisorModel"}
+
+// readContainerSettings loads container-settings.json into a generic map so
+// non-editable keys survive a round-trip. A missing file yields an empty map.
+func readContainerSettings() (map[string]any, error) {
+	data, err := os.ReadFile(containerSettingsPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]any{}, nil
+		}
+		return nil, err
+	}
+	m := map[string]any{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// handleGetSettings returns only the editable preference subset.
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	m, err := readContainerSettings()
+	if err != nil {
+		slog.Error("failed to read container settings", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read settings"})
+		return
+	}
+
+	out := editableSettings{}
+	if v, ok := m["model"].(string); ok {
+		out.Model = v
+	}
+	if v, ok := m["effortLevel"].(string); ok {
+		out.EffortLevel = v
+	}
+	if v, ok := m["alwaysThinkingEnabled"].(bool); ok {
+		out.AlwaysThinkingEnabled = v
+	}
+	if v, ok := m["language"].(string); ok {
+		out.Language = v
+	}
+	if v, ok := m["advisorModel"].(string); ok {
+		out.AdvisorModel = v
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// validLanguage reports whether s is a short string with no control characters.
+func validLanguage(s string) bool {
+	if len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// handlePutSettings validates the editable subset, merges it into the existing
+// container-settings.json (preserving every other key), writes it atomically,
+// then refreshes the live settings.json so new sessions pick it up.
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	var req editableSettings
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	// Validate against the allowlists; reject without touching any file.
+	if !slices.Contains(allowedModels, req.Model) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model"})
+		return
+	}
+	// advisorModel must be empty (off) or a canonical Claude model id
+	// (e.g. claude-opus-4-8) — the /advisor command writes ids in this shape;
+	// main-model aliases like "opus[1m]" are NOT valid advisor values.
+	if req.AdvisorModel != "" && !canonicalModelID.MatchString(req.AdvisorModel) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid advisorModel"})
+		return
+	}
+	if !slices.Contains(allowedEffort, req.EffortLevel) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid effortLevel"})
+		return
+	}
+	if !validLanguage(req.Language) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid language"})
+		return
+	}
+
+	// Merge only the whitelisted keys into the existing file.
+	m, err := readContainerSettings()
+	if err != nil {
+		slog.Error("failed to read container settings", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read settings"})
+		return
+	}
+	m["model"] = req.Model
+	m["effortLevel"] = req.EffortLevel
+	m["alwaysThinkingEnabled"] = req.AlwaysThinkingEnabled
+	m["language"] = req.Language
+	if req.AdvisorModel == "" {
+		delete(m, "advisorModel")
+	} else {
+		m["advisorModel"] = req.AdvisorModel
+	}
+
+	merged, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode settings"})
+		return
+	}
+	merged = append(merged, '\n')
+
+	if err := writeFileAtomic(containerSettingsPath(), merged); err != nil {
+		slog.Error("failed to write container settings", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write settings"})
+		return
+	}
+	// Refresh the live settings.json so the next spawned session uses it.
+	if err := writeFileAtomic(settingsJSONPath(), merged); err != nil {
+		slog.Error("failed to refresh live settings.json", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to refresh live settings"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, req)
+}
+
+// writeFileAtomic writes data to path via a temp file + rename (mode 0600) so a
+// reader never sees a partial file. When path is a single-file bind mount (e.g.
+// the compose-mounted container-settings.json), rename onto the mount point
+// fails (EBUSY/EXDEV); it then falls back to an in-place write through the mount.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return writeInPlace(path, data)
+	}
+	tmpName := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return writeInPlace(path, data)
+	}
+	return nil
+}
+
+// writeInPlace overwrites path's contents directly (needed for bind-mounted
+// files, which cannot be replaced by rename).
+func writeInPlace(path string, data []byte) error {
+	return os.WriteFile(path, data, 0o600)
+}
