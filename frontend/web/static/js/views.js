@@ -414,7 +414,7 @@ async function dpSelectFolder(path, name) {
     const newRow = document.createElement('button');
     newRow.type = 'button';
     newRow.className = 'arow sa-row';
-    newRow.style.cssText = 'width:100%;background:transparent;border:none;text-align:left;font-family:inherit;color:inherit';
+    newRow.style.cssText = 'width:100%;background:var(--row-bg,transparent);border:none;text-align:left;font-family:inherit;color:inherit';
     newRow.innerHTML = '<div class="atxt"><div class="at1">Start a new session</div>'
         + '<div class="at2">Fresh conversation in ' + escapeHtml(path) + '</div></div>';
     newRow.onclick = () => dirPickerSetSel('new', null, newRow);
@@ -440,10 +440,10 @@ async function dpSelectFolder(path, name) {
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'arow sa-row';
-            row.style.cssText = 'width:100%;background:transparent;border:none;border-bottom:2px solid var(--line);text-align:left;font-family:inherit;color:inherit';
+            row.style.cssText = 'width:100%;background:var(--row-bg,transparent);border:none;border-bottom:2px solid var(--line);text-align:left;font-family:inherit;color:inherit';
             row.innerHTML = '<svg class="aold" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
-                + '<span class="atxt"><span class="at1">' + escapeHtml(title) + '</span>'
-                + '<span class="at2">' + escapeHtml(sub) + '</span></span>';
+                + '<div class="atxt"><div class="at1">' + escapeHtml(title) + '</div>'
+                + '<div class="at2">' + escapeHtml(sub) + '</div></div>';
             row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
             actions.appendChild(row);
         });
