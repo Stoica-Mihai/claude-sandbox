@@ -1,0 +1,327 @@
+/* Futurism Design System — drop-in stylesheet.
+   Paper-Futurism: bold italic display, single red accent, square corners,
+   solid offset shadows, fast directional motion. Light default; add
+   data-theme="dark" to the root for the carbon theme. */
+
+:root{
+  --bg:#efe9dc; --surf:#f7f3ea; --ink:#1a1714; --muted:#4a4339;
+  --accent:#d22f1a; --line:#1a1714; --shadow:#1a1714; --field:#f7f3ea; --on-accent:#efe9dc;
+  --ease:cubic-bezier(.2,.9,.1,1); --fast:.12s; --med:.2s;
+  --space:8px; --border:2px; --shadow-off:6px;
+  --font:'Helvetica Neue',Arial,sans-serif;
+  --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  /* Overlay dim — theme-INDEPENDENT (same in light + dark). Never use --ink for
+     overlays: ink is the cream foreground in dark, so it would lighten not dim. */
+  --scrim:rgba(0,0,0,.55);
+  /* State washes — theme-aware. A saturated accent mixed into a near-black base
+     stays near-black until a high %, so dark needs much higher mixes than light to
+     keep hover/selected/tint perceptible (the %s differ per theme block below). */
+  --hover-bg:color-mix(in srgb,var(--accent) 14%,var(--surf));
+  --sel-bg:color-mix(in srgb,var(--accent) 26%,var(--surf));
+  --tint:color-mix(in srgb,var(--accent) 12%,var(--bg));
+  --skel-stripe:color-mix(in srgb,var(--accent) 22%,transparent);
+}
+[data-theme="dark"]{
+  --bg:#16140f; --surf:#211d16; --ink:#efe9dc; --muted:#a89f8e;
+  --accent:#ff4d33; --line:#efe9dc; --shadow:#ff4d33; --field:#211d16; --on-accent:#16140f;
+  --hover-bg:color-mix(in srgb,var(--accent) 40%,var(--surf));
+  --sel-bg:color-mix(in srgb,var(--accent) 58%,var(--surf));
+  --tint:color-mix(in srgb,var(--accent) 36%,var(--bg));
+  --skel-stripe:color-mix(in srgb,var(--accent) 45%,transparent);
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--font);margin:0;transition:background var(--med),color var(--med)}
+*{box-sizing:border-box}
+
+/* Typography */
+.kick{font-size:11px;letter-spacing:4px;color:var(--accent);font-weight:700;text-transform:uppercase}
+h1,.h1{font-size:clamp(34px,6vw,64px);font-weight:900;font-style:italic;letter-spacing:-2px;line-height:.86;margin:.2em 0}
+h2,.h2{font-size:clamp(24px,4vw,40px);font-weight:900;font-style:italic;letter-spacing:-1px;line-height:.9;margin:.3em 0}
+h3,.h3{font-size:18px;font-weight:900;font-style:italic;letter-spacing:-.5px;margin:.4em 0}
+p{font-size:15px;line-height:1.55;color:var(--muted);margin:.5em 0}
+a{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:2px solid var(--accent)}
+a .arr{display:inline-block;transition:transform var(--fast) var(--ease)}
+a:hover .arr{transform:translateX(5px)}
+blockquote{border-left:8px solid var(--accent);margin:1em 0;padding:.2em 1em;font-style:italic;font-size:18px;font-weight:700}
+label{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;display:block;margin-bottom:4px;color:var(--ink)}
+
+/* Native <button> reset — UA gives buttons their own font + ButtonText color
+   (dark), which becomes dark-on-dark in the carbon theme. Force inheritance so
+   every button starts from the tokens; each variant then sets its own colors. */
+button{font-family:var(--font);color:inherit;background:none;border:0}
+
+/* Buttons */
+.btn{border:none;font-family:var(--font);font-weight:900;font-style:italic;padding:10px 18px;transform:skewX(-8deg);cursor:pointer;font-size:13px;
+  transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
+.btn>span{display:inline-block;transform:skewX(8deg);white-space:nowrap}
+/* The flagship CTA cuts deepest: hover lunges up-left and throws a solid offset
+   shadow (like .card), so it has more Futurist depth than passive surfaces. */
+.btn:hover{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:5px 5px 0 var(--shadow)}
+.btn:active{transform:skewX(-8deg) scale(.96);box-shadow:none}
+/* Accent-fill controls throw an INK shadow, not --shadow: in dark --shadow follows
+   the accent, so an accent shadow under an accent button smears into one blob.
+   Ink contrasts in both themes (dark in light, cream in dark). */
+.btn-primary:hover,.btn.err:hover{box-shadow:5px 5px 0 var(--ink)}
+.btn-primary{background:var(--accent);color:var(--on-accent)}
+.btn-ink{background:var(--ink);color:var(--bg)}
+.btn-ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+/* State variants — stay inside the one-red palette (law 4): ink = done/committed,
+   accent = error/attention. .saving marches diagonal stripes (the machine motion
+   from .prog), never an opacity pulse, which would read as fade-puff (law 5). */
+.btn.ok{background:var(--ink);color:var(--bg);box-shadow:4px 4px 0 var(--shadow)}
+.btn.err{background:var(--accent);color:var(--on-accent)}
+.btn.saving{pointer-events:none;
+  background-image:linear-gradient(45deg,color-mix(in srgb,var(--on-accent) 22%,transparent) 25%,transparent 25% 50%,color-mix(in srgb,var(--on-accent) 22%,transparent) 50% 75%,transparent 75%);
+  background-size:22px 22px;animation:fd-march .55s linear infinite}
+
+/* Focus ring — the kit removes native outlines (button reset + border:none), so
+   every focusable control reuses one vocabulary: a 3px accent outline (same as
+   inputs). Offset clears the skew/shadow; tabs use an inset ring (see .tab). */
+.btn:focus-visible,.iconbtn:focus-visible,.acc:focus-visible,.acctrig:focus-visible,
+.sel-val:focus-visible,.toggle:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+/* Icon button — square, token-themed (must set color explicitly; see reset above) */
+.iconbtn{width:30px;height:30px;border:2px solid var(--line);background:var(--surf);color:var(--ink);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:13px;font-weight:900;line-height:1;transition:background var(--fast),color var(--fast)}
+.iconbtn:hover{background:var(--ink);color:var(--bg)}
+.iconbtn.danger:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.iconbtn svg{width:18px;height:18px}
+
+/* Keycap — monospace key/affordance chip */
+.keycap{border:2px solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono,ui-monospace,monospace);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
+  transition:background var(--fast),color var(--fast)}
+.keycap:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+/* Chord — keycaps welded into one block (shared 2px divider, no gap) so they
+   read as pressed together; no "+" symbol. The row gap keeps standalone keys apart. */
+.combo{display:inline-flex}
+.combo .keycap+.keycap{margin-left:-2px}
+
+/* Status dot — live indicator. Hard step-end toggle accent<->muted (a square-wave
+   status LED, like the terminal cursor) — a machine switches color, it doesn't dim
+   (an opacity fade would read as fade-puff, and on carbon it can vanish entirely). */
+.dot{width:9px;height:9px;flex:none;background:var(--accent);animation:fd-blink 1.2s step-end infinite}
+.dot.dead{background:var(--muted);animation:none}
+@keyframes fd-blink{50%{background:var(--muted)}}
+
+/* Form row — label + control pair used in settings panels */
+.form-row{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+
+/* Badges */
+.badge{display:inline-block;font-size:10px;font-weight:900;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;background:var(--ink);color:var(--bg)}
+.badge.red{background:var(--accent);color:var(--on-accent)}
+.badge.out{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+
+/* Inputs */
+input,textarea{width:100%;background:var(--field);border:2px solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
+input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
+
+/* Custom select — native popups render OS-styled, so build this instead */
+.sel{position:relative;width:100%;font-size:13px;user-select:none}
+.sel-val{background:var(--field);border:2px solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700}
+.sel.open .sel-val{outline:3px solid var(--accent)}
+.sel-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-val .caret{display:inline-block;font-style:normal;flex:none;transition:transform var(--fast) var(--ease)}
+.sel.open .sel-val .caret{transform:rotate(90deg)}
+.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--field);border:2px solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:5;max-height:200px;overflow-y:auto;
+  transform-origin:top;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
+.sel.open .sel-list{transform:scaleY(1);pointer-events:auto}
+.sel-opt{padding:8px 10px;cursor:pointer;font-weight:700;transition:background var(--fast),color var(--fast)}
+.sel-opt:hover{background:var(--accent);color:var(--on-accent)}
+.sel-opt.sel-on{border-left:6px solid var(--accent)}
+
+/* Toggle */
+.toggle{width:48px;height:24px;border:2px solid var(--line);background:var(--muted);position:relative;flex:none;cursor:pointer;transition:background var(--fast) var(--ease)}
+.toggle>i{position:absolute;top:0;left:0;width:20px;height:20px;background:var(--bg);border-right:2px solid var(--line);transition:left var(--fast) var(--ease)}
+.toggle.on{background:var(--accent)}
+.toggle.on>i{left:24px;border-right:none;border-left:2px solid var(--line)}
+
+/* Segmented LIGHT/DARK-style switch — a 2-state labeled pill; .act marks the live
+   segment. Flip with fdTheme() and move .act to the active label in your handler. */
+.switch{display:inline-flex;border:2px solid var(--line);font-size:10px;font-weight:900;letter-spacing:1px;cursor:pointer;background:none}
+.switch span{padding:6px 12px}
+.switch .act{background:var(--accent);color:var(--on-accent)}
+.switch:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+/* Cards */
+.card{background:var(--surf);border:2px solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+  transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
+.card:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--shadow)}
+
+/* Nav */
+.nav{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--line);padding-bottom:10px}
+.nav .logo{font-weight:900;font-style:italic;font-size:18px;letter-spacing:-1px}
+.nav .links{display:flex;gap:18px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.nav .links a{border:none;color:var(--ink);position:relative}
+.nav .links a::after{content:"";position:absolute;left:0;right:100%;bottom:-3px;height:3px;background:var(--accent);transition:right var(--fast) var(--ease)}
+.nav .links a:hover::after{right:0}
+
+/* Tabs */
+.tabs{display:flex;border-bottom:3px solid var(--line)}
+.tab{position:relative;padding:8px 14px;font-weight:800;font-style:italic;font-size:13px;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.tab.on{background:var(--ink);color:var(--bg)}
+/* Active indicator: an accent rule that darts in from the left, same as nav links. */
+.tab::after{content:"";position:absolute;left:0;right:100%;bottom:-3px;height:3px;background:var(--accent);transition:right var(--fast) var(--ease)}
+.tab.on::after{right:0}
+.tab:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.panel{display:none;padding:10px 2px;font-size:13px;color:var(--muted);animation:fd-slidein var(--med) var(--ease)}
+.panel.on{display:block}
+.panel[hidden]{display:none}
+/* Pure directional dart — no opacity crossfade (that would be the fade-puff law 5 bans). */
+@keyframes fd-slidein{from{transform:translateX(16px)}to{transform:translateX(0)}}
+
+/* Alerts — lead with a currentColor stroke SVG (never emoji); flex aligns it. */
+.alert{display:flex;align-items:center;gap:9px;border:2px solid var(--accent);border-left-width:8px;padding:10px 12px;font-size:13px;background:var(--tint)}
+.alert.info{border-color:var(--line);background:var(--surf)}
+.alert svg{width:18px;height:18px;flex:none}
+
+/* Progress */
+.prog{height:14px;border:2px solid var(--line);background:var(--field);position:relative;overflow:hidden}
+.prog>i{display:block;height:100%;background-color:var(--accent);
+  background-image:linear-gradient(45deg,color-mix(in srgb,var(--accent) 70%,#000) 25%,transparent 25% 50%,color-mix(in srgb,var(--accent) 70%,#000) 50% 75%,transparent 75%);
+  background-size:22px 22px;transition:width var(--med) var(--ease);animation:fd-march .8s linear infinite}
+/* Shift by exactly one tile (background-size) so the barber-pole loops with no seam. */
+@keyframes fd-march{from{background-position:0 0}to{background-position:22px 0}}
+
+/* Table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;border-bottom:3px solid var(--line);padding:7px 6px;text-transform:uppercase;letter-spacing:1px;font-size:11px}
+td{border-bottom:1px solid var(--muted);padding:7px 6px}
+tbody tr{transition:background var(--fast)}
+tbody tr:hover{background:var(--tint)}
+
+/* List rows — hover + selected highlight driven through --row-bg so a JS-set
+   inline background:var(--row-bg,transparent) can't clobber the highlight. Washes
+   use the theme-aware --hover-bg/--sel-bg tokens (dark needs far higher mixes). */
+.list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-bottom:2px solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
+.list-row:last-child{border-bottom:none}
+.list-row:hover{--row-bg:var(--hover-bg)}
+/* Selected: theme-aware wash + an inset accent edge — the edge carries the cue even
+   where the wash is subtle (and survives forced-colors), so sel != hover != normal. */
+.list-row.sel,.list-row.sel:hover{--row-bg:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
+
+/* Modal — native <dialog>: transparent shell, the .modal box carries the chrome.
+   overflow:visible on <dialog> so .modal's offset shadow isn't clipped; tall
+   content scrolls inside .modal. .overlay is the non-<dialog> fallback. */
+dialog{border:none;padding:0;background:transparent;color:var(--ink);max-width:100vw;max-height:100dvh;overflow:visible}
+dialog::backdrop{background:var(--scrim)}
+dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
+.overlay{position:fixed;inset:0;background:var(--scrim);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:60px 16px}
+.overlay.open{display:flex}
+.modal{width:480px;max-width:100%;background:var(--surf);border:3px solid var(--line);box-shadow:10px 10px 0 var(--shadow);animation:fd-lurch var(--med) var(--ease)}
+/* Hard mechanical arrival — the box lurches in solid; the scrim carries any reveal. */
+@keyframes fd-lurch{from{transform:translateY(-18px) skewX(-2deg)}to{transform:none}}
+.modal .mhead{padding:16px 18px;border-bottom:3px solid var(--line)}
+.modal .mhead h2{margin:0}
+.modal .mbody{padding:16px 18px}
+.modal .mfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-top:3px solid var(--line)}
+.modal .mfoot .grp{display:flex;gap:10px}
+
+/* Accent picker — single trigger + popover (collapses the swatch row on mobile).
+   Swap --accent + --shadow at runtime; see futurism.js / the SKILL accent note. */
+.accpick{position:relative}
+.acctrig{width:30px;height:30px;border:2px solid var(--line);cursor:pointer;padding:0;background:var(--accent);transition:transform var(--fast) var(--ease)}
+.acctrig:hover{transform:translateY(-2px)}
+.accpop{position:absolute;top:calc(100% + 6px);right:0;background:var(--surf);border:2px solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:60;padding:8px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;transform-origin:top right;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
+.accpick.open .accpop{transform:scaleY(1);pointer-events:auto}
+.acc{width:28px;height:28px;border:2px solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
+.acc:hover{transform:translateY(-2px)}
+.acc.on{outline:2px solid var(--ink);outline-offset:1px}
+
+/* Off-canvas drawer — fixed panel that slides in; .drawer-open shows it.
+   .scrim-bg is the tap-to-close dim (uses --scrim, never --ink). */
+.drawer{position:fixed;top:0;bottom:0;left:0;z-index:40;width:296px;max-width:85vw;background:var(--surf);border-right:3px solid var(--line);
+  transform:translateX(-100%);transition:transform var(--med) var(--ease)}
+.drawer.drawer-open{transform:translateX(0)}
+.scrim-bg{position:fixed;inset:0;z-index:35;background:var(--scrim)}
+
+/* ===== App components ===== */
+
+/* Checkbox & radio — styled NATIVE inputs (appearance:none) so they keep real
+   keyboard + a11y. Both are squares (circles break law 1). Checkbox fills accent
+   with an on-accent check; radio stays field with an inset accent block. */
+.check,.radio{appearance:none;-webkit-appearance:none;width:18px;height:18px;flex:none;margin:0;border:2px solid var(--line);background:var(--field);cursor:pointer;position:relative;transition:background var(--fast) var(--ease)}
+.check:checked{background:var(--accent)}
+.check:checked::after{content:"";position:absolute;left:4px;top:0;width:6px;height:11px;border:solid var(--on-accent);border-width:0 3px 3px 0;transform:rotate(45deg)}
+.radio:checked::after{content:"";position:absolute;inset:3px;background:var(--accent)}
+.check:focus-visible,.radio:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+/* Toast — non-blocking feedback. Darts in from the right (no fade); accent border
+   by default (error/attention), line border for neutral info. */
+.toaster{position:fixed;right:16px;bottom:16px;z-index:70;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+/* Neutral by default (line border + accent left-rule); .err raises full accent.
+   Slides in from the right and out via .out — never fades. */
+.toast{background:var(--surf);border:2px solid var(--line);border-left:8px solid var(--accent);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);padding:11px 14px;font-size:13px;font-weight:700;min-width:200px;max-width:340px;
+  transition:transform var(--med) var(--ease);animation:fd-toastin var(--med) var(--ease)}
+.toast.err{border-color:var(--accent)}
+.toast.out{transform:translateX(120%)}
+@keyframes fd-toastin{from{transform:translateX(120%)}to{transform:translateX(0)}}
+
+/* Tooltip — data-tip on the wrapper; ink box that darts toward the trigger.
+   No opacity fade (visibility toggles; the transform carries the motion). */
+.tip{position:relative}
+.tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;background:var(--ink);color:var(--bg);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;padding:5px 8px;box-shadow:4px 4px 0 var(--shadow);z-index:65;
+  visibility:hidden;transform:translateX(-50%) translateY(-4px);transition:transform var(--fast) var(--ease)}
+.tip:hover::after,.tip:focus-within::after{visibility:visible;transform:translateX(-50%) translateY(0)}
+
+/* Empty state — composed from existing parts; this just centers them. */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:40px 24px;color:var(--muted)}
+.empty svg{width:48px;height:48px;color:var(--line)}
+
+/* Skeleton — content-shaped placeholder. Reuses the fd-march barber-pole (a spinner
+   would be rotary, off-brand) at a low accent-mix. Set width/height inline. */
+.skel{height:14px;border:2px solid var(--line);background-color:var(--field);
+  background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
+  background-size:22px 22px;animation:fd-march 1s linear infinite}
+
+/* Segmented control — welded buttons (the .combo idiom); active fills ink. For a
+   few visible options where tabs are too heavy and a select is overkill. */
+.seg{display:inline-flex}
+.seg button{font-family:var(--font);font-weight:800;font-style:italic;font-size:12px;padding:7px 14px;border:2px solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;transition:background var(--fast),color var(--fast)}
+.seg button+button{margin-left:-2px}
+.seg button.on{background:var(--ink);color:var(--bg)}
+.seg button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
+
+/* Pagination — welded square cells; current fills ink, disabled goes muted. */
+.pager{display:inline-flex}
+.pager button{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:700;min-width:32px;height:32px;border:2px solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast),color var(--fast)}
+.pager button+button{margin-left:-2px}
+.pager button:not(:disabled):hover{background:var(--ink);color:var(--bg)}
+/* current page fills ink = selected/committed (matches .seg/.tab); accent stays
+   reserved for the live/attention role. aria-current=page carries the semantics. */
+.pager button.on{background:var(--ink);color:var(--bg)}
+.pager button:disabled{color:var(--muted);cursor:default}
+.pager button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
+.pager svg{width:14px;height:14px}
+
+/* Breadcrumb — uppercase trail; chevron sep reuses the .sel caret glyph. */
+.crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.crumb a{border:none;color:var(--accent);position:relative}
+.crumb a::after{content:"";position:absolute;left:0;right:100%;bottom:-2px;height:2px;background:var(--accent);transition:right var(--fast) var(--ease)}
+.crumb a:hover::after{right:0}
+.crumb .sep{color:var(--muted)}
+.crumb .cur{color:var(--ink)}
+
+/* Forced colors (Windows High Contrast): the UA drops box-shadow and replaces
+   color-mix backgrounds + gradients with system colors, so selected/active states
+   and the barber-pole bars lose their cue. Re-assert them with borders + Highlight. */
+@media (forced-colors:active){
+  .list-row.sel,.tab.on,.seg button.on,.pager button.on{outline:2px solid Highlight;outline-offset:-2px}
+  .prog>i,.skel{background:Highlight}
+  .dot{background:Highlight}
+  .dot.dead{background:GrayText}
+}
+
+/* Print: drop fixed overlays + solid shadows so pages print clean (screen-app kit,
+   so this is a courtesy, not a layout). */
+@media print{
+  .toaster,.drawer,.scrim-bg,dialog::backdrop{display:none!important}
+  *{box-shadow:none!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  /* The live dot loses its blink here, so give it a static ring to stay
+     distinguishable from a dead dot without relying on the animation. */
+  .dot:not(.dead){box-shadow:0 0 0 2px var(--accent)}
+}

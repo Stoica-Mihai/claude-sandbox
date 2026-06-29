@@ -8,16 +8,22 @@ import (
 
 var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
-// cssText is the embedded stylesheet that actually ships to the browser, with
-// /* */ comments stripped so they cannot leak into selector text.
-func cssText(t *testing.T) string {
+// readCSS returns an embedded stylesheet with /* */ comments stripped so they
+// cannot leak into selector text.
+func readCSS(t *testing.T, name string) string {
 	t.Helper()
-	b, err := Static.ReadFile("static/css/style.css")
+	b, err := Static.ReadFile(name)
 	if err != nil {
-		t.Fatalf("read embedded style.css: %v", err)
+		t.Fatalf("read embedded %s: %v", name, err)
 	}
 	return cssComment.ReplaceAllString(string(b), "")
 }
+
+// cssText is the APP layer (app.css) — every app-specific rule + override lives here.
+func cssText(t *testing.T) string { t.Helper(); return readCSS(t, "static/css/app.css") }
+
+// kitText is the vendored kit (futurism.css) — base atoms/components, copied verbatim.
+func kitText(t *testing.T) string { t.Helper(); return readCSS(t, "static/css/futurism.css") }
 
 // ruleBody returns the declaration block (text between { and the matching }) for
 // the first rule whose selector list exactly equals sel. Selectors that merely
@@ -50,7 +56,7 @@ func assertDecls(t *testing.T, css, sel string, decls ...string) {
 	t.Helper()
 	body, ok := ruleBody(t, css, sel)
 	if !ok {
-		t.Fatalf("selector %q not found in style.css", sel)
+		t.Fatalf("selector %q not found", sel)
 	}
 	norm := strings.Join(strings.Fields(body), "")
 	for _, d := range decls {
@@ -66,11 +72,13 @@ func assertDecls(t *testing.T, css, sel string, decls ...string) {
 func TestNoStatusGreenTokenOneRed(t *testing.T) {
 	css := cssText(t)
 
-	if strings.Contains(css, "--ok") {
-		t.Error("--ok token must not exist: the system is one-red (law 4); use --accent")
-	}
-	if strings.Contains(css, "#3fb950") {
-		t.Error("off-brand green #3fb950 must not appear in the stylesheet")
+	for _, sheet := range []string{css, kitText(t)} {
+		if strings.Contains(sheet, "--ok") {
+			t.Error("--ok token must not exist: the system is one-red (law 4); use --accent")
+		}
+		if strings.Contains(sheet, "#3fb950") {
+			t.Error("off-brand green #3fb950 must not appear in the stylesheet")
+		}
 	}
 
 	light, ok := ruleBody(t, css, ":root")
@@ -82,21 +90,20 @@ func TestNoStatusGreenTokenOneRed(t *testing.T) {
 	}
 }
 
-// Task 2.1: the base .keycap atom holds the canonical ctrlbar values, and the
-// shared hover affordance lives on the base atom but excludes hint labels.
+// The base .keycap atom + its hover affordance come from the vendored kit.
 func TestKeycapBaseAtom(t *testing.T) {
-	css := cssText(t)
-	assertDecls(t, css, ".keycap",
+	kit := kitText(t)
+	assertDecls(t, kit, ".keycap",
 		"border:2px solid var(--line)",
 		"background:var(--surf)",
 		"color:var(--ink)",
-		"font-family:var(--mono)",
+		"font-family:var(--mono",
 		"font-size:10px",
 		"font-weight:700",
 		"padding:3px 9px",
 		"cursor:pointer",
 	)
-	assertDecls(t, css, ".keycap:not(.keycap--hint):hover",
+	assertDecls(t, kit, ".keycap:hover",
 		"background:var(--accent)",
 		"color:var(--on-accent)",
 		"border-color:var(--accent)",
@@ -113,17 +120,15 @@ func TestKeycapHintModifier(t *testing.T) {
 	)
 }
 
-// Non-interactive welcome-hint labels must NOT gain the accent hover reaction
-// (the old .keyhint kbd had none). The shared hover is scoped away from hints,
-// and no hint-specific hover rule re-introduces it.
-func TestKeycapHintHasNoHover(t *testing.T) {
-	css := cssText(t)
-	if _, ok := ruleBody(t, css, ".keycap:hover"); ok {
-		t.Error("unscoped .keycap:hover would apply to hint labels; scope it with :not(.keycap--hint)")
-	}
-	if _, ok := ruleBody(t, css, ".keycap--hint:hover"); ok {
-		t.Error(".keycap--hint:hover must not exist — hint labels are non-interactive")
-	}
+// Non-interactive welcome-hint labels must NOT show the accent hover reaction.
+// The kit's .keycap:hover applies to every keycap, so the app layer cancels it
+// on hints by restoring the resting colors.
+func TestKeycapHintHoverCancelled(t *testing.T) {
+	assertDecls(t, cssText(t), ".keycap--hint:hover",
+		"background:var(--surf)",
+		"color:var(--ink)",
+		"border-color:var(--line)",
+	)
 }
 
 // Task 2.3: .keycap--mobile and its :active touch affordance.

@@ -1,117 +1,30 @@
-/* ===== Futurism Design System — tokens ===== */
+/* app.css — dashboard-specific styles, layered OVER the vendored futurism.css.
+   futurism.css is the Futurism kit copied VERBATIM from the skill — never edit it.
+   Every app-only component AND every intentional override of a kit rule lives here.
+   On a kit update: replace futurism.css wholesale; the OVERRIDE LEDGER below is the
+   record of what we deliberately changed and why. layout.html links futurism.css
+   FIRST, then this file, so these rules win on the cascade. */
+
+/* ===== App tokens (no kit equivalent) ===== */
 :root{
-  --bg:#efe9dc; --surf:#f7f3ea; --ink:#1a1714; --muted:#4a4339;
-  --accent:#d22f1a; --line:#1a1714; --shadow:#1a1714; --field:#f7f3ea; --on-accent:#efe9dc;
-  --ease:cubic-bezier(.2,.9,.1,1); --fast:.12s; --med:.2s;
-  --space:8px; --border:2px; --shadow-off:6px;
-  --font:'Helvetica Neue',Arial,sans-serif;
-  --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
-  /* Overlay dim — theme-INDEPENDENT (same light + dark). Never --ink: ink is the
-     cream foreground in dark, so an ink scrim would lighten not dim. */
-  --scrim:rgba(0,0,0,.55);
-  /* State washes — theme-aware. A saturated accent mixed into a near-black base
-     stays near-black until a high %, so dark needs much higher mixes than light
-     to keep hover/selected/tint perceptible (%s differ per theme block). */
-  --hover-bg:color-mix(in srgb,var(--accent) 14%,var(--surf));
-  --sel-bg:color-mix(in srgb,var(--accent) 26%,var(--surf));
-  --tint:color-mix(in srgb,var(--accent) 12%,var(--surf));
-  /* Terminal background — set at runtime by terminal.js to match the xterm theme */
+  /* Terminal background — set at runtime by terminal.js to match the xterm theme.
+     --terminal-fg is also set at runtime (no static fallback: the selection overlay
+     only appears once a terminal exists). */
   --terminal-bg:#0d1117;
 }
-[data-theme="dark"]{
-  --bg:#16140f; --surf:#211d16; --ink:#efe9dc; --muted:#a89f8e;
-  --accent:#ff4d33; --line:#efe9dc; --shadow:#ff4d33; --field:#211d16; --on-accent:#16140f;
-  --hover-bg:color-mix(in srgb,var(--accent) 40%,var(--surf));
-  --sel-bg:color-mix(in srgb,var(--accent) 58%,var(--surf));
-  --tint:color-mix(in srgb,var(--accent) 36%,var(--surf));
-}
 
-/* UI font on body ONLY — never on * or .xterm (breaks xterm grid measurement) */
-body{background:var(--bg);color:var(--ink);font-family:var(--font);margin:0;transition:background var(--med),color var(--med)}
-*{box-sizing:border-box}
-
-/* ===== Typography ===== */
-.kick{font-size:11px;letter-spacing:4px;color:var(--accent);font-weight:700;text-transform:uppercase}
-h1,.h1{font-size:clamp(34px,6vw,64px);font-weight:900;font-style:italic;letter-spacing:-2px;line-height:.86;margin:.2em 0}
-h2,.h2{font-size:clamp(24px,4vw,40px);font-weight:900;font-style:italic;letter-spacing:-1px;line-height:.9;margin:.3em 0}
-h3,.h3{font-size:18px;font-weight:900;font-style:italic;letter-spacing:-.5px;margin:.4em 0}
-p{font-size:15px;line-height:1.55;color:var(--muted);margin:.5em 0}
-a{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:2px solid var(--accent)}
-a .arr{display:inline-block;transition:transform var(--fast) var(--ease)}
-a:hover .arr{transform:translateX(5px)}
-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;display:block;margin-bottom:4px;color:var(--ink)}
-
-/* Native <button> reset — UA gives buttons their own font + ButtonText color
-   (dark), which becomes dark-on-dark in carbon. Force inheritance so every
-   button starts from the tokens; each variant then sets its own colors. */
-button{font-family:var(--font);color:inherit;background:none;border:0}
-
-/* ===== Buttons ===== */
-.btn{border:none;font-family:var(--font);font-weight:900;font-style:italic;padding:10px 18px;transform:skewX(-8deg);cursor:pointer;font-size:13px;
-  transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
-.btn>span{display:inline-block;transform:skewX(8deg);white-space:nowrap}
-/* Flagship CTA cuts deepest: hover lunges up-left + throws a solid offset shadow. */
-.btn:hover{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:5px 5px 0 var(--shadow)}
-.btn:active{transform:skewX(-8deg) scale(.96);box-shadow:none}
-.btn-primary{background:var(--accent);color:var(--on-accent)}
-/* Accent-fill controls throw an INK offset shadow, not --shadow: in dark
-   --shadow follows the accent, so an accent shadow under an accent button
-   smears into one color blob. Ink contrasts in both themes. */
-.btn-primary:hover,.btn.err:hover{box-shadow:5px 5px 0 var(--ink)}
-.btn-ink{background:var(--ink);color:var(--bg)}
-.btn-ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
-/* State variants stay inside the one-red palette (law 4): ink = done/committed,
-   accent = error/attention. .saving marches diagonal stripes (machine motion),
-   never an opacity pulse (which reads as fade-puff, law 5). */
-.btn.ok{background:var(--ink);color:var(--bg);box-shadow:4px 4px 0 var(--shadow)}
-.btn.err{background:var(--accent);color:var(--on-accent)}
-.btn.saving{pointer-events:none;
-  background-image:linear-gradient(45deg,color-mix(in srgb,var(--on-accent) 22%,transparent) 25%,transparent 25% 50%,color-mix(in srgb,var(--on-accent) 22%,transparent) 50% 75%,transparent 75%);
-  background-size:22px 22px;animation:fd-march .55s linear infinite}
-.btn-spawn-fail{background:var(--accent);color:var(--on-accent)}
-
-/* ===== Badges ===== */
-.badge{display:inline-block;font-size:10px;font-weight:900;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;background:var(--ink);color:var(--bg)}
-.badge.red{background:var(--accent);color:var(--on-accent)}
-.badge.out{background:transparent;color:var(--ink);border:2px solid var(--ink)}
-
-/* ===== Inputs ===== */
-input,textarea{width:100%;background:var(--field);border:2px solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
-input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
-input.err-flash{outline:3px solid var(--accent)}
-
-/* ===== Card ===== */
-.card{background:var(--surf);border:2px solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
-  transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
-.card:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--shadow)}
-
-/* ===== Tabs ===== */
-.tabs{display:flex;border-bottom:3px solid var(--line)}
-.tab{padding:8px 14px;font-weight:800;font-style:italic;font-size:13px;cursor:pointer;transition:background var(--fast),color var(--fast)}
-.tab.on{background:var(--ink);color:var(--bg)}
-
-/* ===== Toggle ===== */
-.toggle{width:48px;height:24px;border:2px solid var(--line);background:var(--muted);position:relative;flex:none;cursor:pointer;transition:background var(--fast) var(--ease)}
-.toggle>i{position:absolute;top:0;left:0;width:20px;height:20px;background:var(--bg);border-right:2px solid var(--line);transition:left var(--fast) var(--ease)}
-.toggle.on{background:var(--accent)}
-.toggle.on>i{left:24px;border-right:none;border-left:2px solid var(--line)}
-
-/* Forced colors (Windows High Contrast): the UA drops box-shadow + color-mix
-   backgrounds, so selected/active states and the live dots lose their cue.
-   Re-assert them with Highlight + outlines. */
-@media (forced-colors:active){
-  .ttab.on,.tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
-  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{background:Highlight}
-  .scard .live.dead,.ttab .tdot{background:GrayText}
-  .btn.saving{background:Highlight}
-}
-
-@media (prefers-reduced-motion:reduce){
-  *{animation:none!important;transition:none!important}
-  /* Live dots lose their blink here; give them a static ring so they stay
-     distinguishable from a dead/idle dot without the animation. */
-  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{box-shadow:0 0 0 2px var(--accent)}
-}
+/* ===== OVERRIDE LEDGER — intentional divergences from stock Futurism ===== */
+/* D1: callout tint mixes into --surf (modals/sidebar sit on surf), not the kit's --bg. */
+:root{--tint:color-mix(in srgb,var(--accent) 12%,var(--surf))}
+[data-theme="dark"]{--tint:color-mix(in srgb,var(--accent) 36%,var(--surf))}
+/* D3: dashboard icon buttons are 22px (kit default 30px) for the tight session-card row.
+   Kit supplies the rest (border/fill/hover, .danger modifier, svg sizing). */
+.iconbtn{width:22px;height:22px;font-size:12px}
+/* D6: welcome-hint chips are non-interactive labels — cancel the kit's .keycap:hover
+   on them so they don't flash accent / read as clickable. */
+.keycap--hint:hover{background:var(--surf);color:var(--ink);border-color:var(--line)}
+/* The settings/rename modal bodies stack their fields; kit .modal .mbody is padding-only. */
+.modal .mbody{display:flex;flex-direction:column;gap:16px}
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -130,26 +43,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hdr .right{display:flex;align-items:center;gap:16px}
 .statpill{display:flex;align-items:center;gap:7px;border:2px solid var(--line);padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
 .statpill .dot{width:8px;height:8px;background:var(--accent);animation:fd-blink 1.2s step-end infinite}
-/* Live indicator — hard step-end toggle accent<->muted (a square-wave status LED).
-   A machine switches color; it doesn't dim (opacity fade = fade-puff, law 5, and on
-   carbon a faded accent can vanish). Barber-pole march drives .saving + progress. */
-@keyframes fd-blink{50%{background:var(--muted)}}
-@keyframes fd-march{from{background-position:0 0}to{background-position:22px 0}}
-
-/* ===== Accent picker — single trigger + popover (mobile-safe) ===== */
-.accpick{position:relative}
-.acctrig{width:30px;height:30px;border:2px solid var(--line);cursor:pointer;padding:0;background:var(--accent);
-  transition:transform var(--fast) var(--ease)}
-.acctrig:hover{transform:translateY(-2px)}
-.accpop{position:absolute;top:calc(100% + 6px);right:0;background:var(--surf);border:2px solid var(--line);
-  box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:60;padding:8px;
-  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
-  transform-origin:top right;transform:scaleY(0);pointer-events:none;
-  transition:transform var(--fast) var(--ease)}
-.accpick.open .accpop{transform:scaleY(1);pointer-events:auto}
-.acc{width:28px;height:28px;border:2px solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
-.acc:hover{transform:translateY(-2px)}
-.acc.on{outline:2px solid var(--ink);outline-offset:1px}
 
 /* ===== Theme toggle — accent-independent (track uses ink, not the accent) ===== */
 .themewrap{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
@@ -175,15 +68,11 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .scard .nm{font-weight:900;font-style:italic;font-size:14px;letter-spacing:-.3px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .acts{display:flex;gap:4px;opacity:0;transition:opacity var(--fast)}
 .scard:hover .acts{opacity:1}
-.iconbtn{width:22px;height:22px;border:2px solid var(--line);background:var(--surf);display:flex;align-items:center;justify-content:center;
-  cursor:pointer;font-size:12px;font-weight:900;line-height:1;color:var(--ink);transition:background var(--fast),color var(--fast)}
-.iconbtn:hover{background:var(--ink);color:var(--bg)}
-.iconbtn.danger:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .scard .row2{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
 .scard .cwd{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .dur{font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:700;flex:none}
 
-/* ===== Main / terminal ===== */
+/* ===== Main / terminal tabs ===== */
 .main{flex:1;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;min-width:0}
 .tabbar{height:42px;display:flex;align-items:stretch;border-bottom:3px solid var(--line);background:var(--surf);flex:none;overflow-x:auto}
 .ttab{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:2px solid var(--line);cursor:pointer;font-weight:800;font-style:italic;font-size:13px;white-space:nowrap;
@@ -195,11 +84,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .ttab .tdot.on{background:var(--accent);animation:fd-blink 1.2s step-end infinite}
 .ttab.on .tdot{background:var(--on-accent)}
 .ctrlbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
-.keycap{border:2px solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
-  transition:background var(--fast),color var(--fast)}
-/* Hint labels are non-interactive (welcome screen) — exclude them from the hover
-   reaction so they don't read as clickable; the old .keyhint kbd had no hover. */
-.keycap:not(.keycap--hint):hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+
+/* ===== Keycap modifiers (base .keycap is the kit) ===== */
 .keycap--hint{font-size:11px;min-width:54px;text-align:center;cursor:default}
 .keycap--mobile{font-size:13px;font-weight:400;height:36px;min-width:36px;padding:0 10px;flex-shrink:0}
 .keycap--mobile:active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -221,22 +107,13 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .keyhint{display:flex;align-items:center;gap:12px;margin-top:10px}
 .keyhint span{font-size:13px;color:var(--muted)}
 
-/* ===== Modal ===== */
-.overlay{position:fixed;inset:0;background:var(--scrim);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:60px 16px}
-.overlay.open{display:flex}
-.modal{width:480px;max-width:100%;background:var(--surf);border:3px solid var(--line);box-shadow:10px 10px 0 var(--shadow);
-  animation:lurch var(--med) var(--ease)}
-/* Hard mechanical arrival — the box lurches in solid; the scrim carries the reveal (no opacity fade, law 5). */
-@keyframes lurch{from{transform:translateY(-18px) skewX(-2deg)}to{transform:none}}
-.modal .mhead{padding:16px 18px;border-bottom:3px solid var(--line)}
-.modal .mhead h2{margin:0}
-.modal .mhead p{margin:4px 0 0;font-size:12px}
-/* Directory-picker breadcrumb — renamed off the kit's generic .crumb to avoid a
-   collision when futurism.css is vendored verbatim (different component). */
+/* ===== Directory-picker breadcrumb (renamed off kit .crumb — see step-1 commit) ===== */
 .dp-crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:11px;overflow-x:auto}
 .dp-crumb .seg{color:var(--accent);font-weight:700;cursor:pointer}
 .dp-crumb .seg.cur{color:var(--ink);cursor:default}
 .dp-crumb .sep{color:var(--muted)}
+
+/* ===== Folder list ===== */
 .folders{max-height:210px;overflow-y:auto}
 .frow{display:flex;align-items:stretch;border-bottom:2px solid var(--line);cursor:pointer;transition:background var(--fast)}
 .frow:hover{background:var(--hover-bg)}
@@ -258,12 +135,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .arow .atxt{flex:1;min-width:0}
 .arow .at1{display:block;font-weight:900;font-style:italic;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .arow .at2{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
-.mfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-top:3px solid var(--line)}
 .mfoot .hint{font-size:11px;color:var(--muted);font-family:var(--mono);max-width:60%}
 .mfoot .hint.err{color:var(--accent)}
-.mfoot .grp{display:flex;gap:10px}
-/* App empty-state — renamed off the kit's .empty (flex column + svg) to avoid a
-   collision when futurism.css is vendored verbatim. */
 .empty-state{padding:26px 18px;text-align:center;color:var(--muted);font-size:12px}
 
 /* views.js builds the modal start-new/previous rows as <button>s with an inline
@@ -273,22 +146,9 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .sa-row:hover{--row-bg:var(--hover-bg)}
 .sa-sel,.sa-sel:hover{--row-bg:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
 
-/* ===== Settings modal: custom select + note ===== */
+/* ===== Settings modal: button + note ===== */
 .settings-btn{width:34px;height:34px;flex:none}
-.iconbtn svg{width:18px;height:18px}
-.mbody{padding:16px 18px;display:flex;flex-direction:column;gap:16px}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
-.sel{position:relative;width:100%;font-size:13px;user-select:none}
-.sel-val{background:var(--field);border:2px solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700}
-.sel.open .sel-val{outline:3px solid var(--accent)}
-.sel-val .caret{display:inline-block;font-style:normal;flex:none;transition:transform var(--fast) var(--ease)}
-.sel.open .sel-val .caret{transform:rotate(90deg)}
-.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--field);border:2px solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:5;max-height:200px;overflow-y:auto;
-  transform-origin:top;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
-.sel.open .sel-list{transform:scaleY(1);pointer-events:auto}
-.sel-opt{padding:8px 10px;cursor:pointer;font-weight:700;transition:background var(--fast),color var(--fast)}
-.sel-opt:hover{background:var(--accent);color:var(--on-accent)}
-.sel-opt.sel-on{border-left:6px solid var(--accent)}
 
 /* ===== Grain overlay ===== */
 .grain::after{
@@ -300,7 +160,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* ===== Pull to refresh ===== */
 #pullIndicator{text-align:center;font-size:.8rem;overflow:hidden;height:0;color:var(--muted);font-family:var(--mono);transition:height var(--med) var(--ease)}
 
-/* ===== Terminal background (driven by --terminal-bg, set in terminal.js) ===== */
+/* ===== Terminal background (driven by --terminal-bg/--terminal-fg, set in terminal.js) ===== */
 .terminal-bg{background:var(--terminal-bg)}
 /* Per-tab terminal container fills the flex:1 #singleTerminal so the fit addon
    measures full height (else xterm collapses to a few rows mid-screen). */
@@ -328,20 +188,19 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hidden{display:none !important}
 
 /* Mobile sidebar drawer backdrop (views.js removes .hidden when the drawer opens) */
-/* Dim with --scrim, never --ink (ink is the cream foreground in carbon → would lighten) */
 #sidebarBackdrop{position:fixed;inset:0;z-index:35;background:var(--scrim)}
 
 /* Header hamburger — touch-sized on mobile, hidden on desktop (sidebar is static there) */
 .menu-btn{width:34px;height:34px;font-size:16px;margin-right:4px}
 
-/* Native <dialog> modals (newSessionModal, renameModal, settingsModal) — transparent shell, the .modal box carries the chrome */
-/* overflow:visible so the .modal's offset accent shadow isn't clipped; tall content scrolls inside .modal */
-dialog{border:none;padding:0;background:transparent;color:var(--ink);max-width:100vw;max-height:100dvh;overflow:visible}
-dialog::backdrop{background:var(--scrim)}
-dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 /* Click-outside-to-close backdrop behind a <dialog>'s .modal box (3 modals reuse it) */
 .dialog-backdrop{position:fixed;inset:0;z-index:-1;margin:0}
 .dialog-backdrop button{position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default}
+/* JS-driven accent state affordances (no kit equivalent): rename-error flash on
+   the input, spawn-failure on the launch button. Both resolve through --accent. */
+input.err-flash{outline:3px solid var(--accent)}
+.btn-spawn-fail{background:var(--accent);color:var(--on-accent)}
+
 /* One-off layout helpers (single-element) */
 #singleTerminal{flex:1;overflow:hidden;position:relative}
 .btn-new{padding:7px 14px;font-size:12px}
@@ -349,6 +208,18 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
 .set-row label{margin-bottom:0}
 .faint{opacity:.7}
+
+/* ===== Forced colors (Windows High Contrast) — app classes (kit ships its own for kit classes) ===== */
+@media (forced-colors:active){
+  .ttab.on,.tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
+  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{background:Highlight}
+  .scard .live.dead,.ttab .tdot{background:GrayText}
+}
+
+/* ===== Reduced motion — static ring on the app's live dots (kit disables animation globally) ===== */
+@media (prefers-reduced-motion:reduce){
+  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{box-shadow:0 0 0 2px var(--accent)}
+}
 
 /* ===== Responsive: mobile-first ===== */
 /* Off-canvas sidebar on mobile; .sidebar-open (toggled by views.js) slides it in */

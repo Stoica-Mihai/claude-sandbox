@@ -54,7 +54,7 @@ One relay per session connects the dtach session to WebSocket viewers.
 - Copy-on-select: xterm has no built-in `copyOnSelect`, so `terminal.js` copies the selection on `mouseup` via the async Clipboard API (with an `execCommand` fallback).
 - `GET /healthz` returns `{"status":"ok"}`; Docker healthchecks probe it.
 - CSS font rules must use the `body` selector, NOT `*` — the universal selector breaks xterm.js character grid measurement.
-- The dashboard uses the self-contained **Futurism** design system (`style.css` tokens: square corners, 2px ink borders, solid offset shadows, single `--accent`, Helvetica Neue UI font) — no Tailwind/DaisyUI/Google-Fonts CDNs. Theme is a binary light/dark toggle (`theme.js`, `data-theme`/`data-theme-base`, localStorage); a separate accent picker overrides `--accent` (+ `--shadow` in dark) from 7 colors, persisted to localStorage.
+- The dashboard uses the self-contained **Futurism** design system (square corners, 2px ink borders, solid offset shadows, single `--accent`, Helvetica Neue UI font) — no Tailwind/DaisyUI/Google-Fonts CDNs. CSS is split in two layers: **`futurism.css`** is the kit (tokens + generic components) copied **verbatim** from the `futurism-design` skill — never hand-edit it; **`app.css`** holds all dashboard-specific components plus an override ledger for every intentional divergence from the kit, and loads after it. A skill update = replace `futurism.css` wholesale. Theme is a binary light/dark toggle (`theme.js`, `data-theme`/`data-theme-base`, localStorage); a separate accent picker overrides `--accent` (+ `--shadow` in dark) from 7 colors, persisted to localStorage.
 - **Settings editor** (`settings.js` + `backend/settings.go`): a header gear opens a Futurism modal editing a whitelisted prefs subset of `container-settings.json` — `model`, `effortLevel` (low/medium/high/xhigh/max), `alwaysThinkingEnabled`, `language`, `advisorModel`. `GET/PUT /api/settings` validates + merges (preserving plugins/hooks/env), writes the source file, and refreshes `settings.json`; changes apply to **new** sessions. `advisorModel` takes a canonical id (e.g. `claude-opus-4-8`); the advisor itself only runs when `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL=1` is set (in `container-settings.json`'s `env`), since the `/advisor` feature is gated off on this install.
 - A background poller re-discovers sessions every 5s, syncs relays, and publishes SSE so card durations/activity stay fresh.
 - Session cards show a `DisplayName` (custom name or dir basename), CWD, and a live-ticking duration. Rename via `PUT /api/sessions/{terminalId}/name` (custom names persisted to a 0600 file in the metadata dir).
@@ -62,7 +62,7 @@ One relay per session connects the dtach session to WebSocket viewers.
 ### Frontend assets (`frontend/web/`, `go:embed`)
 - `templates/layout.html`, `templates/fragments/{sessions,directory-picker}.html`
 - `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `views.js`, `theme.js`
-- `static/css/style.css` (Futurism design system: tokens, components, responsive media queries), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons)
+- `static/css/futurism.css` (vendored kit — verbatim) + `static/css/app.css` (app components + override ledger + responsive), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons)
 
 ## Common Commands
 
