@@ -13,6 +13,10 @@
   --terminal-bg:#0d1117;
   /* Shared live-dot blink (statpill, session card, active tab dot). */
   --blink:fd-blink 1.2s step-end infinite;
+  /* Mobile flag — the single source for the mobile breakpoint. CSS owns it
+     (custom props can't be used in @media conditions); views.js reads it via
+     getComputedStyle. Flipped to 0 in the min-width:768px block below. */
+  --is-mobile:1;
 }
 
 /* ===== OVERRIDE LEDGER — intentional divergences from stock Futurism ===== */
@@ -245,6 +249,7 @@ input.err-flash{outline:3px solid var(--accent)}
 .hdr{padding:0 12px}
 
 @media (min-width:768px){
+  :root{--is-mobile:0}
   .side{position:static;transform:none;width:240px;max-width:none;z-index:auto;transition:none}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}

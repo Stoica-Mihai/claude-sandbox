@@ -1,5 +1,5 @@
-// Mobile breakpoint (matches Tailwind's md: prefix)
-const MOBILE_BREAKPOINT = '(max-width: 767px)';
+// Mobile state is owned by CSS via the --is-mobile flag (which flips at the
+// breakpoint); reading it here keeps the breakpoint defined in one place: app.css.
 
 
 // View mode management
@@ -9,7 +9,7 @@ let singleTabs = [];            // array of open tab terminal IDs
 
 // ===== Mobile sidebar drawer =====
 function isMobile() {
-    return window.matchMedia(MOBILE_BREAKPOINT).matches;
+    return getComputedStyle(document.documentElement).getPropertyValue('--is-mobile').trim() === '1';
 }
 
 function toggleSidebar() {

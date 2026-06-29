@@ -108,6 +108,7 @@ class FakeDocument {
     constructor() {
         this._byId = new Map();
         this._listeners = {};
+        this.documentElement = new FakeElement('html');
         this.body = new FakeElement('body');
         this.activeElement = new FakeElement('body');
     }

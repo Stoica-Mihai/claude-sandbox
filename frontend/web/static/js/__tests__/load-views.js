@@ -34,6 +34,7 @@ function loadViews({ mobile = false, ids = [] } = {}) {
         setInterval: () => { return ++intervalId; },
         clearInterval: () => {},
         requestAnimationFrame: (fn) => { fn(); return 1; },
+        getComputedStyle: () => ({ getPropertyValue: () => (mobile ? '1' : '0') }),
         Date,
         Math,
         parseInt,
