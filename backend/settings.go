@@ -49,10 +49,6 @@ type editableSettings struct {
 	AdvisorModel          string `json:"advisorModel"`
 }
 
-// editableKeys are the JSON keys the editor owns; everything else in the file
-// is preserved untouched on write.
-var editableKeys = []string{"model", "effortLevel", "alwaysThinkingEnabled", "language", "advisorModel"}
-
 // readContainerSettings loads container-settings.json into a generic map so
 // non-editable keys survive a round-trip. A missing file yields an empty map.
 func readContainerSettings() (map[string]any, error) {
@@ -75,26 +71,15 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	m, err := readContainerSettings()
 	if err != nil {
 		slog.Error("failed to read container settings", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read settings"})
+		writeErr(w, http.StatusInternalServerError, "failed to read settings")
 		return
 	}
 
+	// Project the generic map onto the editable subset via a JSON round-trip;
+	// unknown keys are dropped, fields with the wrong type fall back to zero.
 	out := editableSettings{}
-	if v, ok := m["model"].(string); ok {
-		out.Model = v
-	}
-	if v, ok := m["effortLevel"].(string); ok {
-		out.EffortLevel = v
-	}
-	if v, ok := m["alwaysThinkingEnabled"].(bool); ok {
-		out.AlwaysThinkingEnabled = v
-	}
-	if v, ok := m["language"].(string); ok {
-		out.Language = v
-	}
-	if v, ok := m["advisorModel"].(string); ok {
-		out.AdvisorModel = v
-	}
+	raw, _ := json.Marshal(m)
+	_ = json.Unmarshal(raw, &out)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -117,35 +102,35 @@ func validLanguage(s string) bool {
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var req editableSettings
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
 	// Validate against the allowlists; reject without touching any file.
 	if !slices.Contains(allowedModels, req.Model) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model"})
+		writeErr(w, http.StatusBadRequest, "invalid model")
 		return
 	}
 	// advisorModel must be empty (off) or a canonical Claude model id
 	// (e.g. claude-opus-4-8) — the /advisor command writes ids in this shape;
 	// main-model aliases like "opus[1m]" are NOT valid advisor values.
 	if req.AdvisorModel != "" && !canonicalModelID.MatchString(req.AdvisorModel) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid advisorModel"})
+		writeErr(w, http.StatusBadRequest, "invalid advisorModel")
 		return
 	}
 	// The advisor must be strictly more capable than the main model, else claude
 	// rejects every request ("cannot be used as an advisor when the request model
 	// is ..."). e.g. Sonnet main + Opus advisor is valid; Opus main needs no advisor.
 	if req.AdvisorModel != "" && modelRank(req.AdvisorModel) <= modelRank(req.Model) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisor model must be more capable than the main model (e.g. Sonnet main + Opus advisor); with Opus as the main model, set the advisor to none"})
+		writeErr(w, http.StatusBadRequest, "advisor model must be more capable than the main model (e.g. Sonnet main + Opus advisor); with Opus as the main model, set the advisor to none")
 		return
 	}
 	if !slices.Contains(allowedEffort, req.EffortLevel) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid effortLevel"})
+		writeErr(w, http.StatusBadRequest, "invalid effortLevel")
 		return
 	}
 	if !validLanguage(req.Language) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid language"})
+		writeErr(w, http.StatusBadRequest, "invalid language")
 		return
 	}
 
@@ -153,7 +138,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	m, err := readContainerSettings()
 	if err != nil {
 		slog.Error("failed to read container settings", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read settings"})
+		writeErr(w, http.StatusInternalServerError, "failed to read settings")
 		return
 	}
 	m["model"] = req.Model
@@ -168,20 +153,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 	merged, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode settings"})
+		writeErr(w, http.StatusInternalServerError, "failed to encode settings")
 		return
 	}
 	merged = append(merged, '\n')
 
 	if err := writeFileAtomic(containerSettingsPath(), merged); err != nil {
 		slog.Error("failed to write container settings", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write settings"})
+		writeErr(w, http.StatusInternalServerError, "failed to write settings")
 		return
 	}
 	// Refresh the live settings.json so the next spawned session uses it.
 	if err := writeFileAtomic(settingsJSONPath(), merged); err != nil {
 		slog.Error("failed to refresh live settings.json", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to refresh live settings"})
+		writeErr(w, http.StatusInternalServerError, "failed to refresh live settings")
 		return
 	}
 

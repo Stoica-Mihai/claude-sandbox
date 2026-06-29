@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -281,13 +280,19 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 	return nil
 }
 
+// underWorkspace reports whether abs is workspaceRoot itself or a path beneath
+// it (separator-anchored, so "/workspace-evil" does not qualify).
+func underWorkspace(abs string) bool {
+	return abs == workspaceRoot || strings.HasPrefix(abs, workspaceRoot+"/")
+}
+
 // validWorkspaceDir resolves cwd and ensures it is an existing directory under /workspace.
 func validWorkspaceDir(cwd string) (string, error) {
 	absPath, err := filepath.Abs(cwd)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
-	if absPath != workspaceRoot && !strings.HasPrefix(absPath, workspaceRoot+"/") {
+	if !underWorkspace(absPath) {
 		return "", fmt.Errorf("directory must be under %s", workspaceRoot)
 	}
 	info, err := os.Stat(absPath)
@@ -507,11 +512,7 @@ func sessionsSignature(sessions []DisplaySession) string {
 
 // generateSessionName creates a session name like "claude-a1b2c3d4".
 func generateSessionName() string {
-	buf := make([]byte, 4)
-	if _, err := rand.Read(buf); err != nil {
-		panic("crypto/rand unavailable: " + err.Error())
-	}
-	return sessionPrefix + hex.EncodeToString(buf)
+	return sessionPrefix + hex.EncodeToString(randBytes(4))
 }
 
 // humanRelativeTime formats a time as a relative string like "3s ago".

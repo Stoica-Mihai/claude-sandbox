@@ -83,16 +83,20 @@ func containerSettingsPath() string {
 // our uuid filename, not the cwd encoding, so it survives claude layout changes
 // (worst case: no matches -> the resume list is empty, never broken).
 func hasTranscript(uuid string) bool {
+	return len(transcriptPaths(uuid)) > 0
+}
+
+// transcriptPaths returns every `<uuid>.jsonl` transcript under projects/.
+func transcriptPaths(uuid string) []string {
 	matches, _ := filepath.Glob(filepath.Join(claudeConfigDir(), "projects", "*", uuid+".jsonl"))
-	return len(matches) > 0
+	return matches
 }
 
 // deleteTranscript removes any `<uuid>.jsonl` transcript under projects/.
 // Best-effort: zero matches and already-absent files are not errors (the
 // authoritative removal is the index entry).
 func deleteTranscript(uuid string) {
-	matches, _ := filepath.Glob(filepath.Join(claudeConfigDir(), "projects", "*", uuid+".jsonl"))
-	for _, m := range matches {
+	for _, m := range transcriptPaths(uuid) {
 		os.Remove(m)
 	}
 }
@@ -102,12 +106,19 @@ func deleteTranscript(uuid string) {
 // editor refreshes it so saved changes apply without a container restart.
 func settingsJSONPath() string { return filepath.Join(claudeConfigDir(), "settings.json") }
 
-// newUUID returns a random RFC 4122 v4 UUID string.
-func newUUID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+// randBytes returns n cryptographically-random bytes, panicking if the system
+// RNG is unavailable (an unrecoverable condition).
+func randBytes(n int) []byte {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
 		panic("crypto/rand unavailable: " + err.Error())
 	}
+	return b
+}
+
+// newUUID returns a random RFC 4122 v4 UUID string.
+func newUUID() string {
+	b := randBytes(16)
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
 	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])

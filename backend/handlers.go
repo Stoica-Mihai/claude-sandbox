@@ -65,6 +65,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// writeErr writes a JSON error envelope ({"error": msg}) with the given status.
+func writeErr(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
 // handleHealthz returns a simple JSON health check response.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -84,7 +89,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		Resume string `json:"resume"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
@@ -94,14 +99,14 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		sessionName, err = s.sm.Resume(req.Resume)
 	} else {
 		if req.CWD == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing cwd parameter"})
+			writeErr(w, http.StatusBadRequest, "missing cwd parameter")
 			return
 		}
 		sessionName, err = s.sm.Spawn(req.CWD)
 	}
 	if err != nil {
 		slog.Error("failed to start session", "cwd", req.CWD, "resume", req.Resume, "error", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -112,7 +117,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	cwd := r.URL.Query().Get("cwd")
 	if cwd == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing cwd parameter"})
+		writeErr(w, http.StatusBadRequest, "missing cwd parameter")
 		return
 	}
 	writeJSON(w, http.StatusOK, s.sm.History(cwd))
@@ -122,7 +127,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
 	uuid := r.PathValue("uuid")
 	if uuid == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing uuid"})
+		writeErr(w, http.StatusBadRequest, "missing uuid")
 		return
 	}
 
@@ -130,11 +135,11 @@ func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
 		// An unknown uuid (not in the index) maps to 404; anything else is a
 		// failure killing the live session.
 		if strings.HasPrefix(err.Error(), "unknown session:") {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			writeErr(w, http.StatusNotFound, err.Error())
 			return
 		}
 		slog.Error("failed to delete history", "uuid", uuid, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -146,13 +151,13 @@ func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session name"})
+		writeErr(w, http.StatusBadRequest, "missing session name")
 		return
 	}
 
 	if err := s.sm.Kill(sessionName); err != nil {
 		slog.Error("failed to kill session", "session", sessionName, "error", err)
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -163,14 +168,14 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session name"})
+		writeErr(w, http.StatusBadRequest, "missing session name")
 		return
 	}
 
 	// Check session exists
 	relay := s.sm.GetRelay(sessionName)
 	if relay == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
 
@@ -178,7 +183,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
@@ -206,21 +211,21 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	// Resolve and validate the target path.
 	target := filepath.Join(workspaceRoot, subpath)
 	absTarget, err := filepath.Abs(target)
-	if err != nil || !strings.HasPrefix(absTarget, workspaceRoot) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+	if err != nil || !underWorkspace(absTarget) {
+		writeErr(w, http.StatusBadRequest, "invalid path")
 		return
 	}
 
 	info, err := os.Stat(absTarget)
 	if err != nil || !info.IsDir() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "directory not found"})
+		writeErr(w, http.StatusBadRequest, "directory not found")
 		return
 	}
 
 	entries, err := os.ReadDir(absTarget)
 	if err != nil {
 		slog.Error("failed to read directory", "path", absTarget, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read directory"})
+		writeErr(w, http.StatusInternalServerError, "failed to read directory")
 		return
 	}
 
@@ -265,32 +270,32 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session name"})
+		writeErr(w, http.StatusBadRequest, "missing session name")
 		return
 	}
 
 	// Reject path traversal attempts.
 	if strings.Contains(sessionName, "/") || strings.Contains(sessionName, "..") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session name"})
+		writeErr(w, http.StatusBadRequest, "invalid session name")
 		return
 	}
 
 	relay := s.sm.GetRelay(sessionName)
 	if relay == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
 
 	// 10 MB max.
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file too large or invalid form"})
+		writeErr(w, http.StatusBadRequest, "file too large or invalid form")
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing image field"})
+		writeErr(w, http.StatusBadRequest, "missing image field")
 		return
 	}
 	defer file.Close()
@@ -308,21 +313,21 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(ct, "image/webp"):
 		ext = ".webp"
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type: " + ct})
+		writeErr(w, http.StatusBadRequest, "unsupported image type: " + ct)
 		return
 	}
 
 	// Create upload directory for this session.
 	sessionDir := filepath.Join(uploadDir, sessionName)
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
 		slog.Error("failed to create upload dir", "path", sessionDir, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upload directory"})
+		writeErr(w, http.StatusInternalServerError, "failed to create upload directory")
 		return
 	}
 
 	var randBytes [4]byte
 	if _, err := rand.Read(randBytes[:]); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate filename"})
+		writeErr(w, http.StatusInternalServerError, "failed to generate filename")
 		return
 	}
 	filename := "clipboard-" + hex.EncodeToString(randBytes[:]) + ext
@@ -331,14 +336,14 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	dst, err := os.Create(filePath)
 	if err != nil {
 		slog.Error("failed to create file", "path", filePath, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
+		writeErr(w, http.StatusInternalServerError, "failed to save file")
 		return
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
 		slog.Error("failed to write file", "path", filePath, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write file"})
+		writeErr(w, http.StatusInternalServerError, "failed to write file")
 		return
 	}
 

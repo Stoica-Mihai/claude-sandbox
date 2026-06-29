@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"sync"
 )
@@ -61,9 +60,5 @@ func (b *Broker) Publish() {
 
 // randomID generates a short random hex string for subscriber identification.
 func randomID() string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		panic("crypto/rand unavailable: " + err.Error())
-	}
-	return hex.EncodeToString(buf)
+	return hex.EncodeToString(randBytes(8))
 }
