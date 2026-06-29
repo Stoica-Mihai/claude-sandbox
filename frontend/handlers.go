@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"claude-frontend/web"
+	api "claude-sandbox-api"
 )
 
 // Server is the HTTP server serving the dashboard frontend.
@@ -286,7 +287,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dirData DirectoryData
+	var dirData api.DirectoryData
 	if err := json.NewDecoder(resp.Body).Decode(&dirData); err != nil {
 		slog.Error("failed to decode directory response", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -344,7 +345,7 @@ func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 // fetchSessions calls the backend's GET /api/sessions and returns the parsed list.
-func (s *Server) fetchSessions(r *http.Request) ([]DisplaySession, error) {
+func (s *Server) fetchSessions(r *http.Request) ([]api.DisplaySession, error) {
 	resp, err := s.backendRequest(r.Context(), "GET", "/api/sessions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("backend request: %w", err)
@@ -356,7 +357,7 @@ func (s *Server) fetchSessions(r *http.Request) ([]DisplaySession, error) {
 		return nil, fmt.Errorf("backend returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var sessions []DisplaySession
+	var sessions []api.DisplaySession
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		return nil, fmt.Errorf("decoding sessions: %w", err)
 	}

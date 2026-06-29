@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"claude-frontend/web"
+	api "claude-sandbox-api"
 )
 
 // renderLayout parses the embedded templates the same way NewServer does and
 // renders layout.html with the given sessions.
-func renderLayout(t *testing.T, sessions []DisplaySession) string {
+func renderLayout(t *testing.T, sessions []api.DisplaySession) string {
 	t.Helper()
 	tmpl, err := template.ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
 	if err != nil {

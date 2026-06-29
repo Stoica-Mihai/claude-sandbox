@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	api "claude-sandbox-api"
 )
 
 const (
@@ -34,22 +36,6 @@ const (
 	// killGracePeriod is how long Kill waits after SIGTERM before SIGKILL.
 	killGracePeriod = 2 * time.Second
 )
-
-// DisplaySession is the view used by API responses.
-type DisplaySession struct {
-	Name           string    `json:"name"`
-	CWD            string    `json:"cwd"`
-	DirName        string    `json:"dir_name"`
-	CreatedAt      time.Time `json:"created_at"`
-	Duration       string    `json:"duration"`
-	Alive          bool      `json:"alive"`
-	LastActivity   time.Time `json:"last_activity"`
-	LastActiveStr  string    `json:"last_active_str,omitempty"`
-	RecentActivity bool      `json:"recent_activity"`
-	DisplayName    string    `json:"display_name"`
-	Hue            int       `json:"hue"`
-	SessionID      string    `json:"-"` // claude conversation uuid (for name lookup)
-}
 
 // sessionHues is a hand-picked palette of 12 maximally distinct hues.
 var sessionHues = []int{0, 30, 60, 120, 170, 210, 260, 300, 330, 45, 150, 240}
@@ -72,14 +58,14 @@ func computeHue(name string) int {
 // SessionManager discovers dtach sessions, manages relays, and provides
 // spawn/kill operations.
 type SessionManager struct {
-	mu           sync.RWMutex
-	cached       []DisplaySession
-	cachedAt     time.Time
-	cachedSig    string // discovery signature for change detection
-	relays       map[string]*Relay
-	index        *SessionIndex // persisted uuid → {cwd,created,name}
-	broker       *Broker
-	stopPoll     chan struct{}
+	mu        sync.RWMutex
+	cached    []api.DisplaySession
+	cachedAt  time.Time
+	cachedSig string // discovery signature for change detection
+	relays    map[string]*Relay
+	index     *SessionIndex // persisted uuid → {cwd,created,name}
+	broker    *Broker
+	stopPoll  chan struct{}
 }
 
 // NewSessionManager creates a SessionManager wired to the given SSE broker and
@@ -134,7 +120,7 @@ func (sm *SessionManager) History(cwd string) []SessionHistoryEntry {
 // syncRelays ensures every live session has a running relay and relays for gone
 // sessions are stopped. The caller supplies the discovered session list to avoid
 // a redundant directory scan.
-func (sm *SessionManager) syncRelays(sessions []DisplaySession) {
+func (sm *SessionManager) syncRelays(sessions []api.DisplaySession) {
 	currentNames := make(map[string]bool, len(sessions))
 	for _, s := range sessions {
 		currentNames[s.Name] = true
@@ -167,10 +153,10 @@ func (sm *SessionManager) syncRelays(sessions []DisplaySession) {
 
 // ListSessions returns all sessions, using cache if fresh. Enrichment (activity
 // timestamps, display names) is applied on every call.
-func (sm *SessionManager) ListSessions() []DisplaySession {
+func (sm *SessionManager) ListSessions() []api.DisplaySession {
 	sm.mu.RLock()
 	if time.Since(sm.cachedAt) < cacheTTL {
-		result := make([]DisplaySession, len(sm.cached))
+		result := make([]api.DisplaySession, len(sm.cached))
 		copy(result, sm.cached)
 		sm.mu.RUnlock()
 		return sm.enrichSessions(result)
@@ -182,7 +168,7 @@ func (sm *SessionManager) ListSessions() []DisplaySession {
 
 // enrichSessions adds live activity data and display names to a session list
 // copy. Hue is set at discovery time (pure function of the immutable name).
-func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySession {
+func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.DisplaySession {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	for i := range sessions {
@@ -203,7 +189,7 @@ func (sm *SessionManager) enrichSessions(sessions []DisplaySession) []DisplaySes
 
 // refreshSessions queries discovery and updates the cache. Returns a copy of the
 // new list.
-func (sm *SessionManager) refreshSessions() []DisplaySession {
+func (sm *SessionManager) refreshSessions() []api.DisplaySession {
 	sessions := discoverSessions()
 	sig := sessionsSignature(sessions)
 
@@ -213,7 +199,7 @@ func (sm *SessionManager) refreshSessions() []DisplaySession {
 	sm.cachedSig = sig
 	sm.mu.Unlock()
 
-	result := make([]DisplaySession, len(sessions))
+	result := make([]api.DisplaySession, len(sessions))
 	copy(result, sessions)
 	return result
 }
@@ -456,14 +442,14 @@ func readSessionMeta(name string) sessionMeta {
 // (which the backend owns) rather than the socket: dtach removes its own socket
 // when the inner process exits, so a socket scan would miss dead sessions and
 // leak their metadata sidecars.
-func discoverSessions() []DisplaySession {
+func discoverSessions() []api.DisplaySession {
 	entries, err := os.ReadDir(metaDir)
 	if err != nil {
 		return nil
 	}
 
 	now := time.Now()
-	var sessions []DisplaySession
+	var sessions []api.DisplaySession
 
 	for _, e := range entries {
 		n := e.Name()
@@ -479,7 +465,7 @@ func discoverSessions() []DisplaySession {
 		meta := readSessionMeta(name)
 		createdAt := meta.createdTime(name)
 
-		sessions = append(sessions, DisplaySession{
+		sessions = append(sessions, api.DisplaySession{
 			Name:      name,
 			CWD:       meta.CWD,
 			DirName:   filepath.Base(meta.CWD),
@@ -499,7 +485,7 @@ func discoverSessions() []DisplaySession {
 }
 
 // sessionsSignature builds a deterministic change-detection signature.
-func sessionsSignature(sessions []DisplaySession) string {
+func sessionsSignature(sessions []api.DisplaySession) string {
 	var b strings.Builder
 	for _, s := range sessions {
 		b.WriteString(s.Name)

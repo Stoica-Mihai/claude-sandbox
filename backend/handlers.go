@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	api "claude-sandbox-api"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -192,18 +194,6 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type breadcrumb struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
-type directoryResponse struct {
-	Path        string       `json:"path"`
-	FullPath    string       `json:"full_path"`
-	Dirs        []string     `json:"dirs"`
-	Breadcrumbs []breadcrumb `json:"breadcrumbs"`
-}
-
 // handleDirectories lists directories under /workspace for the directory picker.
 func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	subpath := r.URL.Query().Get("path")
@@ -244,18 +234,18 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build breadcrumbs from path segments.
-	var breadcrumbs []breadcrumb
+	var breadcrumbs []api.Breadcrumb
 	if currentRel != "" {
 		parts := strings.Split(currentRel, string(filepath.Separator))
 		for i, part := range parts {
-			breadcrumbs = append(breadcrumbs, breadcrumb{
+			breadcrumbs = append(breadcrumbs, api.Breadcrumb{
 				Name: part,
 				Path: strings.Join(parts[:i+1], "/"),
 			})
 		}
 	}
 
-	resp := directoryResponse{
+	resp := api.DirectoryData{
 		Path:        currentRel,
 		FullPath:    absTarget,
 		Dirs:        dirs,
@@ -313,7 +303,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(ct, "image/webp"):
 		ext = ".webp"
 	default:
-		writeErr(w, http.StatusBadRequest, "unsupported image type: " + ct)
+		writeErr(w, http.StatusBadRequest, "unsupported image type: "+ct)
 		return
 	}
 

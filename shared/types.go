@@ -1,0 +1,39 @@
+// Package api defines the JSON contract shared between the backend (which
+// produces these payloads) and the frontend (which decodes and renders them).
+// It is the single source of truth for the wire shapes; both modules depend on
+// it via a local replace directive.
+package api
+
+import "time"
+
+// DisplaySession is a session as exposed by the backend API and rendered by the
+// frontend. SessionID is backend-internal (the claude conversation uuid) and
+// never crosses the wire (json:"-").
+type DisplaySession struct {
+	Name           string    `json:"name"`
+	CWD            string    `json:"cwd"`
+	DirName        string    `json:"dir_name"`
+	CreatedAt      time.Time `json:"created_at"`
+	Duration       string    `json:"duration"`
+	Alive          bool      `json:"alive"`
+	LastActivity   time.Time `json:"last_activity"`
+	LastActiveStr  string    `json:"last_active_str,omitempty"`
+	RecentActivity bool      `json:"recent_activity"`
+	DisplayName    string    `json:"display_name"`
+	Hue            int       `json:"hue"`
+	SessionID      string    `json:"-"`
+}
+
+// Breadcrumb is one path segment in the directory-picker breadcrumb.
+type Breadcrumb struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// DirectoryData is the directory-picker payload for a single folder.
+type DirectoryData struct {
+	Path        string       `json:"path"`
+	FullPath    string       `json:"full_path"`
+	Dirs        []string     `json:"dirs"`
+	Breadcrumbs []Breadcrumb `json:"breadcrumbs"`
+}
