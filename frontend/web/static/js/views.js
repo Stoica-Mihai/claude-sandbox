@@ -191,7 +191,7 @@ function mobileToggleSelect(btn) {
     const existing = document.getElementById('selectOverlay');
     if (existing) {
         existing.remove();
-        if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
+        if (btn) btn.classList.remove('sel-active');
         return;
     }
 
@@ -212,12 +212,11 @@ function mobileToggleSelect(btn) {
     const overlay = document.createElement('pre');
     overlay.id = 'selectOverlay';
     overlay.textContent = lines.join('\n');
-    overlay.style.cssText = 'position:absolute;inset:0;z-index:50;margin:0;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:13px;font-family:monospace;line-height:1.4;color:#c9d1d9;background:#0d1117;user-select:text;-webkit-user-select:text;white-space:pre-wrap;word-break:break-all;';
     terminal.appendChild(overlay);
     // Scroll to bottom to match terminal position.
     overlay.scrollTop = overlay.scrollHeight;
 
-    if (btn) { btn.style.color = '#3fb950'; btn.style.borderColor = 'rgba(63,185,80,0.3)'; }
+    if (btn) btn.classList.add('sel-active');
 }
 
 function updateSingleTabBar(activeTerminalId) {
@@ -321,10 +320,10 @@ document.getElementById('renameSubmit')?.addEventListener('click', () => {
         renameTargetId = null;
     }).catch(err => {
         console.error('Rename failed:', err);
-        document.getElementById('renameInput').style.outline = '3px solid #d22f1a';
+        document.getElementById('renameInput').classList.add('err-flash');
         setTimeout(() => {
             const el = document.getElementById('renameInput');
-            if (el) el.style.outline = '';
+            if (el) el.classList.remove('err-flash');
         }, 2000);
     });
 });
@@ -469,12 +468,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (xhr.status >= 400) {
         const submitBtn = document.getElementById('dir-picker-submit');
         if (submitBtn) {
-            submitBtn.style.background = '#d22f1a';
-            submitBtn.style.color = '#efe9dc';
+            submitBtn.classList.add('btn-spawn-fail');
             submitBtn.textContent = 'Failed — try again';
             setTimeout(() => {
-                submitBtn.style.background = '';
-                submitBtn.style.color = '';
+                submitBtn.classList.remove('btn-spawn-fail');
                 submitBtn.textContent = dirPickerSel.kind === 'resume' ? 'Resume' : 'Launch';
             }, 2000);
         }

@@ -68,6 +68,7 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 .btn.saving{pointer-events:none;
   background-image:linear-gradient(45deg,color-mix(in srgb,var(--on-accent) 22%,transparent) 25%,transparent 25% 50%,color-mix(in srgb,var(--on-accent) 22%,transparent) 50% 75%,transparent 75%);
   background-size:22px 22px;animation:fd-march .55s linear infinite}
+.btn-spawn-fail{background:var(--accent);color:var(--on-accent)}
 
 /* ===== Badges ===== */
 .badge{display:inline-block;font-size:10px;font-weight:900;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;background:var(--ink);color:var(--bg)}
@@ -77,6 +78,7 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* ===== Inputs ===== */
 input,textarea{width:100%;background:var(--field);border:2px solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
 input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
+input.err-flash{outline:3px solid var(--accent)}
 
 /* ===== Card ===== */
 .card{background:var(--surf);border:2px solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
@@ -196,6 +198,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .keycap{border:2px solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
   transition:background var(--fast),color var(--fast)}
 .keycap:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.keycap--hint{font-size:11px;min-width:54px;text-align:center;cursor:default}
+.keycap--mobile{font-size:13px;font-weight:400;height:36px;min-width:36px;padding:0 10px;flex-shrink:0}
+.keycap--mobile:active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.keycap--mobile.sel-active{color:var(--accent);border-color:var(--accent)}
 
 /* ===== Terminal surface ===== */
 .term{flex:1;background:var(--field);overflow:auto;padding:16px 18px;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--ink)}
@@ -211,7 +217,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .welcome .inner{max-width:520px}
 .welcome .big{margin:0}
 .keyhint{display:flex;align-items:center;gap:12px;margin-top:10px}
-.keyhint kbd{border:2px solid var(--line);background:var(--surf);font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 9px;min-width:54px;text-align:center}
 .keyhint span{font-size:13px;color:var(--muted)}
 
 /* ===== Modal ===== */
@@ -289,22 +294,13 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* ===== Pull to refresh ===== */
 #pullIndicator{text-align:center;font-size:.8rem;overflow:hidden;height:0;color:var(--muted);font-family:var(--mono);transition:height var(--med) var(--ease)}
 
-/* ===== Mobile toolbar key ===== */
-.mobile-key{
-  font-family:var(--mono);font-size:13px;background:var(--surf);border:2px solid var(--line);color:var(--ink);
-  padding:0 10px;height:36px;min-width:36px;flex-shrink:0;cursor:pointer;transition:background var(--fast),color var(--fast)}
-.mobile-key:active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-
 /* ===== Terminal background (driven by --terminal-bg, set in terminal.js) ===== */
 .terminal-bg{background:var(--terminal-bg)}
 /* Per-tab terminal container fills the flex:1 #singleTerminal so the fit addon
    measures full height (else xterm collapses to a few rows mid-screen). */
 .term-tab{position:absolute;inset:0}
+#selectOverlay{position:absolute;inset:0;z-index:50;margin:0;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:13px;font-family:var(--mono);line-height:1.4;color:var(--terminal-fg);background:var(--terminal-bg);user-select:text;-webkit-user-select:text;white-space:pre-wrap;word-break:break-all}
 .terminal-controls-bg{background:var(--terminal-bg);border-color:var(--line)}
-.terminal-controls-bg .kbd{border:2px solid var(--line);background:var(--surf);font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 9px;color:var(--ink);cursor:pointer;transition:background var(--fast),color var(--fast)}
-.terminal-controls-bg .kbd:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-[data-theme-base="light"] .terminal-controls-bg .kbd{background:var(--surf);color:var(--ink)}
-[data-theme-base="light"] .terminal-controls-bg .kbd:hover{background:var(--accent);color:var(--on-accent)}
 #mobileInputBar{background:var(--terminal-bg)}
 
 /* ===== Scrollbar ===== */

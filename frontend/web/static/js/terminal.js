@@ -92,6 +92,7 @@ function getTerminalTheme() {
 function syncTerminalBgVar() {
     const theme = getTerminalTheme();
     document.documentElement.style.setProperty('--terminal-bg', theme.background);
+    document.documentElement.style.setProperty('--terminal-fg', theme.foreground);
     // Determine if this is a light-base or dark-base theme for CSS overrides
     const lightThemes = ['light', 'cupcake', 'autumn'];
     const isLight = lightThemes.includes(document.documentElement.getAttribute('data-theme'));
