@@ -197,7 +197,9 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .ctrlbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
 .keycap{border:2px solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
   transition:background var(--fast),color var(--fast)}
-.keycap:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+/* Hint labels are non-interactive (welcome screen) — exclude them from the hover
+   reaction so they don't read as clickable; the old .keyhint kbd had no hover. */
+.keycap:not(.keycap--hint):hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .keycap--hint{font-size:11px;min-width:54px;text-align:center;cursor:default}
 .keycap--mobile{font-size:13px;font-weight:400;height:36px;min-width:36px;padding:0 10px;flex-shrink:0}
 .keycap--mobile:active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}

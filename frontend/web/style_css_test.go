@@ -82,8 +82,8 @@ func TestNoStatusGreenTokenOneRed(t *testing.T) {
 	}
 }
 
-// Task 2.1: the base .keycap atom holds the canonical ctrlbar values, and
-// .keycap:hover is the shared hover affordance.
+// Task 2.1: the base .keycap atom holds the canonical ctrlbar values, and the
+// shared hover affordance lives on the base atom but excludes hint labels.
 func TestKeycapBaseAtom(t *testing.T) {
 	css := cssText(t)
 	assertDecls(t, css, ".keycap",
@@ -96,7 +96,7 @@ func TestKeycapBaseAtom(t *testing.T) {
 		"padding:3px 9px",
 		"cursor:pointer",
 	)
-	assertDecls(t, css, ".keycap:hover",
+	assertDecls(t, css, ".keycap:not(.keycap--hint):hover",
 		"background:var(--accent)",
 		"color:var(--on-accent)",
 		"border-color:var(--accent)",
@@ -111,6 +111,19 @@ func TestKeycapHintModifier(t *testing.T) {
 		"text-align:center",
 		"cursor:default",
 	)
+}
+
+// Non-interactive welcome-hint labels must NOT gain the accent hover reaction
+// (the old .keyhint kbd had none). The shared hover is scoped away from hints,
+// and no hint-specific hover rule re-introduces it.
+func TestKeycapHintHasNoHover(t *testing.T) {
+	css := cssText(t)
+	if _, ok := ruleBody(t, css, ".keycap:hover"); ok {
+		t.Error("unscoped .keycap:hover would apply to hint labels; scope it with :not(.keycap--hint)")
+	}
+	if _, ok := ruleBody(t, css, ".keycap--hint:hover"); ok {
+		t.Error(".keycap--hint:hover must not exist — hint labels are non-interactive")
+	}
 }
 
 // Task 2.3: .keycap--mobile and its :active touch affordance.
