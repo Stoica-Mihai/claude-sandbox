@@ -151,7 +151,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
    overlays its right edge (a button can't legally nest inside the row button). */
 .arow-wrap{position:relative}
 .arow-wrap .sa-row{padding-right:46px}
-.arow-del{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;gap:6px;
+.arow-del{position:absolute;top:2px;right:0;bottom:2px;display:flex;align-items:center;gap:6px;
   padding:0 12px;border:none;border-left:2px solid var(--line);background:transparent;color:var(--muted);
   font:inherit;cursor:pointer;opacity:0;transition:opacity var(--fast),background var(--fast),color var(--fast)}
 .arow-wrap:hover .arow-del,.arow-del:focus-visible,.arow-del.confirming{opacity:1}
