@@ -125,15 +125,4 @@ class FakeDocument {
     }
 }
 
-function makeEnv({ mobile = false } = {}) {
-    const document = new FakeDocument();
-    const timers = [];
-    const window = {
-        matchMedia: () => ({ matches: mobile }),
-        WebSocket: { OPEN: 1 },
-        htmx: null,
-    };
-    return { document, window, timers };
-}
-
-module.exports = { ClassList, FakeElement, FakeDocument, makeStyle, makeEnv };
+module.exports = { ClassList, FakeElement, FakeDocument, makeStyle };
