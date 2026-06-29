@@ -68,9 +68,11 @@ html,body{height:100dvh;margin:0;overflow:hidden}
   border-right:3px solid var(--line);display:flex;flex-direction:column;
   transition:width var(--med) var(--ease)}
 .side.expanded{width:288px;box-shadow:8px 0 0 var(--shadow)}
-.side .shead{display:flex;align-items:center;gap:8px;padding:9px;border-bottom:2px solid var(--line)}
+/* Collapsed rail head matches the tab bar (42px tall, 3px border) so their
+   dividers align into one continuous line across the rail/main boundary. */
+.side .shead{display:flex;align-items:center;justify-content:center;gap:8px;height:42px;border-bottom:3px solid var(--line)}
 .side .shead .kick,.side .shead .btn-new{display:none}
-.side.expanded .shead{justify-content:space-between;padding:14px 14px 12px}
+.side.expanded .shead{justify-content:space-between;height:auto;padding:14px 14px 12px}
 .side.expanded .shead .kick{display:block;letter-spacing:3px}
 .side.expanded .shead .btn-new{display:inline-flex}
 .side .list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
@@ -104,6 +106,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .side:not(.expanded) .scard .live{position:absolute;top:3px;right:3px;width:7px;height:7px}
 /* Active chip: accent ring + offset shadow (ink shadow keeps it crisp in dark). */
 .side:not(.expanded) .scard.active{outline:3px solid var(--accent);outline-offset:-2px;box-shadow:3px 3px 0 var(--ink)}
+/* The "no sessions" message is panel-only; the collapsed rail shows chips or nothing. */
+.side:not(.expanded) .empty-state{display:none}
 
 /* ===== Main / terminal tabs ===== */
 .main{flex:1;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;min-width:0}
