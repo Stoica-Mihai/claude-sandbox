@@ -35,24 +35,6 @@ const (
 	killGracePeriod = 2 * time.Second
 )
 
-// sessionHues is a hand-picked palette of 12 maximally distinct hues.
-var sessionHues = []int{0, 30, 60, 120, 170, 210, 260, 300, 330, 45, 150, 240}
-
-// computeHue returns a deterministic hue from a fixed palette, derived from the
-// session name's hex suffix.
-func computeHue(name string) int {
-	suffix := strings.TrimPrefix(name, sessionPrefix)
-	var idx uint64
-	if v, err := strconv.ParseUint(suffix, 16, 64); err == nil {
-		idx = v
-	} else {
-		for _, b := range []byte(name) {
-			idx += uint64(b)
-		}
-	}
-	return sessionHues[int(idx%uint64(len(sessionHues)))]
-}
-
 // SessionManager discovers dtach sessions, manages relays, and provides
 // spawn/kill operations.
 type SessionManager struct {
@@ -165,8 +147,7 @@ func (sm *SessionManager) ListSessions() []api.DisplaySession {
 }
 
 // enrichSessions sets each session's display name (custom name from the index,
-// else the directory basename). Hue is set at discovery time (pure function of
-// the immutable name).
+// else the directory basename).
 func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.DisplaySession {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -463,7 +444,6 @@ func discoverSessions() []api.DisplaySession {
 			DirName:   filepath.Base(meta.CWD),
 			CreatedAt: createdAt,
 			Alive:     true,
-			Hue:       computeHue(name),
 			SessionID: meta.SessionID,
 		})
 	}

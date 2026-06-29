@@ -16,7 +16,6 @@ type DisplaySession struct {
 	CreatedAt   time.Time `json:"created_at"`
 	Alive       bool      `json:"alive"`
 	DisplayName string    `json:"display_name"`
-	Hue         int       `json:"hue"`
 	SessionID   string    `json:"-"`
 }
 
