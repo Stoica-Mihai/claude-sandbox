@@ -94,7 +94,7 @@ func TestNoStatusGreenTokenOneRed(t *testing.T) {
 func TestKeycapBaseAtom(t *testing.T) {
 	kit := kitText(t)
 	assertDecls(t, kit, ".keycap",
-		"border:2px solid var(--line)",
+		"border:var(--border) solid var(--line)",
 		"background:var(--surf)",
 		"color:var(--ink)",
 		"font-family:var(--mono",
