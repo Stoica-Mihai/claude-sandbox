@@ -298,21 +298,9 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHistoryProxy proxies GET /api/sessions/history (JSON) to the backend.
+// Pure passthrough, so it uses the generic httpProxy like settings/upload/healthz.
 func (s *Server) handleHistoryProxy(w http.ResponseWriter, r *http.Request) {
-	path := "/api/sessions/history"
-	if q := r.URL.RawQuery; q != "" {
-		path += "?" + q
-	}
-	resp, err := s.backendRequest(r.Context(), "GET", path, nil)
-	if err != nil {
-		slog.Error("failed to fetch history from backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	httpProxy(w, r, s.backendURL)
 }
 
 // --- Pure proxy routes ---
