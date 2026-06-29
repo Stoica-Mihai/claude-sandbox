@@ -7,7 +7,7 @@
   --bg:#efe9dc; --surf:#f7f3ea; --ink:#1a1714; --muted:#4a4339;
   --accent:#d22f1a; --line:#1a1714; --shadow:#1a1714; --field:#f7f3ea; --on-accent:#efe9dc;
   --ease:cubic-bezier(.2,.9,.1,1); --fast:.12s; --med:.2s;
-  --space:8px; --border:2px; --shadow-off:6px;
+  --border:2px; --shadow-off:6px;  /* --border = standard control/surface border; 3px dividers stay literal */
   --font:'Helvetica Neue',Arial,sans-serif;
   --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
   /* Overlay dim — theme-INDEPENDENT (same in light + dark). Never use --ink for
@@ -39,7 +39,7 @@ h1,.h1{font-size:clamp(34px,6vw,64px);font-weight:900;font-style:italic;letter-s
 h2,.h2{font-size:clamp(24px,4vw,40px);font-weight:900;font-style:italic;letter-spacing:-1px;line-height:.9;margin:.3em 0}
 h3,.h3{font-size:18px;font-weight:900;font-style:italic;letter-spacing:-.5px;margin:.4em 0}
 p{font-size:15px;line-height:1.55;color:var(--muted);margin:.5em 0}
-a{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:2px solid var(--accent)}
+a{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:var(--border) solid var(--accent)}
 a .arr{display:inline-block;transition:transform var(--fast) var(--ease)}
 a:hover .arr{transform:translateX(5px)}
 blockquote{border-left:8px solid var(--accent);margin:1em 0;padding:.2em 1em;font-style:italic;font-size:18px;font-weight:700}
@@ -64,7 +64,7 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 .btn-primary:hover,.btn.err:hover{box-shadow:5px 5px 0 var(--ink)}
 .btn-primary{background:var(--accent);color:var(--on-accent)}
 .btn-ink{background:var(--ink);color:var(--bg)}
-.btn-ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
 /* State variants — stay inside the one-red palette (law 4): ink = done/committed,
    accent = error/attention. .saving marches diagonal stripes (the machine motion
    from .prog), never an opacity pulse, which would read as fade-puff (law 5). */
@@ -81,14 +81,14 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 .sel-val:focus-visible,.toggle:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
 /* Icon button — square, token-themed (must set color explicitly; see reset above) */
-.iconbtn{width:30px;height:30px;border:2px solid var(--line);background:var(--surf);color:var(--ink);display:flex;align-items:center;justify-content:center;
+.iconbtn{width:30px;height:30px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);display:flex;align-items:center;justify-content:center;
   cursor:pointer;font-size:13px;font-weight:900;line-height:1;transition:background var(--fast),color var(--fast)}
 .iconbtn:hover{background:var(--ink);color:var(--bg)}
 .iconbtn.danger:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .iconbtn svg{width:18px;height:18px}
 
 /* Keycap — monospace key/affordance chip */
-.keycap{border:2px solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono,ui-monospace,monospace);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
+.keycap{border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono,ui-monospace,monospace);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
   transition:background var(--fast),color var(--fast)}
 .keycap:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 /* Chord — keycaps welded into one block (shared 2px divider, no gap) so they
@@ -109,20 +109,20 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* Badges */
 .badge{display:inline-block;font-size:10px;font-weight:900;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;background:var(--ink);color:var(--bg)}
 .badge.red{background:var(--accent);color:var(--on-accent)}
-.badge.out{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.badge.out{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
 
 /* Inputs */
-input,textarea{width:100%;background:var(--field);border:2px solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
+input,textarea{width:100%;background:var(--field);border:var(--border) solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
 input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
 
 /* Custom select — native popups render OS-styled, so build this instead */
 .sel{position:relative;width:100%;font-size:13px;user-select:none}
-.sel-val{background:var(--field);border:2px solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700}
+.sel-val{background:var(--field);border:var(--border) solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700}
 .sel.open .sel-val{outline:3px solid var(--accent)}
 .sel-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sel-val .caret{display:inline-block;font-style:normal;flex:none;transition:transform var(--fast) var(--ease)}
 .sel.open .sel-val .caret{transform:rotate(90deg)}
-.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--field);border:2px solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:5;max-height:200px;overflow-y:auto;
+.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--field);border:var(--border) solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:5;max-height:200px;overflow-y:auto;
   transform-origin:top;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
 .sel.open .sel-list{transform:scaleY(1);pointer-events:auto}
 .sel-opt{padding:8px 10px;cursor:pointer;font-weight:700;transition:background var(--fast),color var(--fast)}
@@ -130,20 +130,20 @@ input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
 .sel-opt.sel-on{border-left:6px solid var(--accent)}
 
 /* Toggle */
-.toggle{width:48px;height:24px;border:2px solid var(--line);background:var(--muted);position:relative;flex:none;cursor:pointer;transition:background var(--fast) var(--ease)}
-.toggle>i{position:absolute;top:0;left:0;width:20px;height:20px;background:var(--bg);border-right:2px solid var(--line);transition:left var(--fast) var(--ease)}
+.toggle{width:48px;height:24px;border:var(--border) solid var(--line);background:var(--muted);position:relative;flex:none;cursor:pointer;transition:background var(--fast) var(--ease)}
+.toggle>i{position:absolute;top:0;left:0;width:20px;height:20px;background:var(--bg);border-right:var(--border) solid var(--line);transition:left var(--fast) var(--ease)}
 .toggle.on{background:var(--accent)}
-.toggle.on>i{left:24px;border-right:none;border-left:2px solid var(--line)}
+.toggle.on>i{left:24px;border-right:none;border-left:var(--border) solid var(--line)}
 
 /* Segmented LIGHT/DARK-style switch — a 2-state labeled pill; .act marks the live
    segment. Flip with fdTheme() and move .act to the active label in your handler. */
-.switch{display:inline-flex;border:2px solid var(--line);font-size:10px;font-weight:900;letter-spacing:1px;cursor:pointer;background:none}
+.switch{display:inline-flex;border:var(--border) solid var(--line);font-size:10px;font-weight:900;letter-spacing:1px;cursor:pointer;background:none}
 .switch span{padding:6px 12px}
 .switch .act{background:var(--accent);color:var(--on-accent)}
 .switch:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
 /* Cards */
-.card{background:var(--surf);border:2px solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+.card{background:var(--surf);border:var(--border) solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
   transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
 .card:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--shadow)}
 
@@ -170,12 +170,12 @@ input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
 @keyframes fd-slidein{from{transform:translateX(16px)}to{transform:translateX(0)}}
 
 /* Alerts — lead with a currentColor stroke SVG (never emoji); flex aligns it. */
-.alert{display:flex;align-items:center;gap:9px;border:2px solid var(--accent);border-left-width:8px;padding:10px 12px;font-size:13px;background:var(--tint)}
+.alert{display:flex;align-items:center;gap:9px;border:var(--border) solid var(--accent);border-left-width:8px;padding:10px 12px;font-size:13px;background:var(--tint)}
 .alert.info{border-color:var(--line);background:var(--surf)}
 .alert svg{width:18px;height:18px;flex:none}
 
 /* Progress */
-.prog{height:14px;border:2px solid var(--line);background:var(--field);position:relative;overflow:hidden}
+.prog{height:14px;border:var(--border) solid var(--line);background:var(--field);position:relative;overflow:hidden}
 .prog>i{display:block;height:100%;background-color:var(--accent);
   background-image:linear-gradient(45deg,color-mix(in srgb,var(--accent) 70%,#000) 25%,transparent 25% 50%,color-mix(in srgb,var(--accent) 70%,#000) 50% 75%,transparent 75%);
   background-size:22px 22px;transition:width var(--med) var(--ease);animation:fd-march .8s linear infinite}
@@ -192,12 +192,37 @@ tbody tr:hover{background:var(--tint)}
 /* List rows — hover + selected highlight driven through --row-bg so a JS-set
    inline background:var(--row-bg,transparent) can't clobber the highlight. Washes
    use the theme-aware --hover-bg/--sel-bg tokens (dark needs far higher mixes). */
-.list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-bottom:2px solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
+.list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-bottom:var(--border) solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
 .list-row:last-child{border-bottom:none}
 .list-row:hover{--row-bg:var(--hover-bg)}
 /* Selected: theme-aware wash + an inset accent edge — the edge carries the cue even
    where the wash is subtle (and survives forced-colors), so sel != hover != normal. */
 .list-row.sel,.list-row.sel:hover{--row-bg:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
+
+/* Row action + inline two-step confirm — a per-row control (e.g. delete) without a
+   modal or native confirm(). Wrap the row + action as SIBLINGS in .row-host: an
+   interactive control can't legally nest inside a row that is itself a <button>.
+   The slot itself is a CONTAINER (not a button) so its child buttons never nest in a
+   button either. Always-visible-muted (discoverable), inset top/bottom so it doesn't
+   cover the row divider. Wire the two-step + focus/Esc/ARIA with fdConfirm(). */
+.row-host{position:relative}
+.row-host .list-row{padding-right:46px}
+.row-act{position:absolute;top:2px;right:0;bottom:2px;display:flex;align-items:center;border-left:var(--border) solid var(--line)}
+/* No background here — the global button{background:none} handles default
+   transparency; setting it here would out-specify .confirm-yes and kill its fill. */
+.row-act>button{font:inherit;border:0;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.row-act-btn{display:flex;align-items:center;justify-content:center;height:100%;padding:0 12px;color:var(--muted)}
+.row-act-btn:hover{background:var(--accent);color:var(--on-accent)}
+.row-act-btn svg{width:15px;height:15px;display:block}
+.row-act.confirming{border-left-color:var(--accent)}
+.confirm-yes,.confirm-no{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:0 7px;height:100%}
+.confirm-yes{background:var(--accent);color:var(--on-accent)}
+.confirm-yes:hover{background:color-mix(in srgb,var(--accent) 82%,#000)}
+.confirm-no{color:var(--muted);border-left:var(--border) solid var(--line)}
+.confirm-no:hover{color:var(--ink)}
+.row-act-btn:focus-visible,.confirm-yes:focus-visible,.confirm-no:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+/* Transient failure flash (set by fdConfirm on a rejected action), then revert. */
+.row-act.failed{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent);justify-content:center;padding:0 10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
 
 /* Modal — native <dialog>: transparent shell, the .modal box carries the chrome.
    overflow:visible on <dialog> so .modal's offset shadow isn't clipped; tall
@@ -219,14 +244,14 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 /* Accent picker — single trigger + popover (collapses the swatch row on mobile).
    Swap --accent + --shadow at runtime; see futurism.js / the SKILL accent note. */
 .accpick{position:relative}
-.acctrig{width:30px;height:30px;border:2px solid var(--line);cursor:pointer;padding:0;background:var(--accent);transition:transform var(--fast) var(--ease)}
+.acctrig{width:30px;height:30px;border:var(--border) solid var(--line);cursor:pointer;padding:0;background:var(--accent);transition:transform var(--fast) var(--ease)}
 .acctrig:hover{transform:translateY(-2px)}
-.accpop{position:absolute;top:calc(100% + 6px);right:0;background:var(--surf);border:2px solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:60;padding:8px;
+.accpop{position:absolute;top:calc(100% + 6px);right:0;background:var(--surf);border:var(--border) solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:60;padding:8px;
   display:grid;grid-template-columns:repeat(4,1fr);gap:6px;transform-origin:top right;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
 .accpick.open .accpop{transform:scaleY(1);pointer-events:auto}
-.acc{width:28px;height:28px;border:2px solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
+.acc{width:28px;height:28px;border:var(--border) solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
 .acc:hover{transform:translateY(-2px)}
-.acc.on{outline:2px solid var(--ink);outline-offset:1px}
+.acc.on{outline:var(--border) solid var(--ink);outline-offset:1px}
 
 /* Off-canvas drawer — fixed panel that slides in; .drawer-open shows it.
    .scrim-bg is the tap-to-close dim (uses --scrim, never --ink). */
@@ -240,7 +265,7 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 /* Checkbox & radio — styled NATIVE inputs (appearance:none) so they keep real
    keyboard + a11y. Both are squares (circles break law 1). Checkbox fills accent
    with an on-accent check; radio stays field with an inset accent block. */
-.check,.radio{appearance:none;-webkit-appearance:none;width:18px;height:18px;flex:none;margin:0;border:2px solid var(--line);background:var(--field);cursor:pointer;position:relative;transition:background var(--fast) var(--ease)}
+.check,.radio{appearance:none;-webkit-appearance:none;width:18px;height:18px;flex:none;margin:0;border:var(--border) solid var(--line);background:var(--field);cursor:pointer;position:relative;transition:background var(--fast) var(--ease)}
 .check:checked{background:var(--accent)}
 .check:checked::after{content:"";position:absolute;left:4px;top:0;width:6px;height:11px;border:solid var(--on-accent);border-width:0 3px 3px 0;transform:rotate(45deg)}
 .radio:checked::after{content:"";position:absolute;inset:3px;background:var(--accent)}
@@ -251,7 +276,7 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .toaster{position:fixed;right:16px;bottom:16px;z-index:70;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
 /* Neutral by default (line border + accent left-rule); .err raises full accent.
    Slides in from the right and out via .out — never fades. */
-.toast{background:var(--surf);border:2px solid var(--line);border-left:8px solid var(--accent);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);padding:11px 14px;font-size:13px;font-weight:700;min-width:200px;max-width:340px;
+.toast{background:var(--surf);border:var(--border) solid var(--line);border-left:8px solid var(--accent);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);padding:11px 14px;font-size:13px;font-weight:700;min-width:200px;max-width:340px;
   transition:transform var(--med) var(--ease);animation:fd-toastin var(--med) var(--ease)}
 .toast.err{border-color:var(--accent)}
 .toast.out{transform:translateX(120%)}
@@ -270,21 +295,21 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 
 /* Skeleton — content-shaped placeholder. Reuses the fd-march barber-pole (a spinner
    would be rotary, off-brand) at a low accent-mix. Set width/height inline. */
-.skel{height:14px;border:2px solid var(--line);background-color:var(--field);
+.skel{height:14px;border:var(--border) solid var(--line);background-color:var(--field);
   background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
   background-size:22px 22px;animation:fd-march 1s linear infinite}
 
 /* Segmented control — welded buttons (the .combo idiom); active fills ink. For a
    few visible options where tabs are too heavy and a select is overkill. */
 .seg{display:inline-flex}
-.seg button{font-family:var(--font);font-weight:800;font-style:italic;font-size:12px;padding:7px 14px;border:2px solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;transition:background var(--fast),color var(--fast)}
+.seg button{font-family:var(--font);font-weight:800;font-style:italic;font-size:12px;padding:7px 14px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;transition:background var(--fast),color var(--fast)}
 .seg button+button{margin-left:-2px}
 .seg button.on{background:var(--ink);color:var(--bg)}
 .seg button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
 
 /* Pagination — welded square cells; current fills ink, disabled goes muted. */
 .pager{display:inline-flex}
-.pager button{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:700;min-width:32px;height:32px;border:2px solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast),color var(--fast)}
+.pager button{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:700;min-width:32px;height:32px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast),color var(--fast)}
 .pager button+button{margin-left:-2px}
 .pager button:not(:disabled):hover{background:var(--ink);color:var(--bg)}
 /* current page fills ink = selected/committed (matches .seg/.tab); accent stays
