@@ -149,8 +149,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* ===== Resume-row delete — uses the kit .row-host/.row-act/.confirm-* component ===== */
 /* Kit's padding rule targets .list-row; our resume row is .arow.sa-row. */
 .row-host .sa-row{padding-right:46px}
-/* Tuned: the confirm pair sits a touch shorter than the idle trash (kit insets 2px). */
-.row-act.confirming{top:5px;bottom:5px}
+/* Confirm is a fixed-height strip centered in the row. Kit anchors .row-act
+   top/bottom, so on a taller two-line row the accent edge + buttons grow chunky;
+   centering a fixed height keeps the edge, divider, and buttons one compact size. */
+.row-act.confirming{top:50%;bottom:auto;transform:translateY(-50%);height:28px}
 
 /* ===== Settings modal: button + note ===== */
 .settings-btn{width:34px;height:34px;flex:none}
