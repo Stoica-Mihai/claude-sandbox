@@ -11,6 +11,8 @@
      --terminal-fg is also set at runtime (no static fallback: the selection overlay
      only appears once a terminal exists). */
   --terminal-bg:#0d1117;
+  /* Shared live-dot blink (statpill, session card, active tab dot). */
+  --blink:fd-blink 1.2s step-end infinite;
 }
 
 /* ===== OVERRIDE LEDGER — intentional divergences from stock Futurism ===== */
@@ -42,7 +44,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hdr .sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-left:6px}
 .hdr .right{display:flex;align-items:center;gap:16px}
 .statpill{display:flex;align-items:center;gap:7px;border:2px solid var(--line);padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
-.statpill .dot{width:8px;height:8px;background:var(--accent);animation:fd-blink 1.2s step-end infinite}
+.statpill .dot{width:8px;height:8px;background:var(--accent);animation:var(--blink)}
 
 /* ===== Theme toggle — accent-independent (track uses ink, not the accent) ===== */
 .themewrap{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
@@ -63,7 +65,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .scard:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--shadow)}
 .scard.active{outline:3px solid var(--accent);outline-offset:-2px}
 .scard .row1{display:flex;align-items:center;gap:8px}
-.scard .live{width:9px;height:9px;flex:none;background:var(--accent);animation:fd-blink 1.2s step-end infinite}
+.scard .live{width:9px;height:9px;flex:none;background:var(--accent);animation:var(--blink)}
 .scard .live.dead{background:var(--muted);animation:none}
 .scard .nm{font-weight:900;font-style:italic;font-size:14px;letter-spacing:-.3px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .acts{display:flex;gap:4px;opacity:0;transition:opacity var(--fast)}
@@ -81,7 +83,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .ttab .x{font-style:normal;font-weight:900;opacity:.5;transition:opacity var(--fast)}
 .ttab:hover .x{opacity:1}
 .ttab .tdot{width:7px;height:7px;flex:none;background:var(--muted)}
-.ttab .tdot.on{background:var(--accent);animation:fd-blink 1.2s step-end infinite}
+.ttab .tdot.on{background:var(--accent);animation:var(--blink)}
 .ttab.on .tdot{background:var(--on-accent)}
 .ctrlbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
 

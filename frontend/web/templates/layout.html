@@ -125,7 +125,7 @@
 <!-- ===== NEW SESSION MODAL ===== -->
 <dialog id="newSessionModal">
     <!-- backdrop click-to-close: full-bleed form behind the modal box -->
-    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
+    {{template "modalBackdrop"}}
     <div class="modal">
         <div class="mhead">
             <div class="kick">New Session</div>
@@ -136,7 +136,7 @@
         <div class="mfoot">
             <span class="hint">Select an option, then confirm</span>
             <div class="grp">
-                <form method="dialog"><button class="btn btn-ghost"><span>CANCEL</span></button></form>
+                {{template "modalCancel"}}
                 <button type="submit" form="dir-picker-form" id="dir-picker-submit" class="btn btn-primary"><span>LAUNCH</span></button>
             </div>
         </div>
@@ -146,7 +146,7 @@
 <!-- ===== RENAME SESSION MODAL ===== -->
 <dialog id="renameModal">
     <!-- backdrop click-to-close: full-bleed form behind the modal box -->
-    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
+    {{template "modalBackdrop"}}
     <div class="modal modal--narrow">
         <div class="mhead">
             <div class="kick">Rename</div>
@@ -158,7 +158,7 @@
         <div class="mfoot">
             <span class="hint">Enter to save</span>
             <div class="grp">
-                <form method="dialog"><button class="btn btn-ghost"><span>CANCEL</span></button></form>
+                {{template "modalCancel"}}
                 <button id="renameSubmit" class="btn btn-primary"><span>SAVE</span></button>
             </div>
         </div>
@@ -167,7 +167,7 @@
 
 <!-- ===== SETTINGS MODAL ===== -->
 <dialog id="settingsModal">
-    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
+    {{template "modalBackdrop"}}
     <div class="modal">
         <div class="mhead">
             <div class="kick">Container Settings</div>
@@ -228,7 +228,7 @@
         <div class="mfoot">
             <span class="hint" id="settings-hint">Applies to new sessions</span>
             <div class="grp">
-                <form method="dialog"><button class="btn btn-ghost"><span>CANCEL</span></button></form>
+                {{template "modalCancel"}}
                 <button id="settings-save" class="btn btn-primary" onclick="saveSettings()"><span>SAVE</span></button>
             </div>
         </div>

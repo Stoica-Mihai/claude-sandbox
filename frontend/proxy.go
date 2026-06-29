@@ -123,8 +123,7 @@ func sseProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		slog.Error("SSE proxy: backend request failed", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "SSE proxy: backend request failed", err)
 		return
 	}
 	defer resp.Body.Close()

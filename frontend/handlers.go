@@ -102,30 +102,44 @@ func forwardError(w http.ResponseWriter, resp *http.Response) {
 	w.Write(body)
 }
 
+// badGateway logs a failed backend call and replies 502.
+func badGateway(w http.ResponseWriter, logMsg string, err error) {
+	slog.Error(logMsg, "error", err)
+	http.Error(w, "backend connection failed", http.StatusBadGateway)
+}
+
+// forwardIfError forwards a backend error response (status >= 400) to the
+// client and reports whether it did, so callers can return early.
+func forwardIfError(w http.ResponseWriter, resp *http.Response) bool {
+	if resp.StatusCode >= 400 {
+		forwardError(w, resp)
+		return true
+	}
+	return false
+}
+
+// renderSessions fetches the session list and renders it into the named
+// template, replying 500 on a backend failure.
+func (s *Server) renderSessions(w http.ResponseWriter, r *http.Request, name string) {
+	sessions, err := s.fetchSessions(r)
+	if err != nil {
+		slog.Error("failed to fetch sessions from backend", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	s.renderTemplate(w, name, DashboardData{Sessions: sessions})
+}
+
 // --- Template-rendering routes ---
 
 // handleIndex renders the full dashboard page with initial session data.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.fetchSessions(r)
-	if err != nil {
-		slog.Error("failed to fetch sessions from backend", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	s.renderTemplate(w, "layout.html", DashboardData{Sessions: sessions})
+	s.renderSessions(w, r, "layout.html")
 }
 
 // handleSessionsFragment renders the sessions list HTML fragment for HTMX.
 func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.fetchSessions(r)
-	if err != nil {
-		slog.Error("failed to fetch sessions from backend", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	s.renderTemplate(w, "sessions", DashboardData{Sessions: sessions})
+	s.renderSessions(w, r, "sessions")
 }
 
 // handleSpawn forwards the spawn request to the backend (as JSON), then
@@ -145,8 +159,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	payload, _ := json.Marshal(map[string]string{"cwd": cwd, "resume": resume})
 	resp, err := s.backendRequest(r.Context(), "POST", "/api/sessions", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("failed to spawn session via backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "failed to spawn session via backend", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -185,14 +198,12 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/"+terminalId, nil)
 	if err != nil {
-		slog.Error("failed to kill session via backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "failed to kill session via backend", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		forwardError(w, resp)
+	if forwardIfError(w, resp) {
 		return
 	}
 
@@ -213,14 +224,12 @@ func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request
 
 	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/history/"+uuid, nil)
 	if err != nil {
-		slog.Error("failed to delete history via backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "failed to delete history via backend", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		forwardError(w, resp)
+	if forwardIfError(w, resp) {
 		return
 	}
 
@@ -245,14 +254,12 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.backendRequest(r.Context(), "PUT", "/api/sessions/"+terminalId+"/name", bytes.NewReader(body))
 	if err != nil {
-		slog.Error("failed to rename session via backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "failed to rename session via backend", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		forwardError(w, resp)
+	if forwardIfError(w, resp) {
 		return
 	}
 
@@ -270,14 +277,12 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.backendRequest(r.Context(), "GET", path, nil)
 	if err != nil {
-		slog.Error("failed to fetch directories from backend", "error", err)
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		badGateway(w, "failed to fetch directories from backend", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		forwardError(w, resp)
+	if forwardIfError(w, resp) {
 		return
 	}
 

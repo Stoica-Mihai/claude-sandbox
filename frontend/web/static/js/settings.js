@@ -13,11 +13,15 @@ function clearSettingsError() {
     if (h && h.classList.contains('err')) { h.textContent = SETTINGS_HINT; h.classList.remove('err'); }
 }
 
+// Mark opt as the chosen option within sel (clearing siblings) and show label.
+function applyOption(sel, opt, label) {
+    sel.querySelectorAll('.sel-opt').forEach(o => o.classList.toggle('sel-on', o === opt));
+    sel.querySelector('.sel-cur').textContent = label;
+}
+
 function settingsPick(opt) {
     const sel = opt.closest('.sel');
-    sel.querySelectorAll('.sel-opt').forEach(o => o.classList.remove('sel-on'));
-    opt.classList.add('sel-on');
-    sel.querySelector('.sel-cur').textContent = opt.textContent;
+    applyOption(sel, opt, opt.textContent);
     sel.dataset.value = optValue(opt);
     sel.classList.remove('open');
     clearSettingsError();
@@ -38,12 +42,8 @@ function setSel(field, value) {
     value = value || '';
     sel.dataset.value = value;
     let match = null;
-    sel.querySelectorAll('.sel-opt').forEach(o => {
-        const on = optValue(o) === value;
-        o.classList.toggle('sel-on', on);
-        if (on) match = o;
-    });
-    sel.querySelector('.sel-cur').textContent = match ? match.textContent : (value || '—');
+    sel.querySelectorAll('.sel-opt').forEach(o => { if (optValue(o) === value) match = o; });
+    applyOption(sel, match, match ? match.textContent : (value || '—'));
 }
 
 function getSel(field) {
