@@ -441,8 +441,7 @@ async function dpRenderHistory(path) {
 
     const label = document.createElement('div');
     label.className = 'actitle';
-    label.style.cssText = 'display:flex;justify-content:space-between';
-    label.innerHTML = '<span>Previous sessions</span><span style="font-family:var(--mono)">' + (entries.length || 'none') + '</span>';
+    label.textContent = 'Previous sessions';
     actions.appendChild(label);
 
     if (entries.length) {
