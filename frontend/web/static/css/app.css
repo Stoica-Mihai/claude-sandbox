@@ -29,6 +29,9 @@
 /* D6: welcome-hint chips are non-interactive labels — cancel the kit's .keycap:hover
    on them so they don't flash accent / read as clickable. */
 .keycap--hint:hover{background:var(--surf);color:var(--ink);border-color:var(--line)}
+/* D7: sidebar is a collapsible overlay on BOTH desktop and mobile (rail ⇄ panel),
+   not the kit's static-desktop drawer — one consistent component + reclaimable
+   terminal width. Breaks no law (laws are resolution-independent). */
 /* The settings/rename modal bodies stack their fields; kit .modal .mbody is padding-only. */
 .modal .mbody{display:flex;flex-direction:column;gap:16px}
 
@@ -58,10 +61,20 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .body{flex:1;display:flex;overflow:hidden}
 
 /* ===== Sidebar ===== */
-.side{width:296px;flex:none;border-right:3px solid var(--line);background:var(--surf);display:flex;flex-direction:column;overflow:hidden}
-.side .shead{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 12px;border-bottom:2px solid var(--line)}
-.side .shead .kick{letter-spacing:3px}
-.side .list{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+/* Collapsed = icon rail (default). Expanded = overlay panel (.expanded). */
+.side{position:absolute;top:0;bottom:0;left:0;z-index:40;width:48px;background:var(--surf);
+  border-right:3px solid var(--line);display:flex;flex-direction:column;
+  transition:width var(--med) var(--ease)}
+.side.expanded{width:288px;box-shadow:8px 0 0 var(--shadow)}
+.side .shead{display:flex;align-items:center;gap:8px;padding:9px;border-bottom:2px solid var(--line)}
+.side .shead .kick,.side .shead .btn-new{display:none}
+.side.expanded .shead{justify-content:space-between;padding:14px 14px 12px}
+.side.expanded .shead .kick{display:block;letter-spacing:3px}
+.side.expanded .shead .btn-new{display:inline-flex}
+.side .list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
+.side.expanded .list{padding:12px;gap:12px}
+/* The main content sits to the right of the 48px rail. */
+.body{position:relative;padding-left:48px}
 
 /* ===== Session card ===== */
 .scard{background:var(--field);border:2px solid var(--line);padding:11px 12px;cursor:pointer;position:relative;
@@ -77,6 +90,20 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .scard .row2{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
 .scard .cwd{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .dur{font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:700;flex:none}
+
+/* Monogram: shown only in the collapsed rail. */
+.mono{display:none;font-weight:900;font-style:italic;font-size:14px;color:var(--ink)}
+/* Collapsed: each card becomes a square chip — monogram + live dot only. */
+.side:not(.expanded) .scard{padding:0;width:32px;height:32px;margin:0 auto;
+  display:flex;align-items:center;justify-content:center;box-shadow:3px 3px 0 var(--shadow)}
+.side:not(.expanded) .scard .row1{gap:0}
+.side:not(.expanded) .scard .mono{display:block}
+.side:not(.expanded) .scard .nm,
+.side:not(.expanded) .scard .acts,
+.side:not(.expanded) .scard .row2{display:none}
+.side:not(.expanded) .scard .live{position:absolute;top:3px;right:3px;width:7px;height:7px}
+/* Active chip: accent ring + offset shadow (ink shadow keeps it crisp in dark). */
+.side:not(.expanded) .scard.active{outline:3px solid var(--accent);outline-offset:-2px;box-shadow:3px 3px 0 var(--ink)}
 
 /* ===== Main / terminal tabs ===== */
 .main{flex:1;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;min-width:0}
@@ -204,9 +231,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* Mobile sidebar drawer backdrop (views.js removes .hidden when the drawer opens) */
 #sidebarBackdrop{position:fixed;inset:0;z-index:35;background:var(--scrim)}
 
-/* Header hamburger — touch-sized on mobile, hidden on desktop (sidebar is static there) */
-.menu-btn{width:34px;height:34px;font-size:16px;margin-right:4px}
-
 /* Click-outside-to-close backdrop behind a <dialog>'s .modal box (3 modals reuse it) */
 .dialog-backdrop{position:fixed;inset:0;z-index:-1;margin:0}
 .dialog-backdrop button{position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default}
@@ -236,34 +260,33 @@ input.err-flash{outline:3px solid var(--accent)}
 }
 
 /* ===== Responsive: mobile-first ===== */
-/* Off-canvas sidebar on mobile; .sidebar-open (toggled by views.js) slides it in */
-.side{position:fixed;top:56px;bottom:0;left:0;z-index:40;width:296px;max-width:85vw;transform:translateX(-100%);transition:transform var(--med) var(--ease)}
-.sidebar-open{transform:translateX(0) !important}
 /* Compact header on mobile: hide the wordmark/subtitle, keep the mark + controls */
 .hdr .title,.hdr .sub{display:none}
-/* Hide the desktop control bar on mobile (the mobile toolbar covers it) */
 .ctrlbar{display:none}
-/* Declutter the cramped mobile header: drop the LIGHT/DARK text labels, keep the toggle; tighten gaps */
 .themewrap span{display:none}
 .hdr .right{gap:10px}
 .hdr{padding:0 12px}
+/* Touch: rail chips + hamburger ≥40px (mobile-first default is touch). */
+.side{width:52px}
+.body{padding-left:52px}
+.side:not(.expanded) .scard{width:40px;height:40px}
+#sidebarToggle{width:40px;height:40px}
+.side.expanded{width:86vw;max-width:320px}
 
 @media (min-width:768px){
   :root{--is-mobile:0}
-  .side{position:static;transform:none;width:240px;max-width:none;z-index:auto;transition:none}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
-  .menu-btn{display:none}
-  #sidebarBackdrop{display:none}
   .themewrap span{display:inline}
   .hdr .right{gap:16px}
   .hdr{padding:0 18px}
-  /* Mobile key bar is mobile-only; desktop uses the physical keyboard + .ctrlbar */
   #mobileInputBar{display:none}
-}
-
-@media (min-width:1024px){
-  .side{width:296px}
+  /* Desktop: slimmer rail, fixed-width expanded panel, smaller chips. */
+  .side{width:48px}
+  .body{padding-left:48px}
+  .side:not(.expanded) .scard{width:32px;height:32px}
+  #sidebarToggle{width:30px;height:30px}
+  .side.expanded{width:288px;max-width:none}
 }
 
 @media (max-width:767px){
