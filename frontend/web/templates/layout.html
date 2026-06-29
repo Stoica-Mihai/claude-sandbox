@@ -65,7 +65,7 @@
         <aside id="sidebar" class="side">
             <div class="shead">
                 <span class="kick">Sessions</span>
-                <button class="btn btn-primary" style="padding:7px 14px;font-size:12px" onclick="openNewSessionModal(event)"><span>+ NEW</span></button>
+                <button class="btn btn-primary btn-new" onclick="openNewSessionModal(event)"><span>+ NEW</span></button>
             </div>
             <div id="session-list" class="list" hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML">
                 {{template "sessions" .}}
@@ -86,7 +86,7 @@
             </div>
 
             <!-- Terminal; views.js toggles .hidden -->
-            <div id="singleTerminal" class="terminal-bg hidden" style="flex:1;overflow:hidden;position:relative"></div>
+            <div id="singleTerminal" class="terminal-bg hidden"></div>
 
             <!-- Welcome screen (shown when no terminal is open) -->
             <div id="singleWelcome" class="welcome">
@@ -102,17 +102,17 @@
             </div>
 
             <!-- Mobile control bar (mobile-only when a terminal is open); views.js toggles .hidden -->
-            <div id="mobileInputBar" class="terminal-controls-bg hidden" style="flex-shrink:0">
-                <div style="display:flex;align-items:center;gap:6px;padding:8px;overflow-x:auto">
+            <div id="mobileInputBar" class="terminal-controls-bg hidden">
+                <div class="mobile-bar-row">
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_ESCAPE)">Esc</button>
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_CTRL_C)">^C</button>
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_BACKSPACE)">&#x232B;</button>
-                    <div style="width:2px;height:24px;background:var(--line);flex-shrink:0"></div>
+                    <div class="vdiv"></div>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('D')">&#x2190;</button>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('C')">&#x2192;</button>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('A')">&#x2191;</button>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('B')">&#x2193;</button>
-                    <div style="width:2px;height:24px;background:var(--line);flex-shrink:0"></div>
+                    <div class="vdiv"></div>
                     <button class="keycap keycap--mobile" onclick="mobileToggleSelect(this)" title="Toggle text selection">Select</button>
                 </div>
             </div>
@@ -124,7 +124,7 @@
 <!-- ===== NEW SESSION MODAL ===== -->
 <dialog id="newSessionModal">
     <!-- backdrop click-to-close: full-bleed form behind the modal box -->
-    <form method="dialog" class="dialog-backdrop" style="position:fixed;inset:0;z-index:-1;margin:0"><button aria-label="Close" style="position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default"></button></form>
+    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
     <div class="modal">
         <div class="mhead">
             <div class="kick">New Session</div>
@@ -145,13 +145,13 @@
 <!-- ===== RENAME SESSION MODAL ===== -->
 <dialog id="renameModal">
     <!-- backdrop click-to-close: full-bleed form behind the modal box -->
-    <form method="dialog" class="dialog-backdrop" style="position:fixed;inset:0;z-index:-1;margin:0"><button aria-label="Close" style="position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default"></button></form>
-    <div class="modal" style="width:380px">
+    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
+    <div class="modal modal--narrow">
         <div class="mhead">
             <div class="kick">Rename</div>
             <h2>RENAME SESSION.</h2>
         </div>
-        <div style="padding:16px 18px">
+        <div class="mbody">
             <input id="renameInput" type="text" placeholder="Session name" autocomplete="off" />
         </div>
         <div class="mfoot">
@@ -166,13 +166,13 @@
 
 <!-- ===== SETTINGS MODAL ===== -->
 <dialog id="settingsModal">
-    <form method="dialog" class="dialog-backdrop" style="position:fixed;inset:0;z-index:-1;margin:0"><button aria-label="Close" style="position:fixed;inset:0;width:100%;height:100%;border:none;background:transparent;cursor:default"></button></form>
+    <form method="dialog" class="dialog-backdrop"><button aria-label="Close"></button></form>
     <div class="modal">
         <div class="mhead">
             <div class="kick">Container Settings</div>
             <h2>SETTINGS.</h2>
         </div>
-        <div class="mbody" style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+        <div class="mbody">
             <div class="note">Applies to <b>new sessions</b> — running sessions keep their current config.</div>
 
             <div>
@@ -219,8 +219,8 @@
                 <input id="settings-language" autocomplete="off" />
             </div>
 
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
-                <label style="margin-bottom:0">Always thinking</label>
+            <div class="set-row">
+                <label>Always thinking</label>
                 <div class="toggle" id="settings-thinking" onclick="this.classList.toggle('on')"><i></i></div>
             </div>
         </div>

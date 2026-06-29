@@ -18,13 +18,12 @@
         {{if .Dirs}}
         {{range .Dirs}}
         <div class="frow">
-            <!-- inline resets strip native button chrome so .fmain/.drill render flush like the mockup -->
-            <button type="button" class="fmain" style="background:none;border:none;color:inherit;font:inherit;text-align:left;cursor:pointer"
+            <button type="button" class="fmain"
                     onclick="dpSelectFolder('{{$.FullPath}}/{{.}}', '{{.}}')">
                 <span class="fico">▸</span>
                 <span class="fnm">{{.}}</span>
             </button>
-            <button type="button" class="drill" style="background:none;border:none;border-left:2px solid var(--line);color:inherit;font:inherit;cursor:pointer"
+            <button type="button" class="drill"
                     hx-get="/api/directories?path={{$.Path}}{{if $.Path}}/{{end}}{{.}}"
                     hx-target="#dir-picker" hx-swap="innerHTML" title="Open subfolders">›</button>
         </div>
