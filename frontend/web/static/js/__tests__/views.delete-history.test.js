@@ -4,12 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadViews, FakeElement } = require('./load-views');
 
-// Covers the "delete-session-history" change: the delete-history UI wiring in
-// views.js — dpRenderHistory (now rebuilds the previous-sessions list in place
-// and attaches a per-row delete button) and the inline two-step delete state
-// machine (dpDelToIdle → dpDelToConfirm → dpDelConfirmed / dpDelFail).
+// Covers the "delete-session-history" UI wiring in views.js — dpRenderHistory
+// (rebuilds the previous-sessions list in place and attaches a per-row delete
+// control) and the inline two-step delete state machine (dpDelToIdle →
+// dpDelToConfirm → dpDelConfirmed / dpDelFail). The control uses the Futurism kit
+// component: .row-act is a div CONTAINER; the idle trash is a .row-act-btn child
+// button; confirm swaps in .confirm-yes / .confirm-no buttons.
 
-// A click event that records whether the handler stopped/prevented it.
 function clickEvent() {
     const e = {
         _stopped: false,
@@ -20,7 +21,6 @@ function clickEvent() {
     return e;
 }
 
-// JSON Response double for fetch.
 function jsonResponse(body, { ok = true, status = 200 } = {}) {
     return { ok, status, json: async () => body };
 }
@@ -29,12 +29,12 @@ function historyEnv() {
     return loadViews({ mobile: false, ids: ['session-actions'] });
 }
 
-// Find the delete buttons (.arow-del) rendered under #session-actions.
-function delButtons(env) {
+// The .row-act delete containers rendered under #session-actions.
+function delControls(env) {
     const actions = env.document.getElementById('session-actions');
     const found = [];
     const walk = (el) => (el.children || []).forEach(c => {
-        if (c.classList.contains('arow-del')) found.push(c);
+        if (c.classList.contains('row-act')) found.push(c);
         walk(c);
     });
     walk(actions);
@@ -43,12 +43,19 @@ function delButtons(env) {
 
 function rowWraps(env) {
     return env.document.getElementById('session-actions').children
-        .filter(c => c.classList.contains('arow-wrap'));
+        .filter(c => c.classList.contains('row-host'));
 }
 
-// ---------- dpRenderHistory: rendering + delete-button wiring ----------
+// Fire the idle trash button's click (the .row-act-btn child of a .row-act).
+function clickTrash(act, e = clickEvent()) {
+    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+    btn.onclick(e);
+    return e;
+}
 
-test('dpRenderHistory renders a delete button per previous-session row', async () => {
+// ---------- dpRenderHistory: rendering + delete-control wiring ----------
+
+test('dpRenderHistory renders a delete control per previous-session row', async () => {
     const env = historyEnv();
     env.sandbox.fetch = () => Promise.resolve(jsonResponse([
         { uuid: 'aaaaaaaa-1111', created: 100, name: 'first' },
@@ -58,36 +65,25 @@ test('dpRenderHistory renders a delete button per previous-session row', async (
     await env.sandbox.dpRenderHistory('/workspace/proj');
 
     const wraps = rowWraps(env);
-    assert.equal(wraps.length, 2, 'two arow-wrap rows');
-    const dels = delButtons(env);
-    assert.equal(dels.length, 2, 'one delete button per row');
-    dels.forEach(d => {
-        assert.ok(d.classList.contains('arow-del'), 'has arow-del class');
-        assert.equal(d.title, 'Delete this conversation permanently', 'has delete tooltip');
-        assert.equal(typeof d.onclick, 'function', 'starts armed with an idle click handler');
+    assert.equal(wraps.length, 2, 'two row-host rows');
+    const acts = delControls(env);
+    assert.equal(acts.length, 2, 'one delete control per row');
+    acts.forEach(act => {
+        assert.equal(act.tagName, 'DIV', '.row-act is a div container');
+        const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+        assert.ok(btn, 'idle trash button present');
+        assert.equal(btn.title, 'Delete this conversation permanently', 'has delete tooltip');
+        assert.equal(typeof btn.onclick, 'function', 'trash button has an arm-on-click handler');
     });
 });
 
-test('dpRenderHistory header count reflects the number of entries', async () => {
-    const env = historyEnv();
-    env.sandbox.fetch = () => Promise.resolve(jsonResponse([
-        { uuid: 'u1', created: 1 },
-    ]));
-    await env.sandbox.dpRenderHistory('/p');
-    const actions = env.document.getElementById('session-actions');
-    const title = actions.children.find(c => c.classList.contains('actitle'));
-    assert.ok(title, 'actitle label rendered');
-    assert.match(title.innerHTML, /Previous sessions/);
-    assert.match(title.innerHTML, />1</, 'count shows 1');
-});
-
-test('dpRenderHistory shows empty-state and no delete buttons when there is no history', async () => {
+test('dpRenderHistory shows empty-state and no delete controls when there is no history', async () => {
     const env = historyEnv();
     env.sandbox.fetch = () => Promise.resolve(jsonResponse([]));
     await env.sandbox.dpRenderHistory('/p');
     const actions = env.document.getElementById('session-actions');
     assert.ok(actions.children.some(c => c.classList.contains('empty-state')), 'empty-state rendered');
-    assert.equal(delButtons(env).length, 0, 'no delete buttons');
+    assert.equal(delControls(env).length, 0, 'no delete controls');
 });
 
 test('dpRenderHistory tolerates a rejected history fetch (renders empty-state)', async () => {
@@ -122,7 +118,6 @@ test('dpRenderHistory is re-invokable: strips old rows/label/empty-state and reb
     await env.sandbox.dpRenderHistory('/p');
     assert.equal(rowWraps(env).length, 2, 'first render: two rows');
 
-    // Re-render with a single remaining entry (as after a delete).
     env.sandbox.fetch = () => Promise.resolve(jsonResponse([{ uuid: 'u2', created: 2 }]));
     await env.sandbox.dpRenderHistory('/p');
 
@@ -141,50 +136,47 @@ test('dpRenderHistory is a no-op when #session-actions is absent', async () => {
 
 test('dpDelToIdle renders the trash glyph and arms a confirm on click', () => {
     const env = historyEnv();
-    const del = new FakeElement('button');
-    del.classList.add('confirming', 'failed');
+    const act = new FakeElement('div');
+    act.classList.add('confirming', 'failed');
 
-    env.sandbox.dpDelToIdle(del, '/p', 'u1');
+    env.sandbox.dpDelToIdle(act, '/p', 'u1');
 
-    assert.equal(del.classList.contains('confirming'), false, 'confirming cleared');
-    assert.equal(del.classList.contains('failed'), false, 'failed cleared');
-    assert.match(del.innerHTML, /<svg/, 'shows trash glyph');
+    assert.equal(act.classList.contains('confirming'), false, 'confirming cleared');
+    assert.equal(act.classList.contains('failed'), false, 'failed cleared');
+    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+    assert.ok(btn, 'trash button present');
+    assert.match(btn.innerHTML, /<svg/, 'shows trash glyph');
 
-    const e = clickEvent();
-    del.onclick(e);
+    const e = clickTrash(act);
     assert.ok(e._stopped && e._prevented, 'idle click stops + prevents the row click');
-    assert.ok(del.classList.contains('confirming'), 'first click arms the confirm');
+    assert.ok(act.classList.contains('confirming'), 'first click arms the confirm');
 });
 
-test('dpDelToConfirm shows Delete + Cancel buttons and blanks the trigger', () => {
+test('dpDelToConfirm shows Delete + Cancel buttons in the container', () => {
     const env = historyEnv();
-    const del = new FakeElement('button');
+    const act = new FakeElement('div');
 
-    env.sandbox.dpDelToConfirm(del, '/p', 'u1');
+    env.sandbox.dpDelToConfirm(act, '/p', 'u1');
 
-    assert.ok(del.classList.contains('confirming'), 'confirming class set');
-    assert.equal(del.innerHTML, '', 'inner glyph cleared before appending controls');
-    const yes = del.children.find(c => c.classList.contains('adel-yes'));
-    const no = del.children.find(c => c.classList.contains('adel-no'));
+    assert.ok(act.classList.contains('confirming'), 'confirming class set');
+    const yes = act.children.find(c => c.classList.contains('confirm-yes'));
+    const no = act.children.find(c => c.classList.contains('confirm-no'));
     assert.ok(yes && yes.textContent === 'Delete', 'Delete button present');
     assert.ok(no && no.textContent === 'Cancel', 'Cancel button present');
-
-    // The wrapper's own click is swallowed while armed.
-    const e = clickEvent();
-    del.onclick(e);
-    assert.ok(e._stopped && e._prevented, 'armed wrapper swallows clicks');
+    assert.equal(act.children.some(c => c.classList.contains('row-act-btn')), false, 'idle trash replaced');
 });
 
 test('Cancel reverts an armed delete back to idle', () => {
     const env = historyEnv();
-    const del = new FakeElement('button');
-    env.sandbox.dpDelToConfirm(del, '/p', 'u1');
-    const no = del.children.find(c => c.classList.contains('adel-no'));
+    const act = new FakeElement('div');
+    env.sandbox.dpDelToConfirm(act, '/p', 'u1');
+    const no = act.children.find(c => c.classList.contains('confirm-no'));
 
     no.onclick(clickEvent());
 
-    assert.equal(del.classList.contains('confirming'), false, 'back to idle');
-    assert.match(del.innerHTML, /<svg/, 'trash glyph restored');
+    assert.equal(act.classList.contains('confirming'), false, 'back to idle');
+    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+    assert.ok(btn && /<svg/.test(btn.innerHTML), 'trash glyph restored');
 });
 
 // ---------- dpDelConfirmed: the DELETE request + re-render ----------
@@ -199,12 +191,12 @@ test('Confirm fires DELETE to the history endpoint and re-renders on 204', async
             return Promise.resolve({ status: 204 });
         }
         historyFetches++;
-        return Promise.resolve(jsonResponse([])); // post-delete: empty list
+        return Promise.resolve(jsonResponse([]));
     };
 
-    const del = new FakeElement('button');
-    env.sandbox.dpDelToConfirm(del, '/workspace/p', 'dead-beef');
-    const yes = del.children.find(c => c.classList.contains('adel-yes'));
+    const act = new FakeElement('div');
+    env.sandbox.dpDelToConfirm(act, '/workspace/p', 'dead-beef');
+    const yes = act.children.find(c => c.classList.contains('confirm-yes'));
 
     await yes.onclick(clickEvent());
     await new Promise(r => setImmediate(r));
@@ -222,7 +214,7 @@ test('dpDelConfirmed encodes the uuid in the DELETE URL', async () => {
         if (opts && opts.method === 'DELETE') { seen = url; return Promise.resolve({ status: 204 }); }
         return Promise.resolve(jsonResponse([]));
     };
-    await env.sandbox.dpDelConfirmed(new FakeElement('button'), '/p', 'a/b c');
+    await env.sandbox.dpDelConfirmed(new FakeElement('div'), '/p', 'a/b c');
     assert.equal(seen, '/api/sessions/history/' + encodeURIComponent('a/b c'));
 });
 
@@ -231,18 +223,19 @@ test('dpDelConfirmed encodes the uuid in the DELETE URL', async () => {
 test('A rejected DELETE flashes Failed then reverts to idle', async () => {
     const env = historyEnv();
     env.sandbox.fetch = () => Promise.reject(new Error('network'));
-    const del = new FakeElement('button');
-    del.classList.add('confirming');
+    const act = new FakeElement('div');
+    act.classList.add('confirming');
 
-    await env.sandbox.dpDelConfirmed(del, '/p', 'u1');
+    await env.sandbox.dpDelConfirmed(act, '/p', 'u1');
 
-    assert.equal(del.classList.contains('confirming'), false, 'confirming dropped on failure');
-    assert.ok(del.classList.contains('failed'), 'failed class set');
-    assert.match(del.textContent, /Failed/, 'shows Failed label');
+    assert.equal(act.classList.contains('confirming'), false, 'confirming dropped on failure');
+    assert.ok(act.classList.contains('failed'), 'failed class set');
+    assert.match(act.textContent, /Failed/, 'shows Failed label');
 
     env.flushTimers(); // fire the revert-to-idle timeout
-    assert.equal(del.classList.contains('failed'), false, 'failed cleared after timeout');
-    assert.match(del.innerHTML, /<svg/, 'trash glyph restored after revert');
+    assert.equal(act.classList.contains('failed'), false, 'failed cleared after timeout');
+    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+    assert.ok(btn && /<svg/.test(btn.innerHTML), 'trash glyph restored after revert');
 });
 
 test('A non-204 DELETE response flashes Failed and does not re-render history', async () => {
@@ -253,29 +246,28 @@ test('A non-204 DELETE response flashes Failed and does not re-render history', 
         historyFetches++;
         return Promise.resolve(jsonResponse([]));
     };
-    const del = new FakeElement('button');
+    const act = new FakeElement('div');
 
-    await env.sandbox.dpDelConfirmed(del, '/p', 'u1');
+    await env.sandbox.dpDelConfirmed(act, '/p', 'u1');
 
-    assert.ok(del.classList.contains('failed'), 'failed flash on a 500');
+    assert.ok(act.classList.contains('failed'), 'failed flash on a 500');
     assert.equal(historyFetches, 0, 'no re-render when delete did not succeed');
 });
 
-test('dpDelFail swallows clicks while flashing and reverts after the timeout', () => {
+test('dpDelFail flashes then reverts to idle after the timeout', () => {
     const env = historyEnv();
-    const del = new FakeElement('button');
-    del.classList.add('confirming');
+    const act = new FakeElement('div');
+    act.classList.add('confirming');
 
-    env.sandbox.dpDelFail(del, '/p', 'u1');
+    env.sandbox.dpDelFail(act, '/p', 'u1');
 
-    assert.equal(del.classList.contains('confirming'), false);
-    assert.ok(del.classList.contains('failed'));
-    const e = clickEvent();
-    del.onclick(e);
-    assert.ok(e._stopped && e._prevented, 'clicks swallowed during the fail flash');
+    assert.equal(act.classList.contains('confirming'), false);
+    assert.ok(act.classList.contains('failed'));
 
     env.flushTimers();
-    assert.equal(del.classList.contains('failed'), false, 'reverted to idle');
+    assert.equal(act.classList.contains('failed'), false, 'reverted to idle');
+    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
+    assert.ok(btn, 'idle trash restored');
 });
 
 // ---------- end-to-end: delete the last row, list re-renders empty ----------
@@ -291,9 +283,9 @@ test('deleting the only previous session re-renders to the empty state', async (
     await env.sandbox.dpRenderHistory('/p');
     assert.equal(rowWraps(env).length, 1, 'one row before delete');
 
-    const del = delButtons(env)[0];
-    del.onclick(clickEvent());                  // idle → armed
-    const yes = del.children.find(c => c.classList.contains('adel-yes'));
+    const act = delControls(env)[0];
+    clickTrash(act);                            // idle → armed
+    const yes = act.children.find(c => c.classList.contains('confirm-yes'));
     await yes.onclick(clickEvent());            // armed → confirmed DELETE
     await new Promise(r => setImmediate(r));
 

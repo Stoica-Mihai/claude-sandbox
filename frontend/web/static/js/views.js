@@ -431,7 +431,7 @@ async function dpRenderHistory(path) {
     const actions = document.getElementById('session-actions');
     if (!actions) return;
 
-    actions.querySelectorAll('.actitle, .arow-wrap, .empty-state').forEach(el => el.remove());
+    actions.querySelectorAll('.actitle, .row-host, .empty-state').forEach(el => el.remove());
 
     let entries = [];
     try {
@@ -451,7 +451,7 @@ async function dpRenderHistory(path) {
             const sub = s.name ? (relTime(s.created) + ' · ' + short) : short;
 
             const wrap = document.createElement('div');
-            wrap.className = 'arow-wrap';
+            wrap.className = 'row-host';
 
             const row = document.createElement('button');
             row.type = 'button';
@@ -462,14 +462,14 @@ async function dpRenderHistory(path) {
                 + '<div class="at2">' + escapeHtml(sub) + '</div></div>';
             row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
 
-            const del = document.createElement('button');
-            del.type = 'button';
-            del.className = 'arow-del';
-            del.title = 'Delete this conversation permanently';
-            dpDelToIdle(del, path, s.uuid);
+            // Kit .row-act is a CONTAINER (div), not a button — its children are
+            // buttons, so nothing nests a button inside a button.
+            const act = document.createElement('div');
+            act.className = 'row-act';
+            dpDelToIdle(act, path, s.uuid);
 
             wrap.appendChild(row);
-            wrap.appendChild(del);
+            wrap.appendChild(act);
             actions.appendChild(wrap);
         });
     } else {
@@ -481,71 +481,75 @@ async function dpRenderHistory(path) {
     }
 }
 
-// Idle state: trash glyph; first click arms the inline two-step confirm.
-function dpDelToIdle(del, path, uuid) {
-    del.classList.remove('confirming', 'failed');
-    del.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
-    del.onclick = (e) => {
+// Idle state: a trash button inside the .row-act container; click arms the confirm.
+function dpDelToIdle(act, path, uuid) {
+    act.classList.remove('confirming', 'failed');
+    act.textContent = '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'row-act-btn';
+    btn.title = 'Delete this conversation permanently';
+    btn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
+    btn.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        dpDelToConfirm(del, path, uuid);
+        dpDelToConfirm(act, path, uuid);
     };
+    act.appendChild(btn);
 }
 
 // Armed state: accent confirm + ghost cancel. Cancel reverts to idle; confirm deletes.
-function dpDelToConfirm(del, path, uuid) {
-    del.classList.add('confirming');
-    del.innerHTML = '';
-    del.onclick = (e) => { e.stopPropagation(); e.preventDefault(); };
+function dpDelToConfirm(act, path, uuid) {
+    act.classList.add('confirming');
+    act.textContent = '';
 
     const yes = document.createElement('button');
     yes.type = 'button';
-    yes.className = 'adel-yes';
+    yes.className = 'confirm-yes';
     yes.textContent = 'Delete';
     yes.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        dpDelConfirmed(del, path, uuid);
+        dpDelConfirmed(act, path, uuid);
     };
 
     const no = document.createElement('button');
     no.type = 'button';
-    no.className = 'adel-no';
+    no.className = 'confirm-no';
     no.textContent = 'Cancel';
     no.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        dpDelToIdle(del, path, uuid);
+        dpDelToIdle(act, path, uuid);
     };
 
-    del.appendChild(yes);
-    del.appendChild(no);
+    act.appendChild(yes);
+    act.appendChild(no);
 }
 
 // Confirmed delete: DELETE the conversation; on 204 the history re-render is the
 // source of truth (the SSE/broker only refreshes the sidebar, not this modal list).
-async function dpDelConfirmed(del, path, uuid) {
+async function dpDelConfirmed(act, path, uuid) {
     let res;
     try {
         res = await fetch('/api/sessions/history/' + encodeURIComponent(uuid), { method: 'DELETE' });
     } catch (e) {
-        dpDelFail(del, path, uuid);
+        dpDelFail(act, path, uuid);
         return;
     }
     if (res.status === 204) {
         await dpRenderHistory(path);
         return;
     }
-    dpDelFail(del, path, uuid);
+    dpDelFail(act, path, uuid);
 }
 
 // Transient on-brand failure flash, then revert to idle.
-function dpDelFail(del, path, uuid) {
-    del.classList.remove('confirming');
-    del.classList.add('failed');
-    del.onclick = (e) => { e.stopPropagation(); e.preventDefault(); };
-    del.textContent = 'Failed';
-    setTimeout(() => dpDelToIdle(del, path, uuid), 1800);
+function dpDelFail(act, path, uuid) {
+    act.classList.remove('confirming');
+    act.classList.add('failed');
+    act.textContent = 'Failed';
+    setTimeout(() => dpDelToIdle(act, path, uuid), 1800);
 }
 
 // Listen for HTMX responses from spawn to auto-open the new terminal
