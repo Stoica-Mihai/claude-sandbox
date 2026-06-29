@@ -58,7 +58,7 @@ type viewerSize struct {
 
 // viewer holds per-connection state for a WebSocket viewer.
 type viewer struct {
-	writeMu   sync.Mutex  // serializes all WebSocket writes to this connection
+	writeMu   sync.Mutex // serializes all WebSocket writes to this connection
 	size      viewerSize
 	suspended atomic.Bool // when true, broadcast skips this viewer
 }
@@ -74,9 +74,9 @@ type Relay struct {
 	viewers     map[*websocket.Conn]*viewer
 	lastResizer *websocket.Conn // viewer that last triggered a resize
 
-	ptmx      atomic.Pointer[os.File] // current attach PTY master (swapped on reconnect)
-	attachCmd atomic.Pointer[exec.Cmd]
-	attachMu  sync.Mutex   // serializes reconnect/attach lifecycle
+	ptmx       atomic.Pointer[os.File] // current attach PTY master (swapped on reconnect)
+	attachCmd  atomic.Pointer[exec.Cmd]
+	attachMu   sync.Mutex   // serializes reconnect/attach lifecycle
 	generation atomic.Int64 // identifies the live read loop; stale loops exit
 
 	lastActivity   time.Time

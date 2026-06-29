@@ -10,9 +10,9 @@ import (
 
 func TestValidLanguage(t *testing.T) {
 	cases := map[string]bool{
-		"english":   true,
-		"":          true,
-		"français":  true,
+		"english":  true,
+		"":         true,
+		"français": true,
 		"this language name is definitely longer than forty chars": false, // > 40
 		"bad\nnewline": false,
 		"tab\there":    false,
@@ -106,10 +106,10 @@ func TestMergePreservesNonEditableKeys(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "container-settings.json")
 	original := map[string]any{
-		"model":         "sonnet",
-		"effortLevel":   "high",
-		"enabledPlugins": map[string]any{"caveman@caveman": true},
-		"hooks":          map[string]any{"PreToolUse": []any{"x"}},
+		"model":                             "sonnet",
+		"effortLevel":                       "high",
+		"enabledPlugins":                    map[string]any{"caveman@caveman": true},
+		"hooks":                             map[string]any{"PreToolUse": []any{"x"}},
 		"skipDangerousModePermissionPrompt": true,
 	}
 	b, _ := json.MarshalIndent(original, "", "  ")

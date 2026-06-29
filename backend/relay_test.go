@@ -77,8 +77,18 @@ func TestRelayConcurrentAccessRaceFree(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(5)
 
-	go func() { defer wg.Done(); for i := 0; i < iters; i++ { _ = r.SendInput([]byte("x")) } }()
-	go func() { defer wg.Done(); for i := 0; i < iters; i++ { r.applyResize(uint16(80+i%20), 24) } }()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			_ = r.SendInput([]byte("x"))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			r.applyResize(uint16(80+i%20), 24)
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iters; i++ {

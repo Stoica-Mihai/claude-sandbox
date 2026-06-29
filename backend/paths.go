@@ -172,11 +172,11 @@ func removeSessionFiles(name string) {
 
 // Session contract (SessionManager.Spawn is the only creator; direct CLI
 // `claude` is disabled):
-//   1. metadata sidecar: this sessionMeta JSON shape at metaPath(name)
-//   2. pid sidecar: the inner `bash -c` writes its own $$ to pidPath(name),
-//      then execs `claude --dangerously-skip-permissions` (so the PID is the
-//      session-group leader for kill)
-//   3. dtach flags: -z and -E (the backend owns the byte stream)
+//  1. metadata sidecar: this sessionMeta JSON shape at metaPath(name)
+//  2. pid sidecar: the inner `bash -c` writes its own $$ to pidPath(name),
+//     then execs `claude --dangerously-skip-permissions` (so the PID is the
+//     session-group leader for kill)
+//  3. dtach flags: -z and -E (the backend owns the byte stream)
 //
 // sessionMeta is the per-session metadata sidecar contents.
 type sessionMeta struct {
