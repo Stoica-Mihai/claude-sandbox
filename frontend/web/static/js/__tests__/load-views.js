@@ -9,7 +9,7 @@ const VIEWS_PATH = path.join(__dirname, '..', 'views.js');
 
 // Load views.js into a fresh sandbox with controllable globals/timers.
 // Returns the live document plus a flushTimers() to fire pending setTimeout cbs.
-function loadViews({ mobile = false, ids = [] } = {}) {
+function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     const document = new FakeDocument();
     ids.forEach(id => document.register(id, new FakeElement('div')));
 
@@ -35,6 +35,11 @@ function loadViews({ mobile = false, ids = [] } = {}) {
         clearInterval: () => {},
         requestAnimationFrame: (fn) => { fn(); return 1; },
         getComputedStyle: () => ({ getPropertyValue: () => (mobile ? '1' : '0') }),
+        localStorage: {
+            getItem: (k) => (k in localStorage ? localStorage[k] : null),
+            setItem: (k, v) => { localStorage[k] = String(v); },
+            removeItem: (k) => { delete localStorage[k]; },
+        },
         Date,
         Math,
         parseInt,

@@ -12,28 +12,25 @@ function isMobile() {
     return getComputedStyle(document.documentElement).getPropertyValue('--is-mobile').trim() === '1';
 }
 
+// ===== Sidebar: collapsible rail (rail ⇄ overlay panel) =====
+function applySidebar(expanded) {
+    const side = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    const toggle = document.getElementById('sidebarToggle');
+    if (!side) return;
+    side.classList.toggle('expanded', expanded);
+    if (backdrop) backdrop.classList.toggle('hidden', !expanded);
+    if (toggle) toggle.setAttribute('aria-expanded', String(expanded));
+    localStorage.setItem('sidebar', expanded ? 'expanded' : 'collapsed');
+    requestAnimationFrame(() => TerminalManager.resizeAll());
+}
+
 function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('sidebarBackdrop');
-    if (!sidebar) return;
-
-    const isOpen = sidebar.classList.contains('sidebar-open');
-    if (isOpen) {
-        sidebar.classList.remove('sidebar-open');
-        if (backdrop) backdrop.classList.add('hidden');
-    } else {
-        sidebar.classList.add('sidebar-open');
-        if (backdrop) backdrop.classList.remove('hidden');
-    }
+    const side = document.getElementById('sidebar');
+    applySidebar(!(side && side.classList.contains('expanded')));
 }
 
-function closeSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('sidebarBackdrop');
-    if (!sidebar) return;
-    sidebar.classList.remove('sidebar-open');
-    if (backdrop) backdrop.classList.add('hidden');
-}
+function collapseSidebar() { applySidebar(false); }
 
 function setView() {
     // Ensure single view is visible and resize terminals
@@ -49,17 +46,9 @@ function setView() {
 // Open a session terminal
 function openSession(terminalId) {
     if (!terminalId) return;
-
-    // On mobile, close the sidebar drawer
-    if (isMobile()) {
-        closeSidebar();
-    }
-
+    if (isMobile()) collapseSidebar();
     openSessionSingle(terminalId);
-
-    // Update active state on session cards
     updateSessionCardStates();
-
 }
 
 function openSessionSingle(terminalId) {
@@ -686,8 +675,14 @@ function handleShortcuts(e) {
     }
 }
 
+document.getElementById('sidebarBackdrop')?.addEventListener('click', collapseSidebar);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.querySelector('dialog[open]')) collapseSidebar();
+});
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
+    applySidebar(localStorage.getItem('sidebar') === 'expanded');
     setView();
     initPullToRefresh();
 
