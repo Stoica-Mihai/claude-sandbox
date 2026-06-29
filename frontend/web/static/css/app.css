@@ -151,11 +151,12 @@ html,body{height:100dvh;margin:0;overflow:hidden}
    overlays its right edge (a button can't legally nest inside the row button). */
 .arow-wrap{position:relative}
 .arow-wrap .sa-row{padding-right:46px}
+/* Always visible (discoverability) but subdued at rest — muted icon, accent fill
+   on hover/focus. The two-step confirm guards against an accidental click. */
 .arow-del{position:absolute;top:2px;right:0;bottom:2px;display:flex;align-items:center;gap:6px;
   padding:0 12px;border:none;border-left:2px solid var(--line);background:transparent;color:var(--muted);
-  font:inherit;cursor:pointer;opacity:0;transition:opacity var(--fast),background var(--fast),color var(--fast)}
-.arow-wrap:hover .arow-del,.arow-del:focus-visible,.arow-del.confirming{opacity:1}
-.arow-del:hover{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent)}
+  font:inherit;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.arow-del:hover,.arow-del:focus-visible{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent)}
 .arow-del svg{width:15px;height:15px;display:block}
 /* Two-step confirm: idle glyph is replaced with an accent confirm + ghost cancel. */
 .arow-del.confirming{padding:0;top:5px;bottom:5px;border-left-color:var(--accent);background:transparent;color:var(--ink)}
