@@ -256,6 +256,31 @@ func (sm *SessionManager) Resume(uuid string) (string, error) {
 	return sm.spawnDtach(absPath, uuid, "--resume "+uuid)
 }
 
+// DeleteHistory removes a conversation from history: it verifies the uuid is in
+// the index, kills any live dtach session running that conversation, then drops
+// the index entry and its transcript. An unknown uuid is an error before any
+// kill or delete, so callers can map it to a 404.
+func (sm *SessionManager) DeleteHistory(uuid string) error {
+	if _, ok := sm.index.cwd(uuid); !ok {
+		return fmt.Errorf("unknown session: %s", uuid)
+	}
+
+	// Resolve the live session via discoverSessions (not the cached, heavier
+	// ListSessions) and kill it by dtach name before dropping its history.
+	for _, s := range discoverSessions() {
+		if s.SessionID == uuid {
+			if err := sm.Kill(s.Name); err != nil {
+				return err
+			}
+			break
+		}
+	}
+
+	sm.index.remove(uuid)
+	deleteTranscript(uuid)
+	return nil
+}
+
 // validWorkspaceDir resolves cwd and ensures it is an existing directory under /workspace.
 func validWorkspaceDir(cwd string) (string, error) {
 	absPath, err := filepath.Abs(cwd)

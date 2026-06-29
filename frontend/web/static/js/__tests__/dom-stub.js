@@ -62,8 +62,8 @@ class FakeElement {
     dispatch(type, event) {
         (this._listeners[type] || []).forEach(fn => fn(event));
     }
-    querySelector() { return null; }
-    querySelectorAll() { return []; }
+    querySelector(sel) { return matchDescendants(this, sel)[0] || null; }
+    querySelectorAll(sel) { return matchDescendants(this, sel); }
     focus() {}
     select() {}
     setAttribute(k, v) { this.attributes[k] = String(v); }
@@ -72,6 +72,28 @@ class FakeElement {
     close() { this._open = false; }
     scrollToBottom() {}
     get scrollHeight() { return 100; }
+}
+
+// Match descendants of `root` against a comma-separated list of simple
+// class selectors (e.g. ".actitle, .arow-wrap"). Class selectors only —
+// enough for the dir-picker history/delete paths under test.
+function matchDescendants(root, sel) {
+    const classes = String(sel).split(',')
+        .map(s => s.trim())
+        .filter(s => s.startsWith('.'))
+        .map(s => s.slice(1));
+    if (classes.length === 0) return [];
+    const out = [];
+    const walk = (el) => {
+        (el.children || []).forEach(child => {
+            if (classes.some(c => child.classList && child.classList.contains(c))) {
+                out.push(child);
+            }
+            walk(child);
+        });
+    };
+    walk(root);
+    return out;
 }
 
 function makeStyle() {

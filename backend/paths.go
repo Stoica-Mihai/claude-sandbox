@@ -87,6 +87,16 @@ func hasTranscript(uuid string) bool {
 	return len(matches) > 0
 }
 
+// deleteTranscript removes any `<uuid>.jsonl` transcript under projects/.
+// Best-effort: zero matches and already-absent files are not errors (the
+// authoritative removal is the index entry).
+func deleteTranscript(uuid string) {
+	matches, _ := filepath.Glob(filepath.Join(claudeConfigDir(), "projects", "*", uuid+".jsonl"))
+	for _, m := range matches {
+		os.Remove(m)
+	}
+}
+
 // settingsJSONPath is the live settings file claude reads at session spawn.
 // entrypoint.sh seeds it from container-settings.json on boot; the settings
 // editor refreshes it so saved changes apply without a container restart.

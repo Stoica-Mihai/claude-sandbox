@@ -50,6 +50,7 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
+	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistoryProxy)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
@@ -197,6 +198,33 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 
 	// Render updated sessions fragment.
 	s.handleSessionsFragment(w, r)
+}
+
+// handleDeleteHistoryProxy forwards a history-delete to the backend and passes
+// its status through (the dashboard JS re-renders the resume list on 204; the
+// backend's SSE refreshes the sidebar). Keyed by conversation uuid, distinct
+// from handleKill's terminalId route.
+func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		http.Error(w, "missing uuid", http.StatusBadRequest)
+		return
+	}
+
+	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/history/"+uuid, nil)
+	if err != nil {
+		slog.Error("failed to delete history via backend", "error", err)
+		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		forwardError(w, resp)
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
 }
 
 // handleSetSessionName forwards the rename request to the backend, then

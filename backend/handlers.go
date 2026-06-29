@@ -46,6 +46,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("GET /api/sessions/history", s.handleHistory)
 	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
 	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
+	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistory)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
@@ -115,6 +116,30 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.sm.History(cwd))
+}
+
+// handleDeleteHistory removes a conversation from the resume history by uuid.
+func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing uuid"})
+		return
+	}
+
+	if err := s.sm.DeleteHistory(uuid); err != nil {
+		// An unknown uuid (not in the index) maps to 404; anything else is a
+		// failure killing the live session.
+		if strings.HasPrefix(err.Error(), "unknown session:") {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		slog.Error("failed to delete history", "uuid", uuid, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.broker.Publish()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleKill terminates a session.

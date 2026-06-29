@@ -146,6 +146,29 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .sa-row:hover{--row-bg:var(--hover-bg)}
 .sa-sel,.sa-sel:hover{--row-bg:var(--sel-bg);box-shadow:inset 4px 0 0 var(--accent)}
 
+/* ===== Resume-row delete affordance (views.js builds .arow-wrap > .sa-row + .arow-del) ===== */
+/* Non-interactive wrapper: the resume button fills the row; the delete control
+   overlays its right edge (a button can't legally nest inside the row button). */
+.arow-wrap{position:relative}
+.arow-wrap .sa-row{padding-right:46px}
+.arow-del{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;gap:6px;
+  padding:0 12px;border:none;border-left:2px solid var(--line);background:transparent;color:var(--muted);
+  font:inherit;cursor:pointer;opacity:0;transition:opacity var(--fast),background var(--fast),color var(--fast)}
+.arow-wrap:hover .arow-del,.arow-del:focus-visible,.arow-del.confirming{opacity:1}
+.arow-del:hover{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent)}
+.arow-del svg{width:15px;height:15px;display:block}
+/* Two-step confirm: idle glyph is replaced with an accent confirm + ghost cancel. */
+.arow-del.confirming{padding:0;border-left-color:var(--accent);background:transparent;color:var(--ink)}
+.arow-del.confirming:hover{background:transparent;color:var(--ink)}
+.adel-yes,.adel-no{font:inherit;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  border:none;padding:0 9px;height:100%;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.adel-yes{background:var(--accent);color:var(--on-accent)}
+.adel-no{background:transparent;color:var(--muted);border-left:2px solid var(--line)}
+.adel-no:hover{color:var(--ink)}
+/* Transient failure flash on a non-204 delete (label set via textContent). */
+.arow-del.failed{opacity:1;background:var(--accent);color:var(--on-accent);border-left-color:var(--accent);
+  justify-content:center;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+
 /* ===== Settings modal: button + note ===== */
 .settings-btn{width:34px;height:34px;flex:none}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}

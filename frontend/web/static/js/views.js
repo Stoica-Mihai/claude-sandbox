@@ -419,6 +419,20 @@ async function dpSelectFolder(path, name) {
     newRow.onclick = () => dirPickerSetSel('new', null, newRow);
     actions.appendChild(newRow);
 
+    await dpRenderHistory(path);
+
+    dirPickerSetSel('new', null, newRow); // default to "start new"
+}
+
+// Fetch + render the "Previous sessions" list for a folder. Re-invokable after a
+// delete: it strips the existing label + rows and rebuilds them in place, keeping
+// the "Start a new session" row above untouched.
+async function dpRenderHistory(path) {
+    const actions = document.getElementById('session-actions');
+    if (!actions) return;
+
+    actions.querySelectorAll('.actitle, .arow-wrap, .empty-state').forEach(el => el.remove());
+
     let entries = [];
     try {
         const res = await fetch('/api/sessions/history?cwd=' + encodeURIComponent(path));
@@ -436,6 +450,10 @@ async function dpSelectFolder(path, name) {
             const short = (s.uuid || '').slice(0, 8);
             const title = s.name ? s.name : relTime(s.created);
             const sub = s.name ? (relTime(s.created) + ' · ' + short) : short;
+
+            const wrap = document.createElement('div');
+            wrap.className = 'arow-wrap';
+
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'arow sa-row';
@@ -444,7 +462,16 @@ async function dpSelectFolder(path, name) {
                 + '<div class="atxt"><div class="at1">' + escapeHtml(title) + '</div>'
                 + '<div class="at2">' + escapeHtml(sub) + '</div></div>';
             row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
-            actions.appendChild(row);
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'arow-del';
+            del.title = 'Delete this conversation permanently';
+            dpDelToIdle(del, path, s.uuid);
+
+            wrap.appendChild(row);
+            wrap.appendChild(del);
+            actions.appendChild(wrap);
         });
     } else {
         const empty = document.createElement('div');
@@ -453,8 +480,73 @@ async function dpSelectFolder(path, name) {
             + '<br><span style="opacity:.7">Start a new one above — it\'ll show here next time.</span>';
         actions.appendChild(empty);
     }
+}
 
-    dirPickerSetSel('new', null, newRow); // default to "start new"
+// Idle state: trash glyph; first click arms the inline two-step confirm.
+function dpDelToIdle(del, path, uuid) {
+    del.classList.remove('confirming', 'failed');
+    del.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
+    del.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dpDelToConfirm(del, path, uuid);
+    };
+}
+
+// Armed state: accent confirm + ghost cancel. Cancel reverts to idle; confirm deletes.
+function dpDelToConfirm(del, path, uuid) {
+    del.classList.add('confirming');
+    del.innerHTML = '';
+    del.onclick = (e) => { e.stopPropagation(); e.preventDefault(); };
+
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'adel-yes';
+    yes.textContent = 'Delete';
+    yes.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dpDelConfirmed(del, path, uuid);
+    };
+
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'adel-no';
+    no.textContent = 'Cancel';
+    no.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dpDelToIdle(del, path, uuid);
+    };
+
+    del.appendChild(yes);
+    del.appendChild(no);
+}
+
+// Confirmed delete: DELETE the conversation; on 204 the history re-render is the
+// source of truth (the SSE/broker only refreshes the sidebar, not this modal list).
+async function dpDelConfirmed(del, path, uuid) {
+    let res;
+    try {
+        res = await fetch('/api/sessions/history/' + encodeURIComponent(uuid), { method: 'DELETE' });
+    } catch (e) {
+        dpDelFail(del, path, uuid);
+        return;
+    }
+    if (res.status === 204) {
+        await dpRenderHistory(path);
+        return;
+    }
+    dpDelFail(del, path, uuid);
+}
+
+// Transient on-brand failure flash, then revert to idle.
+function dpDelFail(del, path, uuid) {
+    del.classList.remove('confirming');
+    del.classList.add('failed');
+    del.onclick = (e) => { e.stopPropagation(); e.preventDefault(); };
+    del.textContent = 'Failed';
+    setTimeout(() => dpDelToIdle(del, path, uuid), 1800);
 }
 
 // Listen for HTMX responses from spawn to auto-open the new terminal

@@ -67,6 +67,14 @@ func (s *SessionIndex) add(uuid, cwd string, created int64) {
 	s.save()
 }
 
+// remove deletes a conversation from the index (no-op if the uuid is absent).
+func (s *SessionIndex) remove(uuid string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.entries, uuid)
+	s.save()
+}
+
 // setName sets or clears a conversation's custom name.
 func (s *SessionIndex) setName(uuid, name string) {
 	s.mu.Lock()
