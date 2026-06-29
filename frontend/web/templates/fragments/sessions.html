@@ -8,6 +8,7 @@
 >
     <div class="row1">
         <i class="live{{if not .Alive}} dead{{end}}"></i>
+        <span class="mono">{{printf "%.1s" .DisplayName}}</span>
         <span class="nm">{{.DisplayName}}</span>
         <div class="acts">
             <div class="iconbtn" title="Rename" onclick="event.stopPropagation(); openRenameModal('{{.Name}}', '{{.DisplayName}}')">&#9998;</div>

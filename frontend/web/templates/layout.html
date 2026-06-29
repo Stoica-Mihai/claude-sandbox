@@ -21,7 +21,6 @@
     <!-- ===== HEADER ===== -->
     <header class="hdr">
         <div class="brand">
-            <button class="iconbtn menu-btn" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
             <div class="mark"><span>&gt;_</span></div>
             <div>
                 <span class="title">CLAUDE<em>.</em>SANDBOX</span>
@@ -65,6 +64,7 @@
         <!-- ===== SIDEBAR ===== -->
         <aside id="sidebar" class="side">
             <div class="shead">
+                <button class="iconbtn" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
                 <span class="kick">Sessions</span>
                 <button class="btn btn-primary btn-new" onclick="openNewSessionModal(event)"><span>+ NEW</span></button>
             </div>
