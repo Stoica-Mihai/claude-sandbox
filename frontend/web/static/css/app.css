@@ -158,10 +158,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .arow-del:hover{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent)}
 .arow-del svg{width:15px;height:15px;display:block}
 /* Two-step confirm: idle glyph is replaced with an accent confirm + ghost cancel. */
-.arow-del.confirming{padding:0;border-left-color:var(--accent);background:transparent;color:var(--ink)}
+.arow-del.confirming{padding:0;top:5px;bottom:5px;border-left-color:var(--accent);background:transparent;color:var(--ink)}
 .arow-del.confirming:hover{background:transparent;color:var(--ink)}
-.adel-yes,.adel-no{font:inherit;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-  border:none;padding:0 9px;height:100%;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.adel-yes,.adel-no{font:inherit;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  border:none;padding:0 7px;height:100%;cursor:pointer;transition:background var(--fast),color var(--fast)}
 .adel-yes{background:var(--accent);color:var(--on-accent)}
 .adel-no{background:transparent;color:var(--muted);border-left:2px solid var(--line)}
 .adel-no:hover{color:var(--ink)}
