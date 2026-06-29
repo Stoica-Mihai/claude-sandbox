@@ -448,7 +448,7 @@ async function dpSelectFolder(path, name) {
         });
     } else {
         const empty = document.createElement('div');
-        empty.className = 'empty';
+        empty.className = 'empty-state';
         empty.innerHTML = 'No previous sessions in this folder'
             + '<br><span style="opacity:.7">Start a new one above — it\'ll show here next time.</span>';
         actions.appendChild(empty);

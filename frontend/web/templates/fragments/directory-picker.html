@@ -1,7 +1,7 @@
 {{define "directory-picker"}}
 <form id="dir-picker-form" hx-post="/api/sessions" hx-target="#session-list" hx-swap="innerHTML">
     <!-- Breadcrumb (HTMX navigates the browse level) -->
-    <div id="dp-breadcrumb" class="crumb">
+    <div id="dp-breadcrumb" class="dp-crumb">
         <span class="seg" hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</span>
         {{range .Breadcrumbs}}
         <span class="sep">/</span>
@@ -29,7 +29,7 @@
         </div>
         {{end}}
         {{else}}
-        <div class="empty">No subfolders</div>
+        <div class="empty-state">No subfolders</div>
         {{end}}
     </div>
 
