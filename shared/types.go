@@ -10,18 +10,14 @@ import "time"
 // frontend. SessionID is backend-internal (the claude conversation uuid) and
 // never crosses the wire (json:"-").
 type DisplaySession struct {
-	Name           string    `json:"name"`
-	CWD            string    `json:"cwd"`
-	DirName        string    `json:"dir_name"`
-	CreatedAt      time.Time `json:"created_at"`
-	Duration       string    `json:"duration"`
-	Alive          bool      `json:"alive"`
-	LastActivity   time.Time `json:"last_activity"`
-	LastActiveStr  string    `json:"last_active_str,omitempty"`
-	RecentActivity bool      `json:"recent_activity"`
-	DisplayName    string    `json:"display_name"`
-	Hue            int       `json:"hue"`
-	SessionID      string    `json:"-"`
+	Name        string    `json:"name"`
+	CWD         string    `json:"cwd"`
+	DirName     string    `json:"dir_name"`
+	CreatedAt   time.Time `json:"created_at"`
+	Alive       bool      `json:"alive"`
+	DisplayName string    `json:"display_name"`
+	Hue         int       `json:"hue"`
+	SessionID   string    `json:"-"`
 }
 
 // Breadcrumb is one path segment in the directory-picker breadcrumb.

@@ -29,8 +29,6 @@ const (
 	pollInterval = 5 * time.Second
 	// maxSpawnRetries is the number of retries on session-name collision.
 	maxSpawnRetries = 3
-	// recentActivityThreshold is how recently a session must have had output to be "active".
-	recentActivityThreshold = 5 * time.Second
 	// termType is the TERM environment variable set for new sessions.
 	termType = "xterm-256color"
 	// killGracePeriod is how long Kill waits after SIGTERM before SIGKILL.
@@ -151,8 +149,8 @@ func (sm *SessionManager) syncRelays(sessions []api.DisplaySession) {
 	}
 }
 
-// ListSessions returns all sessions, using cache if fresh. Enrichment (activity
-// timestamps, display names) is applied on every call.
+// ListSessions returns all sessions, using cache if fresh. Display-name
+// enrichment is applied on every call.
 func (sm *SessionManager) ListSessions() []api.DisplaySession {
 	sm.mu.RLock()
 	if time.Since(sm.cachedAt) < cacheTTL {
@@ -166,18 +164,13 @@ func (sm *SessionManager) ListSessions() []api.DisplaySession {
 	return sm.enrichSessions(sm.refreshSessions())
 }
 
-// enrichSessions adds live activity data and display names to a session list
-// copy. Hue is set at discovery time (pure function of the immutable name).
+// enrichSessions sets each session's display name (custom name from the index,
+// else the directory basename). Hue is set at discovery time (pure function of
+// the immutable name).
 func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.DisplaySession {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	for i := range sessions {
-		if relay := sm.relays[sessions[i].Name]; relay != nil {
-			lastActivity := relay.GetLastActivity()
-			sessions[i].LastActivity = lastActivity
-			sessions[i].LastActiveStr = humanRelativeTime(lastActivity)
-			sessions[i].RecentActivity = !lastActivity.IsZero() && time.Since(lastActivity) < recentActivityThreshold
-		}
 		if customName := sm.index.name(sessions[i].SessionID); customName != "" {
 			sessions[i].DisplayName = customName
 		} else {
@@ -448,7 +441,6 @@ func discoverSessions() []api.DisplaySession {
 		return nil
 	}
 
-	now := time.Now()
 	var sessions []api.DisplaySession
 
 	for _, e := range entries {
@@ -470,7 +462,6 @@ func discoverSessions() []api.DisplaySession {
 			CWD:       meta.CWD,
 			DirName:   filepath.Base(meta.CWD),
 			CreatedAt: createdAt,
-			Duration:  humanDuration(now.Sub(createdAt)),
 			Alive:     true,
 			Hue:       computeHue(name),
 			SessionID: meta.SessionID,
@@ -499,41 +490,4 @@ func sessionsSignature(sessions []api.DisplaySession) string {
 // generateSessionName creates a session name like "claude-a1b2c3d4".
 func generateSessionName() string {
 	return sessionPrefix + hex.EncodeToString(randBytes(4))
-}
-
-// humanRelativeTime formats a time as a relative string like "3s ago".
-func humanRelativeTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
-}
-
-// humanDuration formats a duration like "2h 15m" or "45s".
-func humanDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		m := int(d.Minutes())
-		s := int(d.Seconds()) % 60
-		if s > 0 {
-			return fmt.Sprintf("%dm %ds", m, s)
-		}
-		return fmt.Sprintf("%dm", m)
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if m > 0 {
-		return fmt.Sprintf("%dh %dm", h, m)
-	}
-	return fmt.Sprintf("%dh", h)
 }

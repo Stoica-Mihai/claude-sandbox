@@ -339,6 +339,7 @@ document.getElementById('renameInput')?.addEventListener('keydown', (e) => {
 document.addEventListener('htmx:afterSwap', (event) => {
     if (event.target?.id === 'session-list') {
         updateSessionCardStates();
+        tickDurations(); // fill the freshly-swapped cards' duration immediately
     }
     if (event.target?.id === 'dir-picker') {
         dpResetBrowse(); // a fresh folder-list level → browse state, nothing selected
@@ -355,6 +356,26 @@ function relTime(unix) {
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
     return Math.floor(s / 86400) + 'd ago';
+}
+
+// Format an elapsed-seconds count for a session card's duration: "2h 15m" / "45s".
+// The client owns this format — the server no longer renders it.
+function fmtDuration(sec) {
+    let s = sec;
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60); s %= 60;
+    if (h > 0) return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
+    if (m > 0) return s > 0 ? m + 'm ' + s + 's' : m + 'm';
+    return s + 's';
+}
+
+// Refresh every session card's live duration from its data-created stamp.
+function tickDurations() {
+    const now = Math.floor(Date.now() / 1000);
+    document.querySelectorAll('.session-duration[data-created]').forEach(el => {
+        const ts = parseInt(el.dataset.created, 10);
+        if (ts) el.textContent = fmtDuration(now - ts);
+    });
 }
 
 function dpFooter(label, enabled) {
@@ -675,17 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('keydown', handleShortcuts);
     }
 
-    // Tick session durations every second (matches server's humanDuration format)
-    setInterval(() => {
-        document.querySelectorAll('.session-duration[data-created]').forEach(el => {
-            const ts = parseInt(el.dataset.created, 10);
-            if (!ts) return;
-            let s = Math.floor(Date.now() / 1000) - ts;
-            const h = Math.floor(s / 3600); s %= 3600;
-            const m = Math.floor(s / 60); s %= 60;
-            if (h > 0) el.textContent = m > 0 ? h + 'h ' + m + 'm' : h + 'h';
-            else if (m > 0) el.textContent = s > 0 ? m + 'm ' + s + 's' : m + 'm';
-            else el.textContent = s + 's';
-        });
-    }, 1000);
+    // Fill durations now, then tick every second (client owns the format).
+    tickDurations();
+    setInterval(tickDurations, 1000);
 });
