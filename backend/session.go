@@ -33,6 +33,10 @@ const (
 	termType = "xterm-256color"
 	// killGracePeriod is how long Kill waits after SIGTERM before SIGKILL.
 	killGracePeriod = 2 * time.Second
+	// pidWaitTimeout bounds how long Spawn waits for the inner bash to write the
+	// PID sidecar before publishing, so discovery (keyed off the PID sidecar)
+	// sees the new session immediately instead of after a later poll.
+	pidWaitTimeout = 1 * time.Second
 )
 
 // SessionManager discovers dtach sessions, manages relays, and provides
@@ -306,6 +310,17 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 			sm.mu.Unlock()
 		}
 
+		// Wait for the inner bash to write the PID sidecar (it does so before
+		// exec'ing claude) so discovery sees the session right away — otherwise
+		// the sidebar card lags the tab until a later poll.
+		deadline := time.Now().Add(pidWaitTimeout)
+		for time.Now().Before(deadline) {
+			if _, statErr := os.Stat(pidPath(sessionName)); statErr == nil {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+
 		sm.invalidateCache()
 		sm.broker.Publish()
 		return sessionName, nil
@@ -415,7 +430,10 @@ func readSessionMeta(name string) sessionMeta {
 // the sidecars of any whose process is gone. Discovery keys off the PID sidecar
 // (which the backend owns) rather than the socket: dtach removes its own socket
 // when the inner process exits, so a socket scan would miss dead sessions and
-// leak their metadata sidecars.
+// leak their metadata sidecars. (Keying off the PID sidecar also avoids a
+// premature-cleanup race: the meta is written before the socket exists, so a
+// meta scan could delete a session still mid-spawn. spawnDtach waits for the PID
+// sidecar before publishing, so a new session is discoverable as soon as it's up.)
 func discoverSessions() []api.DisplaySession {
 	entries, err := os.ReadDir(metaDir)
 	if err != nil {
