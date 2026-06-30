@@ -55,6 +55,11 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hdr .title em{color:var(--accent);font-style:italic}
 .hdr .sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-left:6px}
 .hdr .right{display:flex;align-items:center;gap:16px}
+/* .acctrig is an inline-block button inside .accpick (block) — the inline
+   baseline leaves a descender gap below it, pushing the swatch's center above
+   the row and out of line with the flex-centered settings button. Flex the
+   wrapper so the swatch is flush and both align. */
+.accpick{display:flex;align-items:center}
 .statpill{display:flex;align-items:center;gap:7px;border:2px solid var(--line);padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
 .statpill .dot{width:8px;height:8px;background:var(--accent);animation:var(--blink)}
 
@@ -205,10 +210,11 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .row-act.confirming{top:50%;bottom:auto;transform:translateY(-50%);height:28px}
 
 /* ===== Settings modal: button + note ===== */
-/* Match the accent trigger (.acctrig): 30px desktop, 40px touch — keeps the
-   header controls a consistent size (kit bumps .acctrig to 40 at <=640px). */
-.settings-btn{width:30px;height:30px;flex:none}
-@media (max-width:640px){.settings-btn{width:40px;height:40px}}
+/* Size the accent trigger and settings button from one rule so they stay
+   identical (the kit sizes .acctrig on its own; pinning both here prevents the
+   two from drifting and misaligning). 30px desktop, 40px touch. */
+.acctrig,.settings-btn{width:30px;height:30px;flex:none}
+@media (max-width:640px){.acctrig,.settings-btn{width:40px;height:40px}}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
 
 /* ===== Grain overlay ===== */
