@@ -65,6 +65,13 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 .btn-primary{background:var(--accent);color:var(--on-accent)}
 .btn-ink{background:var(--ink);color:var(--bg)}
 .btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
+/* Square variant — drops the skew so the button sits FLUSH against square elements
+   (input+action groups, a single action in a square toolbar). Reserve the skewed
+   .btn for standalone/hero CTAs and rows of skewed siblings (confirm+cancel); a lone
+   skewed button beside a square field makes an awkward wedge. See SKILL law 6. */
+.btn-square,.btn-square>span{transform:none}
+.btn-square:hover{transform:translate(-3px,-3px)}
+.btn-square:active{transform:scale(.96)}
 /* State variants — stay inside the one-red palette (law 4): ink = done/committed,
    accent = error/attention. .saving marches diagonal stripes (the machine motion
    from .prog), never an opacity pulse, which would read as fade-puff (law 5). */
@@ -114,6 +121,10 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* Inputs */
 input,textarea{width:100%;background:var(--field);border:var(--border) solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
 input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
+/* Kill the native number-spinner — it's OS chrome (rounded, OS-themed), off-system
+   (law 7). Keep the field a clean square; use .stepper for an on-brand +/− control. */
+input[type=number]{appearance:textfield;-moz-appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 
 /* Custom select — native popups render OS-styled, so build this instead */
 .sel{position:relative;width:100%;font-size:13px;user-select:none}
@@ -122,11 +133,15 @@ input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
 .sel-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sel-val .caret{display:inline-block;font-style:normal;flex:none;transition:transform var(--fast) var(--ease)}
 .sel.open .sel-val .caret{transform:rotate(90deg)}
-.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--field);border:var(--border) solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:5;max-height:200px;overflow-y:auto;
+/* position:fixed (not absolute) so the dropdown isn't clipped by / doesn't scroll
+   with an overflow:auto ancestor like a scrolling .modal — it floats in the top
+   layer. fdSelOpen anchors left/top/width to the trigger and flips up near a bottom edge. */
+.sel-list{position:fixed;background:var(--field);border:var(--border) solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:65;max-height:240px;overflow-y:auto;
   transform-origin:top;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
 .sel.open .sel-list{transform:scaleY(1);pointer-events:auto}
 .sel-opt{padding:8px 10px;cursor:pointer;font-weight:700;transition:background var(--fast),color var(--fast)}
 .sel-opt:hover{background:var(--accent);color:var(--on-accent)}
+.sel-opt:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;background:var(--hover-bg)}
 .sel-opt.sel-on{border-left:6px solid var(--accent)}
 
 /* Toggle */
@@ -139,21 +154,41 @@ input:focus,textarea:focus{outline:3px solid var(--accent);outline-offset:0}
    segment. Flip with fdTheme() and move .act to the active label in your handler. */
 .switch{display:inline-flex;border:var(--border) solid var(--line);font-size:10px;font-weight:900;letter-spacing:1px;cursor:pointer;background:none}
 .switch span{padding:6px 12px}
-.switch .act{background:var(--accent);color:var(--on-accent)}
+.switch .act{background:var(--ink);color:var(--bg)}
 .switch:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
-/* Cards */
+/* Cards — the hover-lunge is opt-in via .card.link, so a static (non-clickable)
+   card doesn't move under the cursor. Add .link only when the whole card is a control. */
 .card{background:var(--surf);border:var(--border) solid var(--line);padding:14px;position:relative;box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);
   transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
-.card:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--shadow)}
+.card.link{cursor:pointer}
+/* Put .link on a real <a>/<button> so the whole-card control is keyboard-operable
+   for free (don't use a bare <div onclick> — not focusable, not Enter/Space-able).
+   These normalize the element so it still lays out like a div card. */
+a.card,button.card{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);text-decoration:none}
+.card.link:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--shadow)}
+.card.link:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
 /* Nav */
-.nav{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--line);padding-bottom:10px}
+.nav{display:flex;justify-content:space-between;align-items:center;gap:12px 16px;flex-wrap:wrap;border-bottom:3px solid var(--line);padding-bottom:10px}
 .nav .logo{font-weight:900;font-style:italic;font-size:18px;letter-spacing:-1px}
 .nav .links{display:flex;gap:18px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
 .nav .links a{border:none;color:var(--ink);position:relative}
 .nav .links a::after{content:"";position:absolute;left:0;right:100%;bottom:-3px;height:3px;background:var(--accent);transition:right var(--fast) var(--ease)}
 .nav .links a:hover::after{right:0}
+
+/* Vertical nav (sidebar) — items are real <a>/<button> (keyboard + focus for free).
+   The active item carries a left accent edge; mark it aria-current="page", NOT role=tab
+   (these are navigation links that swap views, not an ARIA tablist). */
+.nav-v{display:flex;flex-direction:column}
+.nav-v>a,.nav-v>button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 18px;font-family:var(--font);font-weight:800;font-size:14px;
+  border:0;border-left:4px solid transparent;background:none;color:var(--ink);text-align:left;text-decoration:none;cursor:pointer;
+  transition:background var(--fast),border-color var(--fast)}
+.nav-v>a:hover,.nav-v>button:hover{background:var(--hover-bg)}
+.nav-v>[aria-current="page"]{background:var(--sel-bg);border-left-color:var(--accent)}
+.nav-v svg{width:18px;height:18px;color:var(--muted);flex:none}
+.nav-v>[aria-current="page"] svg{color:var(--accent)}
+.nav-v>a:focus-visible,.nav-v>button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
 
 /* Tabs */
 .tabs{display:flex;border-bottom:3px solid var(--line)}
@@ -192,7 +227,11 @@ tbody tr:hover{background:var(--tint)}
 /* List rows — hover + selected highlight driven through --row-bg so a JS-set
    inline background:var(--row-bg,transparent) can't clobber the highlight. Washes
    use the theme-aware --hover-bg/--sel-bg tokens (dark needs far higher mixes). */
-.list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-bottom:var(--border) solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
+.list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:var(--border) solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
+/* Clickable rows opt in (like .card.link) — only then show the pointer. An interactive
+   row must be a real <a>/<button> or carry listbox semantics (role=option +
+   aria-selected); the .sel class is visual only, pair it with aria-selected/aria-current. */
+.list-row.link{cursor:pointer}
 .list-row:last-child{border-bottom:none}
 .list-row:hover{--row-bg:var(--hover-bg)}
 /* Selected: theme-aware wash + an inset accent edge — the edge carries the cue even
@@ -252,6 +291,9 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .acc{width:28px;height:28px;border:var(--border) solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
 .acc:hover{transform:translateY(-2px)}
 .acc.on{outline:var(--border) solid var(--ink);outline-offset:1px}
+/* Selected swatch ties .acc:focus-visible on specificity and wins by order, hiding
+   the focus ring — restore a distinct 3px accent ring when the selected swatch is focused. */
+.acc.on:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
 /* Off-canvas drawer — fixed panel that slides in; .drawer-open shows it.
    .scrim-bg is the tap-to-close dim (uses --scrim, never --ink). */
@@ -307,6 +349,15 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .seg button.on{background:var(--ink);color:var(--bg)}
 .seg button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
 
+/* Stepper — −/value/+ numeric control. Real buttons (keyboard + aria-label); give
+   the value an aria-live so screen readers hear it change. */
+.stepper{display:inline-flex;align-items:stretch;border:var(--border) solid var(--line);background:var(--surf);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow)}
+.stepper button{font-family:var(--font);border:0;background:none;color:var(--ink);font-weight:900;font-size:22px;line-height:1;padding:0 16px;cursor:pointer;transition:background var(--fast),color var(--fast)}
+.stepper button:hover{background:var(--accent);color:var(--on-accent)}
+.stepper button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
+.stepper .num{min-width:64px;text-align:center;font-weight:900;font-style:italic;letter-spacing:-1px;font-size:24px;padding:8px 12px;
+  border-left:var(--border) solid var(--line);border-right:var(--border) solid var(--line)}
+
 /* Pagination — welded square cells; current fills ink, disabled goes muted. */
 .pager{display:inline-flex}
 .pager button{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:700;min-width:32px;height:32px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast),color var(--fast)}
@@ -349,4 +400,17 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
   /* The live dot loses its blink here, so give it a static ring to stay
      distinguishable from a dead dot without relying on the animation. */
   .dot:not(.dead){box-shadow:0 0 0 2px var(--accent)}
+}
+
+/* Touch: the 28-32px desktop sizes for icon buttons, keycaps, accent swatches,
+   pager and select options are too small for a thumb. Grow them to ~40px+ on
+   narrow viewports (sizes-up only; the desktop layout is untouched). */
+@media (max-width:640px){
+  .btn{padding:13px 18px}
+  .iconbtn,.acctrig,.acc{width:40px;height:40px}
+  .pager button{min-width:40px;height:40px}
+  .keycap{padding:11px 13px}
+  .seg button{padding:11px 16px}
+  .sel-val{padding:12px 12px}
+  .sel-opt{padding:12px 12px}
 }

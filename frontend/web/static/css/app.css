@@ -34,6 +34,11 @@
    terminal width. Breaks no law (laws are resolution-independent). */
 /* The settings/rename modal bodies stack their fields; kit .modal .mbody is padding-only. */
 .modal .mbody{display:flex;flex-direction:column;gap:16px}
+/* D8: .sel-list back to position:absolute. Kit 0.6.9 made it position:fixed +
+   JS-anchored (fdSelOpen) for top-layer escape; we drive .sel with our own
+   settings.js (no anchoring) and the settings modal doesn't scroll, so absolute
+   (the pre-0.6.9 behavior) positions the dropdown correctly under its trigger. */
+.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0}
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
