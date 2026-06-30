@@ -5,6 +5,8 @@
 <div class="scard session-card"
      data-terminal-id="{{.Name}}"
      data-session="{{.DisplayName}}"
+     title="{{.DisplayName}}"
+     aria-label="{{.DisplayName}}"
 >
     <div class="row1">
         <i class="live{{if not .Alive}} dead{{end}}"></i>

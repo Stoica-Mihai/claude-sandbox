@@ -104,8 +104,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .side:not(.expanded) .scard .acts,
 .side:not(.expanded) .scard .row2{display:none}
 .side:not(.expanded) .scard .live{position:absolute;top:3px;right:3px;width:7px;height:7px}
-/* Active chip: accent ring + offset shadow (ink shadow keeps it crisp in dark). */
-.side:not(.expanded) .scard.active{outline:3px solid var(--accent);outline-offset:-2px;box-shadow:3px 3px 0 var(--ink)}
+/* Active chip: kit selection idiom (sel-bg wash + accent inset edge, matching
+   .arow.sel/.sa-sel), keeping the kit offset shadow. Selection language is
+   ink/sel-bg with an accent edge — never an accent fill. */
+.side:not(.expanded) .scard.active{background:var(--sel-bg);box-shadow:3px 3px 0 var(--shadow),inset 4px 0 0 var(--accent)}
 /* The "no sessions" message is panel-only; the collapsed rail shows chips or nothing. */
 .side:not(.expanded) .empty-state{display:none}
 
