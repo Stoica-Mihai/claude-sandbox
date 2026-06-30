@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -97,7 +98,9 @@ func transcriptPaths(uuid string) []string {
 // authoritative removal is the index entry).
 func deleteTranscript(uuid string) {
 	for _, m := range transcriptPaths(uuid) {
-		os.Remove(m)
+		if err := os.Remove(m); err != nil && !os.IsNotExist(err) {
+			slog.Warn("failed to remove transcript", "path", m, "error", err)
+		}
 	}
 }
 

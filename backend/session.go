@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,6 +18,10 @@ import (
 
 	api "claude-sandbox-api"
 )
+
+// ErrUnknownSession is returned when a uuid is not present in the session index.
+// Handlers map it to 404 via errors.Is rather than string matching.
+var ErrUnknownSession = errors.New("unknown session")
 
 const (
 	// sessionPrefix identifies dashboard-relevant sessions.
@@ -210,7 +215,7 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 func (sm *SessionManager) Resume(uuid string) (string, error) {
 	cwd, ok := sm.index.cwd(uuid)
 	if !ok {
-		return "", fmt.Errorf("unknown session: %s", uuid)
+		return "", fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
 	}
 	absPath, err := validWorkspaceDir(cwd)
 	if err != nil {
@@ -225,7 +230,7 @@ func (sm *SessionManager) Resume(uuid string) (string, error) {
 // kill or delete, so callers can map it to a 404.
 func (sm *SessionManager) DeleteHistory(uuid string) error {
 	if _, ok := sm.index.cwd(uuid); !ok {
-		return fmt.Errorf("unknown session: %s", uuid)
+		return fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
 	}
 
 	// Resolve the live session via discoverSessions (not the cached, heavier

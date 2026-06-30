@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -64,7 +65,9 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("writeJSON encode failed", "error", err)
+	}
 }
 
 // writeErr writes a JSON error envelope ({"error": msg}) with the given status.
@@ -136,7 +139,7 @@ func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
 	if err := s.sm.DeleteHistory(uuid); err != nil {
 		// An unknown uuid (not in the index) maps to 404; anything else is a
 		// failure killing the live session.
-		if strings.HasPrefix(err.Error(), "unknown session:") {
+		if errors.Is(err, ErrUnknownSession) {
 			writeErr(w, http.StatusNotFound, err.Error())
 			return
 		}
