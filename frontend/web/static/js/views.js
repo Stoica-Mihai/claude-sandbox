@@ -647,10 +647,19 @@ function initPullToRefresh() {
     const body = document.body;
     const indicator = document.getElementById('pullIndicator');
     if (!indicator) return;
+    const label = indicator.querySelector('.pull-label');
 
-    const threshold = 80;
+    const threshold = 80;   // px pull to arm a refresh
+    const maxPull = 100;    // px where the bar reaches full height
+    const barHeight = 40;   // px bar height when fully revealed
     let startY = 0;
     let pulling = false;
+
+    const reset = () => {
+        indicator.style.height = '0';
+        indicator.style.setProperty('--pull', '0');
+        indicator.classList.remove('armed', 'refreshing');
+    };
 
     body.addEventListener('touchstart', (e) => {
         // Don't activate inside terminals, scrollback panel, open dialogs, or the sidebar drawer
@@ -666,22 +675,26 @@ function initPullToRefresh() {
     body.addEventListener('touchmove', (e) => {
         if (!pulling) return;
         const dy = e.touches[0].clientY - startY;
-        if (dy < 0) { pulling = false; indicator.style.height = '0'; return; }
-        const progress = Math.min(dy, threshold + 20);
-        indicator.style.height = progress * 0.4 + 'px';
-        indicator.textContent = dy >= threshold ? 'Release to refresh' : 'Pull to refresh';
+        if (dy < 0) { pulling = false; reset(); return; }
+        const clamped = Math.min(dy, maxPull);
+        indicator.style.height = (clamped / maxPull * barHeight) + 'px';
+        indicator.style.setProperty('--pull', String(Math.min(dy / threshold, 1)));
+        const armed = dy >= threshold;
+        indicator.classList.toggle('armed', armed);
+        if (label) label.textContent = armed ? 'Release to refresh' : 'Pull to refresh';
     }, { passive: true });
 
     body.addEventListener('touchend', () => {
         if (!pulling) return;
-        const h = parseFloat(indicator.style.height);
-        if (h >= threshold * 0.4) {
-            indicator.textContent = 'Refreshing...';
-            setTimeout(() => location.reload(), 300);
-        } else {
-            indicator.style.height = '0';
-        }
         pulling = false;
+        if (indicator.classList.contains('armed')) {
+            indicator.classList.add('refreshing');
+            indicator.style.height = barHeight + 'px';
+            if (label) label.textContent = 'Refreshing';
+            setTimeout(() => location.reload(), 400);
+        } else {
+            reset();
+        }
     });
 }
 

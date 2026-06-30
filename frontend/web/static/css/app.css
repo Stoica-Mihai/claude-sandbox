@@ -219,7 +219,19 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 [data-theme-base="light"] .grain::after{opacity:.005}
 
 /* ===== Pull to refresh ===== */
-#pullIndicator{text-align:center;font-size:.8rem;overflow:hidden;height:0;color:var(--muted);font-family:var(--mono);transition:height var(--med) var(--ease)}
+/* Pull-to-refresh: square accent bar that fills L→R as you pull, then marches
+   the kit barber-pole (fd-march, same as .skel) while refreshing. --pull (0..1)
+   is set from views.js. */
+#pullIndicator{position:relative;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  background:var(--surf);border-bottom:var(--border) solid var(--line);transition:height var(--med) var(--ease)}
+#pullIndicator .pull-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--pull,0) * 100%);
+  background:var(--accent);transition:width 60ms linear}
+#pullIndicator.armed .pull-fill{width:100%}
+#pullIndicator.refreshing .pull-fill{width:100%;background-color:var(--accent);
+  background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
+  background-size:22px 22px;animation:fd-march 1s linear infinite}
+#pullIndicator .pull-label{position:relative;z-index:1;font-family:var(--font);font-weight:800;font-style:italic;
+  font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
 
 /* ===== Terminal background (driven by --terminal-bg/--terminal-fg, set in terminal.js) ===== */
 .terminal-bg{background:var(--terminal-bg)}
