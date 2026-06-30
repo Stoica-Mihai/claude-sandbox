@@ -201,7 +201,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .row-act.confirming{top:50%;bottom:auto;transform:translateY(-50%);height:28px}
 
 /* ===== Settings modal: button + note ===== */
-.settings-btn{width:34px;height:34px;flex:none}
+/* Match the accent trigger (.acctrig): 30px desktop, 40px touch — keeps the
+   header controls a consistent size (kit bumps .acctrig to 40 at <=640px). */
+.settings-btn{width:30px;height:30px;flex:none}
+@media (max-width:640px){.settings-btn{width:40px;height:40px}}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
 
 /* ===== Grain overlay ===== */
