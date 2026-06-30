@@ -455,17 +455,24 @@ async function dpRenderHistory(path) {
     actions.querySelectorAll('.actitle, .row-host, .empty-state').forEach(el => el.remove());
 
     let entries = [];
+    let failed = false;
     try {
         const res = await fetch('/api/sessions/history?cwd=' + encodeURIComponent(path));
         if (res.ok) entries = await res.json();
-    } catch (e) { /* list stays empty */ }
+        else failed = true;
+    } catch (e) { failed = true; }
 
     const label = document.createElement('div');
     label.className = 'actitle';
     label.textContent = 'Previous sessions';
     actions.appendChild(label);
 
-    if (entries.length) {
+    if (failed) {
+        const err = document.createElement('div');
+        err.className = 'empty-state';
+        err.textContent = 'Could not load previous sessions — check the connection.';
+        actions.appendChild(err);
+    } else if (entries.length) {
         entries.forEach(s => {
             const short = (s.uuid || '').slice(0, 8);
             const title = s.name ? s.name : relTime(s.created);
