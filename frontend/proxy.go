@@ -6,9 +6,33 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+// proxyClient handles plain API proxy requests; the timeout bounds a hung
+// backend. SSE uses the default client instead (long-lived; bounded by the
+// request context, not a response deadline).
+var proxyClient = &http.Client{Timeout: 30 * time.Second}
+
+// backendDialer dials the backend WebSocket with a bounded handshake so a hung
+// backend doesn't stall the client upgrade indefinitely.
+var backendDialer = &websocket.Dialer{HandshakeTimeout: 5 * time.Second}
+
+// hopByHopHeaders are connection-scoped headers that must not be forwarded
+// across a proxy hop (RFC 7230 §6.1).
+var hopByHopHeaders = map[string]bool{
+	"connection":          true,
+	"upgrade":             true,
+	"host":                true,
+	"keep-alive":          true,
+	"te":                  true,
+	"trailer":             true,
+	"transfer-encoding":   true,
+	"proxy-authenticate":  true,
+	"proxy-authorization": true,
+}
 
 // pipeWs reads frames from src and writes them to dst until an error occurs.
 // On a close frame from src, it forwards the close to dst. onDone is called
@@ -70,7 +94,7 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 	parsed.RawQuery = r.URL.RawQuery
 
 	// Dial backend.
-	backendConn, resp, err := websocket.DefaultDialer.Dial(parsed.String(), nil)
+	backendConn, resp, err := backendDialer.Dial(parsed.String(), nil)
 	if err != nil {
 		if resp != nil {
 			slog.Error("websocket dial to backend failed",
@@ -170,11 +194,9 @@ func httpProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 		return
 	}
 
-	// Copy request headers (Content-Type, Accept, etc.).
+	// Copy request headers (Content-Type, Accept, etc.), skipping hop-by-hop.
 	for k, vv := range r.Header {
-		// Skip hop-by-hop headers.
-		lower := strings.ToLower(k)
-		if lower == "connection" || lower == "upgrade" || lower == "host" {
+		if hopByHopHeaders[strings.ToLower(k)] {
 			continue
 		}
 		for _, v := range vv {
@@ -182,7 +204,7 @@ func httpProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := proxyClient.Do(req)
 	if err != nil {
 		slog.Error("proxy: backend request failed", "url", targetURL, "error", err)
 		http.Error(w, "backend connection failed", http.StatusBadGateway)
@@ -197,5 +219,7 @@ func httpProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		slog.Debug("proxy: response copy failed", "url", targetURL, "error", err)
+	}
 }
