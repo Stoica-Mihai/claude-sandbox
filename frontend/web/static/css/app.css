@@ -152,6 +152,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .welcome .big{margin:0}
 .keyhint{display:flex;align-items:center;gap:12px;margin-top:10px}
 .keyhint span{font-size:13px;color:var(--muted)}
+/* Welcome hints: ALT shortcuts + sidebar-click are desktop-only; mobile gets a
+   touch-worded variant. Default (mobile) hides desktop hints; flipped at the
+   768px breakpoint below. */
+.only-desktop{display:none}
 
 /* ===== Directory-picker breadcrumb (renamed off kit .crumb — see step-1 commit) ===== */
 .dp-crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:11px;overflow-x:auto}
@@ -292,6 +296,8 @@ input.err-flash{outline:3px solid var(--accent)}
 
 @media (min-width:768px){
   :root{--is-mobile:0}
+  .only-desktop{display:flex}
+  .only-mobile{display:none}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
   .themewrap span{display:inline}
