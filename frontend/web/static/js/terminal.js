@@ -24,7 +24,10 @@ const ANSI_RESET = '\x1b[0m';
 
 // WebSocket reconnection
 const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_BASE_DELAY = 1000;   // ms — doubles each retry
+// Start fast: a relay is briefly absent after a backend restart/rebuild (in-memory
+// relays rebuild on the next discovery), so the first retries recover sub-second
+// instead of stalling on a full-second wait. Doubles to the cap from there.
+const RECONNECT_BASE_DELAY = 250;    // ms — doubles each retry
 const RECONNECT_MAX_DELAY = 30000;   // ms — 30 second cap
 const WS_NORMAL_CLOSURE = 1000;
 
