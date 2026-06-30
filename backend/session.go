@@ -448,8 +448,10 @@ func discoverSessions() []api.DisplaySession {
 		})
 	}
 
+	// Oldest first → newest last, matching the tab bar (new tabs append on the
+	// right), so a session sits in the same relative spot in sidebar and tabs.
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
+		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 	})
 
 	return sessions
