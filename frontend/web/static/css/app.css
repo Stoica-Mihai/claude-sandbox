@@ -227,11 +227,15 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 #pullIndicator .pull-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--pull,0) * 100%);
   background:var(--accent);transition:width 60ms linear}
 #pullIndicator.armed .pull-fill{width:100%}
+/* Barber-pole recipe pinned to the kit .skel rule (fd-march, --skel-stripe,
+   22px tile, 1s) — keep in sync if the kit retunes it. */
 #pullIndicator.refreshing .pull-fill{width:100%;background-color:var(--accent);
   background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
   background-size:22px 22px;animation:fd-march 1s linear infinite}
 #pullIndicator .pull-label{position:relative;z-index:1;font-family:var(--font);font-weight:800;font-style:italic;
   font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+/* Filled states put the label on the accent — use the kit's text-on-accent token. */
+#pullIndicator.armed .pull-label,#pullIndicator.refreshing .pull-label{color:var(--on-accent)}
 
 /* ===== Terminal background (driven by --terminal-bg/--terminal-fg, set in terminal.js) ===== */
 .terminal-bg{background:var(--terminal-bg)}
@@ -285,6 +289,7 @@ input.err-flash{outline:3px solid var(--accent)}
   .ttab.on,.tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
   .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{background:Highlight}
   .scard .live.dead,.ttab .tdot{background:GrayText}
+  #pullIndicator .pull-fill{background:Highlight}
 }
 
 /* ===== Reduced motion — static ring on the app's live dots (kit disables animation globally) ===== */
