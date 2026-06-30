@@ -239,11 +239,11 @@ function updateSingleTabBar(activeTerminalId) {
 function updateSessionCardStates() {
     document.querySelectorAll('.session-card').forEach(card => {
         const tid = card.dataset.terminalId;
-        card.classList.remove('active');
-
-        if (singleTabs.includes(tid) && tid === singleTerminalId) {
-            card.classList.add('active');
-        }
+        const active = singleTabs.includes(tid) && tid === singleTerminalId;
+        card.classList.toggle('active', active);
+        // aria-current mirrors the kit's .nav-v active semantics for screen readers.
+        if (active) card.setAttribute('aria-current', 'page');
+        else card.removeAttribute('aria-current');
     });
 }
 
@@ -260,6 +260,17 @@ document.addEventListener('click', (e) => {
 
     // Regular click: open in single view
     openSession(terminalId);
+});
+
+// Keyboard activation: the card is role="button" tabindex="0", so Enter/Space
+// open it — but only when the card itself is focused, not a nested action button.
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest && e.target.closest('.session-card');
+    if (!card || card !== e.target) return;
+    e.preventDefault();
+    const terminalId = card.dataset.terminalId;
+    if (terminalId) openSession(terminalId);
 });
 
 // Utility: escape HTML for safe insertion
