@@ -289,14 +289,33 @@ function cleanupKilledSession(terminalId) {
     }
 }
 
+// Skeleton placeholder rows (kit .skel) shown while a fetch is in flight.
+function dpSkelRows(count, height) {
+    let html = '';
+    for (let i = 0; i < count; i++) {
+        html += `<div class="skel" style="height:${height}px;margin:8px 12px"></div>`;
+    }
+    return html;
+}
+
 // Open the New Session modal, resetting the picker to a fresh browse state
 // (re-fetch the root folder list) so it never reopens in a stale/selected state.
 function openNewSessionModal(event) {
     document.getElementById('newSessionModal').showModal();
     if (window.htmx) {
+        const picker = document.getElementById('dir-picker');
+        if (picker) picker.innerHTML = dpSkelRows(5, 36);
         htmx.ajax('GET', '/api/directories', { target: '#dir-picker', swap: 'innerHTML' });
     }
 }
+
+// Show folder skeletons while htmx swaps the directory picker (open,
+// breadcrumb, drill — all target #dir-picker; the real list replaces them).
+document.addEventListener('htmx:beforeRequest', (e) => {
+    if (e.detail?.target?.id === 'dir-picker') {
+        e.detail.target.innerHTML = dpSkelRows(5, 36);
+    }
+});
 
 // Open the Rename Session modal
 let renameTargetId = null;
@@ -452,7 +471,12 @@ async function dpRenderHistory(path) {
     const actions = document.getElementById('session-actions');
     if (!actions) return;
 
-    actions.querySelectorAll('.actitle, .row-host, .empty-state').forEach(el => el.remove());
+    actions.querySelectorAll('.actitle, .row-host, .empty-state, .dp-skel').forEach(el => el.remove());
+
+    const skel = document.createElement('div');
+    skel.className = 'dp-skel';
+    skel.innerHTML = dpSkelRows(3, 44);
+    actions.appendChild(skel);
 
     let entries = [];
     let failed = false;
@@ -461,6 +485,8 @@ async function dpRenderHistory(path) {
         if (res.ok) entries = await res.json();
         else failed = true;
     } catch (e) { failed = true; }
+
+    skel.remove();
 
     const label = document.createElement('div');
     label.className = 'actitle';
