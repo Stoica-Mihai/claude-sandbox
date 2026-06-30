@@ -304,17 +304,23 @@ function openNewSessionModal(event) {
     document.getElementById('newSessionModal').showModal();
     if (window.htmx) {
         const picker = document.getElementById('dir-picker');
-        if (picker) picker.innerHTML = dpSkelRows(5, 36);
+        if (picker) picker.innerHTML = ''; // clear stale content from the last open
         htmx.ajax('GET', '/api/directories', { target: '#dir-picker', swap: 'innerHTML' });
     }
 }
 
-// Show folder skeletons while htmx swaps the directory picker (open,
-// breadcrumb, drill — all target #dir-picker; the real list replaces them).
+// Show folder skeletons while htmx swaps the directory picker (open, breadcrumb,
+// drill — all target #dir-picker; the real list replaces them). Delay the paint
+// so fast/cached responses never flash a skeleton; afterRequest cancels it.
+let dpDirSkelTimer = null;
 document.addEventListener('htmx:beforeRequest', (e) => {
-    if (e.detail?.target?.id === 'dir-picker') {
-        e.detail.target.innerHTML = dpSkelRows(5, 36);
-    }
+    if (e.detail?.target?.id !== 'dir-picker') return;
+    const target = e.detail.target;
+    clearTimeout(dpDirSkelTimer);
+    dpDirSkelTimer = setTimeout(() => { target.innerHTML = dpSkelRows(5, 36); }, 150);
+});
+document.addEventListener('htmx:afterRequest', (e) => {
+    if (e.detail?.target?.id === 'dir-picker') clearTimeout(dpDirSkelTimer);
 });
 
 // Open the Rename Session modal
@@ -473,10 +479,14 @@ async function dpRenderHistory(path) {
 
     actions.querySelectorAll('.actitle, .row-host, .empty-state, .dp-skel').forEach(el => el.remove());
 
-    const skel = document.createElement('div');
-    skel.className = 'dp-skel';
-    skel.innerHTML = dpSkelRows(3, 44);
-    actions.appendChild(skel);
+    // Delay the skeleton so fast responses never flash it; a single block
+    // (not a counted list) so it doesn't promise a row count it can't know.
+    const skelTimer = setTimeout(() => {
+        const s = document.createElement('div');
+        s.className = 'dp-skel';
+        s.innerHTML = dpSkelRows(1, 52);
+        actions.appendChild(s);
+    }, 150);
 
     let entries = [];
     let failed = false;
@@ -486,7 +496,8 @@ async function dpRenderHistory(path) {
         else failed = true;
     } catch (e) { failed = true; }
 
-    skel.remove();
+    clearTimeout(skelTimer);
+    actions.querySelectorAll('.dp-skel').forEach(el => el.remove());
 
     const label = document.createElement('div');
     label.className = 'actitle';
