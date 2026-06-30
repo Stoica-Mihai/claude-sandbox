@@ -114,6 +114,48 @@ func TestHandleDeleteHistorySuccess(t *testing.T) {
 	}
 }
 
+func TestHandleUploadMissingSession(t *testing.T) {
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions//upload", nil)
+	rec := httptest.NewRecorder()
+	s.handleUpload(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleUploadPathTraversal(t *testing.T) {
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/..%2f..%2fetc/upload", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleUploadUnknownSession(t *testing.T) {
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/no-such-session/upload", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
 // loadSessionIndexFresh returns an index backed by an isolated temp config dir,
 // for tests that don't otherwise set CLAUDE_CONFIG_DIR.
 func loadSessionIndexFresh(t *testing.T) *SessionIndex {
