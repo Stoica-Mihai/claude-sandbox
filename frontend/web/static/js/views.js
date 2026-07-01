@@ -230,7 +230,7 @@ function updateSingleTabBar(activeTerminalId) {
                  onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${escapeHtml(id)}');}">
                 <span class="tdot${isActive ? ' on' : ''}"></span>
                 <span style="font-family:var(--mono);font-style:normal">${escapeHtml(sessionName)}</span>
-                <span class="x" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">&times;</span>
+                <button type="button" class="x" aria-label="Close tab" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">&times;</button>
             </div>`;
     }).join('');
 }

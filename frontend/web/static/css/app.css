@@ -145,8 +145,15 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .ttab{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:2px solid var(--line);cursor:pointer;font-weight:800;font-style:italic;font-size:13px;white-space:nowrap;
   transition:background var(--fast),color var(--fast)}
 .ttab.on{background:var(--ink);color:var(--bg)}
-.ttab .x{font-style:normal;font-weight:900;opacity:.5;transition:opacity var(--fast)}
-.ttab:hover .x{opacity:1}
+/* Real button, not a bare span: a ~13px glyph with no padding was a near-unusable
+   hit target. Padding grows the tap/click area without growing the glyph itself. */
+.ttab .x{font-style:normal;font-weight:900;font-size:inherit;font-family:inherit;line-height:1;
+  color:inherit;background:none;border:0;cursor:pointer;padding:7px 7px 7px 4px;margin-left:-4px;
+  opacity:.5;transition:opacity var(--fast),background var(--fast)}
+.ttab:hover .x,.ttab .x:focus-visible{opacity:1}
+.ttab .x:hover{background:var(--line)}
+.ttab.on .x:hover{background:var(--bg);color:var(--ink)}
+.ttab .x:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .ttab .tdot{width:7px;height:7px;flex:none;background:var(--muted)}
 .ttab .tdot.on{background:var(--accent);animation:var(--blink)}
 .ttab.on .tdot{background:var(--on-accent)}
