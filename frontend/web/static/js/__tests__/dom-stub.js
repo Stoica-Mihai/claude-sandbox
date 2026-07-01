@@ -40,8 +40,11 @@ class FakeElement {
         this.classList = new ClassList();
         String(v).split(/\s+/).filter(Boolean).forEach(c => this.classList.add(c));
     }
-    set textContent(v) { this._textContent = String(v); }
-    get textContent() { return this._textContent; }
+    set textContent(v) { this._textContent = String(v); this.children = []; }
+    // Real DOM concatenates all descendant text; app code here never mixes
+    // literal text with children on the same node (always clears one before
+    // appending the other), so children-present implies "reflect them".
+    get textContent() { return this.children.length ? this.children.map(c => c.textContent).join('') : this._textContent; }
     set innerHTML(v) { this._innerHTML = String(v); }
     get innerHTML() { return this._innerHTML; }
     appendChild(child) { this.children.push(child); child.parentNode = this; return child; }
@@ -98,8 +101,16 @@ function matchDescendants(root, sel) {
 
 function makeStyle() {
     // Proxy so views.js can write arbitrary style props without us declaring them.
+    // Also implements the CSSStyleDeclaration methods (setProperty/removeProperty/
+    // getPropertyValue) real code uses for custom properties (e.g. --row-act-h),
+    // since dot-notation can't address a '--foo' key.
+    const methods = {
+        setProperty(t) { return (name, value) => { t[name] = value; }; },
+        removeProperty(t) { return (name) => { delete t[name]; }; },
+        getPropertyValue(t) { return (name) => (name in t ? t[name] : ''); },
+    };
     return new Proxy({ cssText: '' }, {
-        get(t, p) { return p in t ? t[p] : ''; },
+        get(t, p) { return p in methods ? methods[p](t) : (p in t ? t[p] : ''); },
         set(t, p, v) { t[p] = v; return true; },
     });
 }
