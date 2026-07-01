@@ -9,7 +9,7 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 - **Web dashboard** at `:8080` for managing sessions from a browser
   - View, spawn, and kill Claude Code sessions
   - Full interactive terminal via xterm.js with WebSocket relay
-  - Single, split, and grid view modes
+  - Tabbed terminals — open multiple sessions as tabs
   - Session detach/reattach with scrollback replay
   - Self-contained Futurism design system (no CSS-framework CDN); dark/light theme toggle + 7-color accent picker
   - Responsive mobile layout with touch input bar
@@ -17,9 +17,9 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 - Pre-configured for **Opus 1M** with high effort, always-thinking, and agent teams enabled
 - Optional MCP server support via `mcp-config.json`
 - [OpenSpec](https://openspec.dev/) for spec-driven planning
-- Pre-installed plugins: superpowers, skill-creator, claude-api, document-skills, example-skills, cli-anything, cli-anything-go, opsx-ext
+- Pre-installed plugins: superpowers, skill-creator, claude-api, document-skills, example-skills, cli-anything, cli-anything-go, opsx-ext, caveman
 - Mounts your project workspace at `/workspace` (configurable via `WORKSPACE_PATH`)
-- Host Claude session/auth files mapped into container
+- Isolated Claude auth/config in `~/.claude-sandbox` on the host — your real `~/.claude` is never mounted
 
 ## Prerequisites
 

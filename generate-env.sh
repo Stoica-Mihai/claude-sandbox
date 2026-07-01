@@ -6,7 +6,8 @@ set -eu
 mkdir -p "${HOME}/.claude-sandbox"
 
 # Seed the (gitignored) container settings from the example on first run.
-# docker-compose mounts this read-only, so it must exist before `up`/`build`.
+# docker-compose bind-mounts this file (read-write — the in-dashboard settings
+# editor persists edits to it), so it must exist before `up`/`build`.
 # Done before the .env early-exit so it still seeds on later runs if deleted.
 if [ ! -f container-settings.json ]; then
     cp container-settings.example.json container-settings.json
