@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>Claude Sandbox — Dashboard</title>
+    <script>
+    // Apply the saved theme before first paint — theme.js runs at the end of
+    // <body>, so without this a light-theme user gets a dark flash every load
+    // (the html tag hardcodes data-theme="dark" as the no-storage default).
+    (function () {
+        try {
+            var t = localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+            document.documentElement.setAttribute('data-theme-base', t);
+        } catch (e) { /* storage blocked — keep the dark default */ }
+    })();
+    </script>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/vendor/xterm.min.css">
     <link rel="stylesheet" href="/static/css/futurism.css">

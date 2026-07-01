@@ -6,6 +6,10 @@
 // Single terminal view with tabs
 let singleTerminalId = null;    // currently active tab
 let singleTabs = [];            // array of open tab terminal IDs
+// Last-known display name per tab. The tab bar reads names off the sidebar
+// cards; when a session dies its card disappears, and without this cache the
+// tab label silently degraded to a truncated dtach id on the next render.
+const tabNames = {};
 
 // ===== Mobile sidebar drawer =====
 function isMobile() {
@@ -117,6 +121,7 @@ function closeSingleTab(terminalId) {
 
     // Remove from tabs array
     singleTabs = singleTabs.filter(id => id !== terminalId);
+    delete tabNames[terminalId];
 
     // If this was the active tab, switch to the last remaining tab or show welcome
     if (singleTerminalId === terminalId) {
@@ -224,15 +229,18 @@ function updateSingleTabBar(activeTerminalId) {
 
     tabBar.innerHTML = singleTabs.map(id => {
         const card = document.querySelector(`[data-terminal-id="${id}"]`);
-        const sessionName = card ? card.dataset.session : id.substring(0, 8);
+        if (card) tabNames[id] = card.dataset.session;
+        const sessionName = card ? card.dataset.session : (tabNames[id] || id.substring(0, 8));
+        const dead = !card; // session gone from the sidebar = ended
         const isActive = id === activeTerminalId;
         const safeId = escapeHtml(id);
         return `
             <div class="ttab${isActive ? ' on' : ''}" id="ttab-${safeId}" data-terminal-id="${safeId}"
+                 ${dead ? 'title="Session ended"' : ''}
                  role="tab" aria-selected="${isActive}" aria-controls="singleTab-${safeId}" tabindex="${isActive ? '0' : '-1'}"
                  onclick="switchSingleTab('${safeId}')"
                  onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${safeId}');}">
-                <span class="tdot${isActive ? ' on' : ''}"></span>
+                <span class="tdot${dead ? ' dead' : isActive ? ' on' : ''}"></span>
                 <span style="font-family:var(--mono);font-style:normal">${escapeHtml(sessionName)}</span>
                 <button type="button" class="x" tabindex="-1" aria-label="Close tab" onclick="closeSingleTab('${safeId}'); event.stopPropagation();">&times;</button>
             </div>`;
@@ -404,6 +412,13 @@ document.addEventListener('htmx:afterSwap', (event) => {
     if (event.target?.id === 'session-list') {
         updateSessionCardStates();
         tickDurations(); // fill the freshly-swapped cards' duration immediately
+        // Re-render the tab bar from the fresh cards: renames propagate to tab
+        // labels, and tabs whose session ended get their dead marker. Skip when
+        // focus is inside the strip so an SSE update can't yank keyboard focus.
+        const bar = document.getElementById('singleTabBar');
+        if (singleTabs.length && bar && !bar.contains(document.activeElement)) {
+            updateSingleTabBar(singleTerminalId);
+        }
     }
     if (event.target?.id === 'dir-picker') {
         dpResetBrowse(); // a fresh folder-list level → browse state, nothing selected

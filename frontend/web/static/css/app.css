@@ -171,6 +171,9 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .ttab .tdot{width:7px;height:7px;flex:none;background:var(--muted)}
 .ttab .tdot.on{background:var(--accent);animation:var(--blink)}
 .ttab.on .tdot{background:var(--on-accent)}
+/* Session ended but tab kept open (scrollback still readable): dot stays muted
+   even on the active tab, no blink. */
+.ttab .tdot.dead,.ttab.on .tdot.dead{background:var(--muted);animation:none}
 .ctrlbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
 
 /* ===== Keycap modifiers (base .keycap is the kit) ===== */
