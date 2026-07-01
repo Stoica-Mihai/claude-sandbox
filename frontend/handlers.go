@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -10,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"claude-frontend/web"
@@ -64,10 +67,62 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocketProxy)
 	mux.HandleFunc("GET /healthz", s.handleHealthzProxy)
 
-	// Static files.
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	// Static files. embed.FS files carry no modtime, so http.FileServer alone
+	// sends no ETag/Last-Modified and browsers re-download every asset on every
+	// load (~500KB of xterm+htmx+CSS). Hash each file once at startup and serve
+	// conditional 304s; vendor libs change only on image rebuild, so they also
+	// get a day of freshness.
+	etags, err := computeETags(staticFS)
+	if err != nil {
+		return nil, fmt.Errorf("hashing static files: %w", err)
+	}
+	fileServer := http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))
+	mux.Handle("GET /static/", cacheMiddleware(etags, fileServer))
 
 	return s, nil
+}
+
+// computeETags hashes every file in the static FS into a path → ETag map.
+func computeETags(fsys fs.FS) (map[string]string, error) {
+	etags := make(map[string]string)
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		etags[path] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	})
+	return etags, err
+}
+
+// cacheMiddleware adds ETag/Cache-Control to static responses and answers
+// If-None-Match with 304, so unchanged assets cost a header round-trip
+// instead of a full transfer.
+func cacheMiddleware(etags map[string]string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/static/")
+		etag, ok := etags[path]
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(path, "vendor/") {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		w.Header().Set("ETag", etag)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // --- Shared helpers ---
