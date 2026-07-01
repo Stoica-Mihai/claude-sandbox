@@ -59,6 +59,25 @@ function renderAccents() {
         };
         pop.appendChild(s);
     });
+    syncSwatchFocus();
+}
+
+// Swatches default to real <button>s (natively tabbable), so without this
+// they'd stay in Tab order even while the popover is closed/invisible
+// (transform:scaleY(0) blocks pointer/visual access but not keyboard focus).
+// Pull them out of the tab order when closed, same as .sel-opt's tabindex=-1.
+// Ported from the kit's fdAccent(); our setAccentPickerOpen() is the single
+// funnel every open/close path already goes through (toggle, outside-click,
+// Escape), so — unlike the kit's version — no MutationObserver is needed to
+// catch a bypass path; there isn't one.
+function syncSwatchFocus() {
+    var pick = document.getElementById('accpick');
+    var pop = document.getElementById('accpop');
+    if (!pick || !pop) return;
+    var open = pick.classList.contains('open');
+    Array.prototype.slice.call(pop.querySelectorAll('.acc')).forEach(function(s) {
+        s.tabIndex = open ? 0 : -1;
+    });
 }
 
 // Open/close the accent popover, keeping aria-expanded in sync (mirrors the
@@ -74,6 +93,7 @@ function setAccentPickerOpen(open) {
     if (!pick) return;
     pick.classList.toggle('open', open);
     if (trig) trig.setAttribute('aria-expanded', open ? 'true' : 'false');
+    syncSwatchFocus();
 }
 function closeAccentPicker() {
     setAccentPickerOpen(false);
