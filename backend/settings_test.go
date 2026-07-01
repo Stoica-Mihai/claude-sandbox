@@ -52,10 +52,13 @@ func TestModelRankAdvisorRule(t *testing.T) {
 	if modelRank("haiku") != 1 || modelRank("sonnet") != 2 || modelRank("opus[1m]") != 3 {
 		t.Errorf("ranks off: haiku=%d sonnet=%d opus=%d", modelRank("haiku"), modelRank("sonnet"), modelRank("opus[1m]"))
 	}
+	if !(modelRank("claude-fable-5") > modelRank("opus[1m]")) {
+		t.Error("fable advisor should outrank opus main")
+	}
 }
 
 func TestCanonicalModelID(t *testing.T) {
-	valid := []string{"claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"}
+	valid := []string{"claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-fable-5", "claude-sonnet-5"}
 	invalid := []string{"opus[1m]", "opus", "sonnet", "haiku", "gpt-4", "", "claude-foo-1"}
 	for _, v := range valid {
 		if !canonicalModelID.MatchString(v) {

@@ -18,6 +18,8 @@ import (
 func modelRank(s string) int {
 	s = strings.ToLower(s)
 	switch {
+	case strings.Contains(s, "fable"):
+		return 4
 	case strings.Contains(s, "opus"):
 		return 3
 	case strings.Contains(s, "sonnet"):
@@ -37,7 +39,7 @@ var allowedEffort = []string{"low", "medium", "high", "xhigh", "max"}
 
 // canonicalModelID matches a full Claude model id (e.g. claude-opus-4-8),
 // the shape the advisor accepts — version-agnostic so it survives new releases.
-var canonicalModelID = regexp.MustCompile(`^claude-(opus|sonnet|haiku)-[0-9][0-9-]*$`)
+var canonicalModelID = regexp.MustCompile(`^claude-(fable|opus|sonnet|haiku)-[0-9][0-9-]*$`)
 
 // editableSettings is the whitelisted preference subset the dashboard may
 // read and write. All other keys in container-settings.json are off-limits.
