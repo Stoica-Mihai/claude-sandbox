@@ -34,11 +34,18 @@
    terminal width. Breaks no law (laws are resolution-independent). */
 /* The settings/rename modal bodies stack their fields; kit .modal .mbody is padding-only. */
 .modal .mbody{display:flex;flex-direction:column;gap:16px}
-/* D8: .sel-list back to position:absolute. Kit 0.6.9 made it position:fixed +
-   JS-anchored (fdSelOpen) for top-layer escape; we drive .sel with our own
-   settings.js (no anchoring) and the settings modal doesn't scroll, so absolute
-   (the pre-0.6.9 behavior) positions the dropdown correctly under its trigger. */
-.sel-list{position:absolute;top:calc(100% + 4px);left:0;right:0}
+/* D8 retired (kit 0.6.10): .sel-list default is now position:absolute self-anchored,
+   exactly what D8 hand-rolled — the override was redundant and removed. */
+/* D9: .only-desktop/.only-mobile — responsive show/hide utilities the kit lacks,
+   toggled at the 768px breakpoint (welcome hints). See the .only-desktop rule below. */
+/* D10: header controls (.accpick/.acctrig/.settings-btn) — flex the .accpick wrapper
+   so the accent swatch loses its inline-block baseline gap and lines up with the
+   settings button, and size both controls from one rule so their 30/40px breakpoints
+   can't drift. Kit sizes .acctrig on its own. See the '.hdr .right' block. */
+/* D11: #pullIndicator — pull-to-refresh; the kit has no such component. Built from
+   kit idioms: fd-march/.skel barber-pole (no rotary spinner), --on-accent label on
+   the accent fill, forced-colors fallback + role=status/aria-live per the kit's
+   'when extending' checklist. See the '#pullIndicator' block. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -55,7 +62,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hdr .title em{color:var(--accent);font-style:italic}
 .hdr .sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-left:6px}
 .hdr .right{display:flex;align-items:center;gap:16px}
-/* .acctrig is an inline-block button inside .accpick (block) — the inline
+/* D10: .acctrig is an inline-block button inside .accpick (block) — the inline
    baseline leaves a descender gap below it, pushing the swatch's center above
    the row and out of line with the flex-centered settings button. Flex the
    wrapper so the swatch is flush and both align. */
@@ -157,7 +164,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .welcome .big{margin:0}
 .keyhint{display:flex;align-items:center;gap:12px;margin-top:10px}
 .keyhint span{font-size:13px;color:var(--muted)}
-/* Welcome hints: ALT shortcuts + sidebar-click are desktop-only; mobile gets a
+/* D9: welcome hints — ALT shortcuts + sidebar-click are desktop-only; mobile gets a
    touch-worded variant. Default (mobile) hides desktop hints; flipped at the
    768px breakpoint below. */
 .only-desktop{display:none}
@@ -225,7 +232,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 [data-theme-base="light"] .grain::after{opacity:.005}
 
 /* ===== Pull to refresh ===== */
-/* Pull-to-refresh: square accent bar that fills L→R as you pull, then marches
+/* D11: pull-to-refresh — square accent bar that fills L→R as you pull, then marches
    the kit barber-pole (fd-march, same as .skel) while refreshing. --pull (0..1)
    is set from views.js. */
 #pullIndicator{position:relative;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
