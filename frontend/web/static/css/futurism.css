@@ -56,7 +56,9 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* Buttons */
 .btn{border:none;font-family:var(--font);font-weight:900;font-style:italic;padding:10px 18px;transform:skewX(-8deg);cursor:pointer;font-size:13px;
   transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
-.btn>span{display:inline-block;transform:skewX(8deg);white-space:nowrap}
+/* line-height:1 so a taller glyph (e.g. the "✓" in .btn.ok) can't inflate the
+   button's box height relative to its plain-text siblings. */
+.btn>span{display:inline-block;transform:skewX(8deg);white-space:nowrap;line-height:1}
 /* The flagship CTA cuts deepest: hover lunges up-left and throws a solid offset
    shadow (like .card), so it has more Futurist depth than passive surfaces. */
 .btn:hover{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:5px 5px 0 var(--shadow)}
@@ -133,7 +135,9 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* Badges */
 .badge{display:inline-block;font-size:10px;font-weight:900;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;background:var(--ink);color:var(--bg)}
 .badge.red{background:var(--accent);color:var(--on-accent)}
-.badge.out{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
+/* Compensate the added 2px border on each side so .out matches the other two
+   variants' box height/width exactly (they have no border). */
+.badge.out{background:transparent;color:var(--ink);border:var(--border) solid var(--ink);padding:1px 6px}
 
 /* Inputs */
 input,textarea{width:100%;background:var(--field);border:var(--border) solid var(--line);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--ink);transition:outline var(--fast)}
@@ -246,7 +250,8 @@ tbody tr:hover{background:var(--tint)}
 
 /* List rows — hover + selected highlight driven through --row-bg so a JS-set
    inline background:var(--row-bg,transparent) can't clobber the highlight. Washes
-   use the theme-aware --hover-bg/--sel-bg tokens (dark needs far higher mixes). */
+   use the theme-aware --hover-bg/--sel-bg tokens — selection leans on the inset
+   accent edge below to carry the cue, so the wash itself stays a light touch. */
 .list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:var(--border) solid var(--line);background:var(--row-bg,transparent);transition:background var(--fast)}
 /* Clickable rows opt in (like .card.link) — only then show the pointer. An interactive
    row must be a real <a>/<button> or carry listbox semantics (role=option +
@@ -262,26 +267,54 @@ tbody tr:hover{background:var(--tint)}
    modal or native confirm(). Wrap the row + action as SIBLINGS in .row-host: an
    interactive control can't legally nest inside a row that is itself a <button>.
    The slot itself is a CONTAINER (not a button) so its child buttons never nest in a
-   button either. Always-visible-muted (discoverable), inset top/bottom so it doesn't
-   cover the row divider. Wire the two-step + focus/Esc/ARIA with fdConfirm(). */
+   button either. Always-visible-muted (discoverable). Wire the two-step +
+   focus/Esc/ARIA with fdConfirm(). */
 .row-host{position:relative}
 .row-host .list-row{padding-right:46px}
-.row-act{position:absolute;top:2px;right:0;bottom:2px;display:flex;align-items:center;border-left:var(--border) solid var(--line)}
+/* .list-row:last-child (above) never fires in here: .row-act is always the next
+   DOM sibling, so the row div itself is never actually the last child. Re-assert
+   the same "no border on the last row" rule scoped to .row-host being last instead
+   — otherwise its own border-bottom stacks on the list's outer border below it. */
+.row-host:last-child .list-row{border-bottom:none}
+/* Full height always (top:0;bottom:0) — the border-left divider reads as one
+   continuous line no matter what, rather than insetting to dodge the row's own
+   border-bottom. The FILL (children, below) is what actually risks painting
+   over that border on hover/confirm/failed, so the inset moves there instead —
+   the divider itself never needs to duck it. */
+.row-act{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:flex-start;border-left:var(--border) solid var(--line)}
+/* Opt-in modifier for an unusually tall/content-dense row where a full-height
+   fill would read as a banner rather than a button — the default .row-act above
+   already scales fine for an ordinary two-line row, prefer it there. Centers a
+   fixed-height strip instead; --row-act-h is a token so a caller can size it per
+   use case without a magic number baked into the kit. Additive only — the
+   default .row-act above is untouched. */
+.row-act.centered{top:50%;bottom:auto;transform:translateY(-50%);height:var(--row-act-h,32px)}
 /* No background here — the global button{background:none} handles default
    transparency; setting it here would out-specify .confirm-yes and kill its fill. */
 .row-act>button{font:inherit;border:0;cursor:pointer;transition:background var(--fast),color var(--fast)}
-.row-act-btn{display:flex;align-items:center;justify-content:center;height:100%;padding:0 12px;color:var(--muted)}
+/* Default mode: every fill child (idle button, confirm-yes/no, the failed flash)
+   sits 2px shorter than the now-full-height .row-act, flush to the top via
+   align-items:flex-start above, so the fill stops right where the row's own
+   border-bottom begins instead of covering it. .centered's own height already
+   excludes that border entirely (a floating strip touching neither edge), so
+   its children fill it exactly with no trim needed. */
+.row-act:not(.centered)>*{height:calc(100% - 2px)}
+.row-act.centered>*{height:100%}
+.row-act-btn{display:flex;align-items:center;justify-content:center;padding:0 12px;color:var(--muted)}
 .row-act-btn:hover{background:var(--accent);color:var(--on-accent)}
 .row-act-btn svg{width:15px;height:15px;display:block}
 .row-act.confirming{border-left-color:var(--accent)}
-.confirm-yes,.confirm-no{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:0 7px;height:100%}
+.confirm-yes,.confirm-no{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:0 7px}
 .confirm-yes{background:var(--accent);color:var(--on-accent)}
 .confirm-yes:hover{background:color-mix(in srgb,var(--accent) 82%,#000)}
 .confirm-no{color:var(--muted);border-left:var(--border) solid var(--line)}
 .confirm-no:hover{color:var(--ink)}
 .row-act-btn:focus-visible,.confirm-yes:focus-visible,.confirm-no:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
-/* Transient failure flash (set by fdConfirm on a rejected action), then revert. */
-.row-act.failed{background:var(--accent);color:var(--on-accent);border-left-color:var(--accent);justify-content:center;padding:0 10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.row-act.failed{border-left-color:var(--accent)}
+/* Transient failure flash (set by fdConfirm on a rejected action), then revert.
+   A child (not the slot's own background) so it gets the same 2px fill trim as
+   every other .row-act child, keeping the border-left the only full-height part. */
+.row-act-fail{display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--on-accent);padding:0 10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
 
 /* Modal — native <dialog>: transparent shell, the .modal box carries the chrome.
    overflow:visible on <dialog> so .modal's offset shadow isn't clipped; tall
@@ -327,7 +360,10 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 /* Checkbox & radio — styled NATIVE inputs (appearance:none) so they keep real
    keyboard + a11y. Both are squares (circles break law 1). Checkbox fills accent
    with an on-accent check; radio stays field with an inset accent block. */
-.check,.radio{appearance:none;-webkit-appearance:none;width:18px;height:18px;flex:none;margin:0;border:var(--border) solid var(--line);background:var(--field);cursor:pointer;position:relative;transition:background var(--fast) var(--ease)}
+/* padding:0 overrides the generic input{padding:9px 10px} rule above, which
+   still matches these — without it, box-sizing:border-box forces the box past
+   its explicit 18x18 to fit that padding, rendering a non-square rectangle. */
+.check,.radio{appearance:none;-webkit-appearance:none;width:18px;height:18px;padding:0;flex:none;margin:0;border:var(--border) solid var(--line);background:var(--field);cursor:pointer;position:relative;transition:background var(--fast) var(--ease)}
 .check:checked{background:var(--accent)}
 .check:checked::after{content:"";position:absolute;left:4px;top:0;width:6px;height:11px;border:solid var(--on-accent);border-width:0 3px 3px 0;transform:rotate(45deg)}
 .radio:checked::after{content:"";position:absolute;inset:3px;background:var(--accent)}
@@ -360,6 +396,29 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .skel{height:14px;border:var(--border) solid var(--line);background-color:var(--field);
   background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
   background-size:22px 22px;animation:fd-march 1s linear infinite}
+
+/* Pull to refresh — square accent bar that fills as the user pulls, then marches
+   the kit barber-pole (fd-march, same recipe as .skel) while refreshing. Height and
+   --pull (0..1) are driven by fdPull() in futurism.js. Single instance per page
+   (like .toaster) — one .pull element, its state toggled by class. */
+.pull{position:relative;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  background:var(--surf);border-bottom:var(--border) solid var(--line);transition:height var(--med) var(--ease)}
+.pull-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--pull,0) * 100%);background:var(--accent);
+  /* Exception to law #5 (--ease): this fill 1:1-tracks a touchmove position every
+     frame, and the standard cubic-bezier visibly lags a fast drag. Linear keeps it
+     glued to the finger; --ease still governs every discrete state transition
+     (armed/refreshing, hover, open/close) elsewhere. Don't "fix" this back to --ease. */
+  transition:width 60ms linear}
+.pull.armed .pull-fill{width:100%}
+/* Barber-pole recipe pinned to .skel (fd-march, --skel-stripe, 22px tile, 1s). */
+.pull.refreshing .pull-fill{width:100%;background-color:var(--accent);
+  background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
+  background-size:22px 22px;animation:fd-march 1s linear infinite}
+.pull-label{position:relative;z-index:1;font-family:var(--font);font-weight:800;font-style:italic;
+  font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+/* Filled states put the label on the accent fill — text-on-accent token (SKILL
+   theming: "partial fill" rule), not --ink. */
+.pull.armed .pull-label,.pull.refreshing .pull-label{color:var(--on-accent)}
 
 /* Segmented control — welded buttons (the .combo idiom); active fills ink. For a
    few visible options where tabs are too heavy and a select is overkill. */
@@ -404,10 +463,11 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
    color-mix backgrounds + gradients with system colors, so selected/active states
    and the barber-pole bars lose their cue. Re-assert them with borders + Highlight. */
 @media (forced-colors:active){
-  .list-row.sel,.tab.on,.seg button.on,.pager button.on{outline:2px solid Highlight;outline-offset:-2px}
+  .list-row.sel,.tab.on,.seg button.on,.pager button.on,.nav-v>[aria-current="page"],.switch .act{outline:2px solid Highlight;outline-offset:-2px}
   .prog>i,.skel{background:Highlight}
   .dot{background:Highlight}
   .dot.dead{background:GrayText}
+  .pull-fill{background:Highlight}
 }
 
 /* Print: drop fixed overlays + solid shadows so pages print clean (screen-app kit,
@@ -435,4 +495,16 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
   .seg button{padding:11px 16px}
   .sel-val{padding:12px 12px}
   .sel-opt{padding:12px 12px}
+}
+
+/* Responsive show/hide — mobile-first: default (compact) layout hides desktop-only
+   chrome and shows mobile-only chrome; the min-width:768px breakpoint flips both.
+   Common case only (display:none/block) — an element that needs flex/inline-flex/
+   inline-block when shown should add its own compound-selector display override
+   (see SKILL.md's "Collapse header chrome" note under Responsive & touch). */
+.only-desktop{display:none}
+.only-mobile{display:block}
+@media (min-width:768px){
+  .only-desktop{display:block}
+  .only-mobile{display:none}
 }
