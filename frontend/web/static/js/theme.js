@@ -14,6 +14,26 @@ function currentBaseIsDark() {
     return document.documentElement.getAttribute('data-theme') !== 'light';
 }
 
+// Relative luminance (WCAG) of a #rgb/#rrggbb color, 0..1. Ported from the kit's
+// futurism.js so the accent picker derives --on-accent the way fdAccent() does.
+function fdLuminance(hex) {
+    hex = String(hex).replace('#', '');
+    if (hex.length === 3) hex = hex.replace(/./g, '$&$&');
+    var v = [0, 2, 4].map(function (i) {
+        var c = parseInt(hex.substr(i, 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+}
+
+// Pick the kit's cream or near-black foreground — whichever contrasts better on
+// col — so text/icons on an accent fill stay legible for any picked accent.
+function fdOnAccent(col) {
+    var cream = '#efe9dc', ink = '#16140f', L = fdLuminance(col);
+    function ratio(a, b) { return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); }
+    return ratio(L, fdLuminance(cream)) >= ratio(L, fdLuminance(ink)) ? cream : ink;
+}
+
 var savedAccent = localStorage.getItem('accent') || 'Red';
 var curAccent = ACCENTS.find(function(a) { return a.name === savedAccent; }) || ACCENTS[0];
 
@@ -46,6 +66,9 @@ function applyAccent() {
     r.setProperty('--accent', col);
     // dark base uses accent as the offset-shadow; light base keeps ink
     r.setProperty('--shadow', dark ? col : '#1a1714');
+    // Re-derive the paired on-accent foreground for the picked color, else text/
+    // icons on an accent fill keep the red-paired token and go low-contrast.
+    r.setProperty('--on-accent', fdOnAccent(col));
     localStorage.setItem('accent', curAccent.name);
     renderAccents();
 }
