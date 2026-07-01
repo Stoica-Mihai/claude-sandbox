@@ -60,20 +60,23 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* The flagship CTA cuts deepest: hover lunges up-left and throws a solid offset
    shadow (like .card), so it has more Futurist depth than passive surfaces. */
 .btn:hover{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:5px 5px 0 var(--shadow)}
-/* Active keeps the hover translate (was scale(.96) with no translate, which snapped
-   the button ~3px on mouse-down so a click begun on the hovered edge released off
-   the button — :active flashed but click never fired). Press cue is the shadow
-   collapsing to flat; position is unchanged from hover, so edge clicks always land. */
-.btn:active{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:none}
+/* Press = the button depresses: it drops from the lifted hover position back down to
+   rest (translate 0) as the offset shadow shrinks (5px→1px), so it visibly sits down
+   onto the surface — the tactile click. That downward move would normally slip the
+   button out from under a click begun on the hovered top edge (dropping the click),
+   so a document pointerdown handler setPointerCapture()s the .btn — the click then
+   retargets to the button even though it moved. See futurism.js. */
+.btn:active{transform:skewX(-8deg);box-shadow:1px 1px 0 var(--shadow)}
 /* Accent-fill controls throw an INK shadow, not --shadow: in dark --shadow follows
    the accent, so an accent shadow under an accent button smears into one blob.
    Ink contrasts in both themes (dark in light, cream in dark). */
 .btn-primary:hover,.btn.err:hover{box-shadow:5px 5px 0 var(--ink)}
 /* A pressed button is also hovered; the accent-fill hover shadow above is equal
-   specificity to .btn:active and declared later, so it would keep the shadow on
-   press and kill the flatten cue. Re-assert the collapse here (after it) so primary,
-   error, and SET (btn-square.btn-primary) flatten on press like ghost/ink do. */
-.btn-primary:active,.btn.err:active{box-shadow:none}
+   specificity to .btn:active and declared later, so it would keep the 5px shadow on
+   press and kill the settle cue. Re-assert the shrunk press shadow here (after it) so
+   primary, error, and SET (btn-square.btn-primary) settle on press like ghost/ink —
+   ink, not --shadow, so an accent fill doesn't smear same-hue in dark. */
+.btn-primary:active,.btn.err:active{box-shadow:1px 1px 0 var(--ink)}
 .btn-primary{background:var(--accent);color:var(--on-accent)}
 .btn-ink{background:var(--ink);color:var(--bg)}
 .btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
@@ -83,9 +86,9 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
    skewed button beside a square field makes an awkward wedge. See SKILL law 6. */
 .btn-square,.btn-square>span{transform:none}
 .btn-square:hover{transform:translate(-3px,-3px)}
-/* Match .btn:active — hold the hover position so mouse-down doesn't snap the button
-   off the pointer and drop the click at the edges. */
-.btn-square:active{transform:translate(-3px,-3px)}
+/* Depress to rest like .btn:active (transform:none, not skew — square stays square);
+   pointer capture keeps the click safe through the downward move. */
+.btn-square:active{transform:none}
 /* State variants — stay inside the one-red palette (law 4): ink = done/committed,
    accent = error/attention. .saving marches diagonal stripes (the machine motion
    from .prog), never an opacity pulse, which would read as fade-puff (law 5). */

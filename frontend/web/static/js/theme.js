@@ -96,6 +96,18 @@ document.addEventListener('click', function(e) {
     if (p && !p.contains(e.target)) p.classList.remove('open');
 });
 
+// A pressed .btn depresses (kit :active drops translate + shrinks the offset
+// shadow), which slides it out from under a press begun on the hovered top
+// edge. Capture the pointer so the click still retargets to the button even
+// though it moved — ported from futurism.js (not vendored; we drive our own
+// JS), since this is a hard CSS/JS pairing, not progressive enhancement.
+document.addEventListener('pointerdown', function(e) {
+    var b = e.target && e.target.closest && e.target.closest('.btn');
+    if (b && e.pointerId != null && b.setPointerCapture) {
+        try { b.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+});
+
 (function() {
     var savedTheme = localStorage.getItem('theme') || 'dark';
     var theme = savedTheme === 'light' ? 'light' : 'dark';
