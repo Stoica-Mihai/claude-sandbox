@@ -42,10 +42,13 @@
    so the accent swatch loses its inline-block baseline gap and lines up with the
    settings button, and size both controls from one rule so their 30/40px breakpoints
    can't drift. Kit sizes .acctrig on its own. See the '.hdr .right' block. */
-/* D11: #pullIndicator — pull-to-refresh; the kit has no such component. Built from
-   kit idioms: fd-march/.skel barber-pole (no rotary spinner), --on-accent label on
-   the accent fill, forced-colors fallback + role=status/aria-live per the kit's
-   'when extending' checklist. See the '#pullIndicator' block. */
+/* D11: #pullIndicator — pull-to-refresh; built independently from kit idioms
+   (fd-march/.skel barber-pole, --on-accent label, forced-colors fallback,
+   role=status/aria-live) before the kit shipped its own fdPull() (0.6.17+).
+   Convergent, not derived — same shape (barber-pole reuse, --pull custom
+   property, armed/refreshing states), kept as our own hand-rolled JS/CSS
+   rather than switching to fdPull, consistent with this app driving all its
+   own interaction logic instead of loading futurism.js. See '#pullIndicator'. */
 /* D12: #pullIndicator .pull-fill uses transition:width 60ms linear, not
    var(--ease) (Law #5) — deliberate: the fill 1:1-tracks a touchmove finger
    position every frame, and the kit's cubic-bezier lags visibly behind a fast
@@ -192,9 +195,12 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .keyhint{display:flex;align-items:center;gap:12px;margin-top:10px}
 .keyhint span{font-size:13px;color:var(--muted)}
 /* D9: welcome hints — ALT shortcuts + sidebar-click are desktop-only; mobile gets a
-   touch-worded variant. Default (mobile) hides desktop hints; flipped at the
-   768px breakpoint below. */
-.only-desktop{display:none}
+   touch-worded variant, via the kit's .only-desktop/.only-mobile (0.6.18+; this
+   app defined its own equivalent independently before the kit shipped one — same
+   semantics, no conflict). Kit default is display:block when shown; .keyhint
+   wants flex, so scope the compound override per the kit's own guidance rather
+   than a bare .only-desktop/.only-mobile rule. */
+.keyhint.only-mobile{display:flex}
 
 /* ===== Directory-picker breadcrumb (renamed off kit .crumb — see step-1 commit) ===== */
 .dp-crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:11px;overflow-x:auto}
@@ -238,10 +244,10 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* ===== Resume-row delete — uses the kit .row-host/.row-act/.confirm-* component ===== */
 /* Kit's padding rule targets .list-row; our resume row is .arow.sa-row. */
 .row-host .sa-row{padding-right:46px}
-/* Confirm is a fixed-height strip centered in the row. Kit anchors .row-act
-   top/bottom, so on a taller two-line row the accent edge + buttons grow chunky;
-   centering a fixed height keeps the edge, divider, and buttons one compact size. */
-.row-act.confirming{top:50%;bottom:auto;transform:translateY(-50%);height:28px}
+/* Confirm/failed use the kit's .row-act.centered modifier (views.js sets
+   --row-act-h:28px) instead of a bespoke override: on a taller two-line row,
+   .row-act's full-height default makes the confirm/cancel pair and the failed
+   flash grow chunky; centering a fixed height keeps them one compact size. */
 
 /* ===== Settings modal: button + note ===== */
 /* Size the accent trigger and settings button from one rule so they stay
@@ -353,8 +359,7 @@ input.err-flash{outline:3px solid var(--accent)}
 
 @media (min-width:768px){
   :root{--is-mobile:0}
-  .only-desktop{display:flex}
-  .only-mobile{display:none}
+  .keyhint.only-desktop{display:flex}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
   .themewrap span{display:inline}

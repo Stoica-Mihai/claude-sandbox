@@ -588,7 +588,8 @@ async function dpRenderHistory(path) {
 
 // Idle state: a trash button inside the .row-act container; click arms the confirm.
 function dpDelToIdle(act, path, uuid) {
-    act.classList.remove('confirming', 'failed');
+    act.classList.remove('confirming', 'failed', 'centered');
+    act.style.removeProperty('--row-act-h');
     act.textContent = '';
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -605,7 +606,10 @@ function dpDelToIdle(act, path, uuid) {
 
 // Armed state: accent confirm + ghost cancel. Cancel reverts to idle; confirm deletes.
 function dpDelToConfirm(act, path, uuid) {
-    act.classList.add('confirming');
+    // .centered + --row-act-h: the kit's fixed-height-centered-strip modifier —
+    // the confirm/cancel pair doesn't need the row's full (two-line) height.
+    act.classList.add('confirming', 'centered');
+    act.style.setProperty('--row-act-h', '28px');
     act.textContent = '';
 
     const yes = document.createElement('button');
@@ -651,9 +655,13 @@ async function dpDelConfirmed(act, path, uuid) {
 
 // Transient on-brand failure flash, then revert to idle.
 function dpDelFail(act, path, uuid) {
-    act.classList.remove('confirming');
+    act.classList.remove('confirming', 'centered');
     act.classList.add('failed');
-    act.textContent = 'Failed';
+    act.textContent = '';
+    const flash = document.createElement('span');
+    flash.className = 'row-act-fail';
+    flash.textContent = 'Failed';
+    act.appendChild(flash);
     setTimeout(() => dpDelToIdle(act, path, uuid), 1800);
 }
 
