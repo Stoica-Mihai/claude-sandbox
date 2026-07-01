@@ -13,25 +13,79 @@ function clearSettingsError() {
     if (h && h.classList.contains('err')) { h.textContent = SETTINGS_HINT; h.classList.remove('err'); }
 }
 
-// Mark opt as the chosen option within sel (clearing siblings) and show label.
+// Mark opt as the chosen option within sel (clearing siblings), sync
+// aria-selected, and show label.
 function applyOption(sel, opt, label) {
-    sel.querySelectorAll('.sel-opt').forEach(o => o.classList.toggle('sel-on', o === opt));
+    sel.querySelectorAll('.sel-opt').forEach(o => {
+        const on = o === opt;
+        o.classList.toggle('sel-on', on);
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
     sel.querySelector('.sel-cur').textContent = label;
+}
+
+// Open/close a .sel, keeping aria-expanded in sync — ported from the kit's
+// fdSelOpen contract (futurism.js), since futurism.js itself isn't vendored.
+// Opening one closes any other open .sel in the modal (one dropdown at a time)
+// and focuses the current/first option; closing restores focus to the trigger.
+function setSelOpen(sel, open) {
+    if (open) {
+        document.querySelectorAll('#settingsModal .sel.open').forEach(o => {
+            if (o !== sel) setSelOpen(o, false);
+        });
+    }
+    sel.classList.toggle('open', open);
+    const val = sel.querySelector('.sel-val');
+    if (val) val.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+        const cur = sel.querySelector('.sel-opt.sel-on') || sel.querySelector('.sel-opt');
+        if (cur) cur.focus();
+    } else if (val) {
+        val.focus();
+    }
 }
 
 function settingsPick(opt) {
     const sel = opt.closest('.sel');
     applyOption(sel, opt, opt.textContent);
     sel.dataset.value = optValue(opt);
-    sel.classList.remove('open');
+    setSelOpen(sel, false);
     clearSettingsError();
 }
 document.addEventListener('click', (e) => {
     const val = e.target.closest('#settingsModal .sel-val');
-    if (val) val.closest('.sel').classList.toggle('open');
+    if (val) setSelOpen(val.closest('.sel'), !val.closest('.sel').classList.contains('open'));
     document.querySelectorAll('#settingsModal .sel.open').forEach(s => {
-        if (!s.contains(e.target)) s.classList.remove('open');
+        if (!s.contains(e.target)) setSelOpen(s, false);
     });
+});
+
+// Keyboard contract for .sel — ported from the kit's global keydown delegate
+// (futurism.js): Enter/Space/Down open; Up/Down move between options
+// (roving focus, options are tabindex=-1 so Tab skips them while closed);
+// Enter/Space picks the focused option; Escape/Tab close.
+document.addEventListener('keydown', (e) => {
+    const sel = e.target.closest && e.target.closest('#settingsModal .sel');
+    if (!sel) return;
+    const opts = Array.from(sel.querySelectorAll('.sel-opt'));
+    const open = sel.classList.contains('open');
+    const i = opts.indexOf(e.target);
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!open) setSelOpen(sel, true);
+        else if (i < opts.length - 1) opts[i + 1].focus();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (i > 0) opts[i - 1].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (!open) setSelOpen(sel, true);
+        else if (i > -1) settingsPick(opts[i]);
+    } else if (e.key === 'Escape') {
+        if (open) { e.preventDefault(); setSelOpen(sel, false); }
+    } else if (e.key === 'Tab') {
+        if (open) setSelOpen(sel, false);
+    }
 });
 
 // Set a .sel to a value (matched against each option's data-value/label),
@@ -63,7 +117,9 @@ async function openSettingsModal() {
             setSel('advisorModel', s.advisorModel || '');
             setSel('effortLevel', s.effortLevel || '');
             document.getElementById('settings-language').value = s.language || '';
-            document.getElementById('settings-thinking').classList.toggle('on', !!s.alwaysThinkingEnabled);
+            const thinking = document.getElementById('settings-thinking');
+            thinking.classList.toggle('on', !!s.alwaysThinkingEnabled);
+            fdSyncToggle(thinking);
         }
     } catch (e) { /* show modal with whatever defaults are present */ }
     dlg.showModal();
