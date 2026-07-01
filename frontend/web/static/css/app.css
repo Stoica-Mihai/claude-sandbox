@@ -23,9 +23,9 @@
 /* D1: callout tint mixes into --surf (modals/sidebar sit on surf), not the kit's --bg. */
 :root{--tint:color-mix(in srgb,var(--accent) 12%,var(--surf))}
 [data-theme="dark"]{--tint:color-mix(in srgb,var(--accent) 36%,var(--surf))}
-/* D3: dashboard icon buttons are 22px (kit default 30px) for the tight session-card row.
-   Kit supplies the rest (border/fill/hover, .danger modifier, svg sizing). */
-.iconbtn{width:22px;height:22px;font-size:12px}
+/* D3 retired: the 22px .iconbtn override existed for the session-card row,
+   which now uses .row-act-btn — every remaining .iconbtn (settings gear,
+   sidebar hamburger) pins its own size, so the rule was dead. */
 /* D6: welcome-hint chips are non-interactive labels — cancel the kit's .keycap:hover
    on them so they don't flash accent / read as clickable. */
 .keycap--hint:hover{background:var(--surf);color:var(--ink);border-color:var(--line)}
@@ -182,15 +182,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .keycap--mobile:active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .keycap--mobile.sel-active{color:var(--accent);border-color:var(--accent)}
 
-/* ===== Terminal surface ===== */
-.term{flex:1;background:var(--field);overflow:auto;padding:16px 18px;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--ink)}
-.term .c-accent{color:var(--accent);font-weight:700}
-.term .c-mut{color:var(--muted)}
-.term .prompt{color:var(--accent);font-weight:900}
-.term .blink{display:inline-block;width:8px;height:15px;background:var(--accent);vertical-align:-2px;animation:cur 1s step-end infinite}
-@keyframes cur{50%{opacity:0}}
-.term .box{border:2px solid var(--line);padding:8px 10px;margin:8px 0;box-shadow:4px 4px 0 var(--shadow);max-width:560px}
-
 /* ===== Welcome ===== */
 .welcome{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
 .welcome .inner{max-width:520px}
@@ -223,7 +214,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .frow .drill:hover{background:var(--accent);color:var(--on-accent)}
 
 /* ===== Modal actions (start-new + previous) ===== */
-.actions{border-top:3px solid var(--line)}
 .actitle{padding:9px 18px 6px;font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--muted)}
 .arow{display:flex;align-items:center;gap:11px;padding:11px 18px;cursor:pointer;border-bottom:2px solid var(--line);transition:background var(--fast)}
 .arow:last-child{border-bottom:none}
@@ -380,7 +370,6 @@ input.err-flash{outline:3px solid var(--accent)}
 @media (max-width:767px){
   .xterm{padding:0}
   .xterm .xterm-scrollable-element > .scrollbar{display:none !important}
-  #viewSingle{background:var(--terminal-bg)}
   /* Larger accent swatches for touch */
   .acc{width:34px;height:34px}
 }

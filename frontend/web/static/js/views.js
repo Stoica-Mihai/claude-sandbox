@@ -36,17 +36,6 @@ function toggleSidebar() {
 
 function collapseSidebar() { applySidebar(false); }
 
-function setView() {
-    // Ensure single view is visible and resize terminals
-    const viewSingle = document.getElementById('viewSingle');
-    if (viewSingle) viewSingle.classList.remove('hidden');
-
-    // Resize terminals after view switch (needs a frame for layout to settle)
-    requestAnimationFrame(() => {
-        TerminalManager.resizeAll();
-    });
-}
-
 // Open a session terminal
 function openSession(terminalId) {
     if (!terminalId) return;
@@ -725,12 +714,10 @@ function initPullToRefresh() {
     };
 
     body.addEventListener('touchstart', (e) => {
-        // Don't activate inside terminals, scrollback panel, open dialogs, or the sidebar drawer
+        // Don't activate inside terminals, open dialogs, or the sidebar drawer
         if (e.target.closest('.xterm') || e.target.closest('#singleTerminal')) return;
-        if (e.target.closest('#scrollbackPanel')) return;
         if (document.querySelector('dialog[open]')) return;
         if (e.target.closest('#sidebar')) return;
-        if (e.target.closest('.dropdown-content')) return;
         startY = e.touches[0].clientY;
         pulling = true;
     }, { passive: true });
@@ -814,7 +801,6 @@ document.addEventListener('keydown', (e) => {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     applySidebar(localStorage.getItem('sidebar') === 'expanded');
-    setView();
     initPullToRefresh();
 
     // Register keyboard shortcuts on desktop only
