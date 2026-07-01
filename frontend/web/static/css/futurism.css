@@ -60,11 +60,20 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 /* The flagship CTA cuts deepest: hover lunges up-left and throws a solid offset
    shadow (like .card), so it has more Futurist depth than passive surfaces. */
 .btn:hover{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:5px 5px 0 var(--shadow)}
-.btn:active{transform:skewX(-8deg) scale(.96);box-shadow:none}
+/* Active keeps the hover translate (was scale(.96) with no translate, which snapped
+   the button ~3px on mouse-down so a click begun on the hovered edge released off
+   the button — :active flashed but click never fired). Press cue is the shadow
+   collapsing to flat; position is unchanged from hover, so edge clicks always land. */
+.btn:active{transform:skewX(-8deg) translate(-3px,-3px);box-shadow:none}
 /* Accent-fill controls throw an INK shadow, not --shadow: in dark --shadow follows
    the accent, so an accent shadow under an accent button smears into one blob.
    Ink contrasts in both themes (dark in light, cream in dark). */
 .btn-primary:hover,.btn.err:hover{box-shadow:5px 5px 0 var(--ink)}
+/* A pressed button is also hovered; the accent-fill hover shadow above is equal
+   specificity to .btn:active and declared later, so it would keep the shadow on
+   press and kill the flatten cue. Re-assert the collapse here (after it) so primary,
+   error, and SET (btn-square.btn-primary) flatten on press like ghost/ink do. */
+.btn-primary:active,.btn.err:active{box-shadow:none}
 .btn-primary{background:var(--accent);color:var(--on-accent)}
 .btn-ink{background:var(--ink);color:var(--bg)}
 .btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
@@ -74,7 +83,9 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
    skewed button beside a square field makes an awkward wedge. See SKILL law 6. */
 .btn-square,.btn-square>span{transform:none}
 .btn-square:hover{transform:translate(-3px,-3px)}
-.btn-square:active{transform:scale(.96)}
+/* Match .btn:active — hold the hover position so mouse-down doesn't snap the button
+   off the pointer and drop the click at the edges. */
+.btn-square:active{transform:translate(-3px,-3px)}
 /* State variants — stay inside the one-red palette (law 4): ink = done/committed,
    accent = error/attention. .saving marches diagonal stripes (the machine motion
    from .prog), never an opacity pulse, which would read as fade-puff (law 5). */
@@ -361,8 +372,10 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .stepper button{font-family:var(--font);border:0;background:none;color:var(--ink);font-weight:900;font-size:22px;line-height:1;padding:0 16px;cursor:pointer;transition:background var(--fast),color var(--fast)}
 .stepper button:hover{background:var(--accent);color:var(--on-accent)}
 .stepper button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
-.stepper .num{min-width:64px;text-align:center;font-weight:900;font-style:italic;letter-spacing:-1px;font-size:24px;padding:8px 12px;
-  border-left:var(--border) solid var(--line);border-right:var(--border) solid var(--line)}
+/* .num is a native <input type=number> (see .stepper JS): reset the base input's
+   full border/background to just the welded side dividers on the stepper surface. */
+.stepper .num{width:96px;text-align:center;font-family:var(--font);font-weight:900;font-style:italic;letter-spacing:-1px;font-size:24px;padding:8px 12px;color:var(--ink);background:transparent;
+  border:0;border-left:var(--border) solid var(--line);border-right:var(--border) solid var(--line)}
 
 /* Pagination — welded square cells; current fills ink, disabled goes muted. */
 .pager{display:inline-flex}
