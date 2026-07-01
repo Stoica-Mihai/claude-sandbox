@@ -389,8 +389,19 @@ func (sm *SessionManager) pollLoop() {
 			sessions := discoverSessions()
 			sig := sessionsSignature(sessions)
 
+			// A relay can die on its own (attach reconnect exhausted) while its
+			// session lives — the signature won't change, so check for stopped
+			// relays explicitly or the session stays unreachable until the
+			// session set happens to change.
 			sm.mu.RLock()
 			changed := sig != sm.cachedSig
+			deadRelay := false
+			for _, relay := range sm.relays {
+				if relay.IsStopped() {
+					deadRelay = true
+					break
+				}
+			}
 			sm.mu.RUnlock()
 
 			if changed {
@@ -399,11 +410,18 @@ func (sm *SessionManager) pollLoop() {
 				sm.cachedAt = time.Now()
 				sm.cachedSig = sig
 				sm.mu.Unlock()
-
+			}
+			if changed || deadRelay {
 				sm.syncRelays(sessions)
 			}
 
-			sm.broker.Publish()
+			// Publish only on change — clients refetch the sessions fragment on
+			// every event, and durations tick client-side, so an unconditional
+			// 5s publish was N-clients × render for nothing. SSE keepalive is
+			// handled by the SSE handler itself.
+			if changed {
+				sm.broker.Publish()
+			}
 		case <-sm.stopPoll:
 			return
 		}

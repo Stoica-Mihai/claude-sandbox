@@ -47,8 +47,9 @@ func main() {
 	_ = srv // routes registered on mux via NewServer
 
 	httpServer := &http.Server{
-		Addr:    listenAddr,
-		Handler: mux,
+		Addr:              listenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Graceful shutdown on SIGTERM/SIGINT.

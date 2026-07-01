@@ -26,6 +26,10 @@ const (
 	inputActivityWindow = 500 * time.Millisecond
 	// maxReconnectAttempts is the number of attach reconnect attempts before giving up.
 	maxReconnectAttempts = 3
+	// viewerWriteTimeout bounds every WebSocket write. Without it a stalled
+	// client (full TCP buffer) blocks the broadcast loop — and with it the read
+	// loop — freezing output for every other viewer.
+	viewerWriteTimeout = 10 * time.Second
 	// defaultCols/defaultRows seed the PTY before a viewer reports real dimensions.
 	defaultCols = 80
 	defaultRows = 24
@@ -189,7 +193,7 @@ func (r *Relay) Stop() {
 				websocket.CloseNormalClosure,
 				"session ended",
 			)
-			_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+			_ = writeMessage(conn, websocket.CloseMessage, closeMsg)
 			_ = conn.Close()
 			v.writeMu.Unlock()
 		}
@@ -205,29 +209,38 @@ func (r *Relay) Stop() {
 	})
 }
 
+// writeMessage writes to a viewer connection with a deadline. Caller holds the
+// viewer's writeMu (or the connection is not yet shared).
+func writeMessage(conn *websocket.Conn, msgType int, data []byte) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(viewerWriteTimeout))
+	return conn.WriteMessage(msgType, data)
+}
+
 // AddViewer registers a WebSocket connection, replays the ring buffer, and adds
-// it to the broadcast list.
-func (r *Relay) AddViewer(conn *websocket.Conn) {
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(termReset)); err != nil {
-		slog.Debug("failed to send reset to viewer", "session", r.SessionName, "error", err)
-		return
+// it to the broadcast list. Replay and registration happen under the write lock
+// so no broadcast can interleave between them — otherwise output produced in
+// that window would be missing from the new viewer's stream.
+func (r *Relay) AddViewer(conn *websocket.Conn) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := writeMessage(conn, websocket.BinaryMessage, []byte(termReset)); err != nil {
+		return fmt.Errorf("send reset: %w", err)
 	}
 
 	scrollback := r.ringBuf.Bytes()
 	if len(scrollback) > 0 {
-		if err := conn.WriteMessage(websocket.BinaryMessage, scrollback); err != nil {
-			slog.Debug("failed to replay scrollback", "session", r.SessionName, "error", err)
-			return
+		if err := writeMessage(conn, websocket.BinaryMessage, scrollback); err != nil {
+			return fmt.Errorf("replay scrollback: %w", err)
 		}
 	}
 
 	if r.inAltScreen.Load() {
-		_ = conn.WriteMessage(websocket.BinaryMessage, altScreenEnter[0])
+		_ = writeMessage(conn, websocket.BinaryMessage, altScreenEnter[0])
 	}
 
-	r.mu.Lock()
 	r.viewers[conn] = &viewer{}
-	r.mu.Unlock()
+	return nil
 }
 
 // RemoveViewer unregisters a WebSocket connection.
@@ -279,35 +292,44 @@ var deactivatedMsg = []byte(`{"type":"deactivated"}`)
 // active typist's size wins. Non-active viewers are suspended (broadcast skips
 // them) and receive a "deactivated" message so the client clears on next input.
 func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
-	r.mu.RLock()
+	// Check + takeover + suspension marking happen in ONE critical section:
+	// with the old check-RUnlock-Lock split, two concurrently-first typists
+	// could both pass the check and each suspend the other, freezing both
+	// until their next keystroke unsuspended them.
+	r.mu.Lock()
 	if r.lastResizer == conn {
-		r.mu.RUnlock()
+		r.mu.Unlock()
 		return
 	}
 	v, ok := r.viewers[conn]
-	r.mu.RUnlock()
-
 	if !ok || v.size.cols == 0 || v.size.rows == 0 {
+		r.mu.Unlock()
 		return
 	}
-
-	r.mu.Lock()
 	r.lastResizer = conn
-	r.mu.Unlock()
-
-	r.mu.RLock()
+	type target struct {
+		conn *websocket.Conn
+		vw   *viewer
+	}
+	var others []target
 	for c, vw := range r.viewers {
 		if c == conn {
 			continue
 		}
 		vw.suspended.Store(true)
-		vw.writeMu.Lock()
-		_ = c.WriteMessage(websocket.TextMessage, deactivatedMsg)
-		vw.writeMu.Unlock()
+		others = append(others, target{c, vw})
 	}
-	r.mu.RUnlock()
+	size := v.size
+	r.mu.Unlock()
 
-	r.applyResize(v.size.cols, v.size.rows)
+	// Network writes happen outside the lock.
+	for _, t := range others {
+		t.vw.writeMu.Lock()
+		_ = writeMessage(t.conn, websocket.TextMessage, deactivatedMsg)
+		t.vw.writeMu.Unlock()
+	}
+
+	r.applyResize(size.cols, size.rows)
 }
 
 // UnsuspendViewer resumes broadcast delivery for a viewer.
@@ -474,19 +496,30 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 }
 
 // broadcast sends data to all connected, non-suspended WebSocket viewers.
+// Writes carry a deadline; a viewer whose write fails (stalled/dead client) is
+// evicted and closed so it can't wedge future broadcasts. Its own read loop in
+// handleWebSocket then errors out and finishes the cleanup.
 func (r *Relay) broadcast(data []byte) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	var failed []*websocket.Conn
 
+	r.mu.RLock()
 	for conn, v := range r.viewers {
 		if v.suspended.Load() {
 			continue
 		}
 		v.writeMu.Lock()
-		if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
-			slog.Debug("viewer write error", "session", r.SessionName, "error", err)
-		}
+		err := writeMessage(conn, websocket.BinaryMessage, data)
 		v.writeMu.Unlock()
+		if err != nil {
+			slog.Debug("viewer write error, evicting", "session", r.SessionName, "error", err)
+			failed = append(failed, conn)
+		}
+	}
+	r.mu.RUnlock()
+
+	for _, conn := range failed {
+		r.RemoveViewer(conn)
+		_ = conn.Close()
 	}
 }
 

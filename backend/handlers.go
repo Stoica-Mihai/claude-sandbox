@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	api "claude-sandbox-api"
 
@@ -22,6 +23,9 @@ const (
 	uploadDir = "/tmp/uploads"
 	// maxUploadSize is the maximum allowed image upload size (10 MB).
 	maxUploadSize = 10 << 20
+	// maxSessionNameLen caps custom session names (bytes) — the index file
+	// persists them, so unbounded names mean unbounded index growth.
+	maxSessionNameLen = 120
 )
 
 type controlMessage struct {
@@ -189,6 +193,10 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.Name) > maxSessionNameLen {
+		writeErr(w, http.StatusBadRequest, "name too long")
 		return
 	}
 
@@ -362,10 +370,18 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	id, ch := s.broker.Subscribe()
 	defer s.broker.Unsubscribe(id)
 
+	// Periodic comment keepalive: updates only publish on real change now, so
+	// idle streams need heartbeats to keep proxies/browsers from timing out.
+	keepalive := time.NewTicker(30 * time.Second)
+	defer keepalive.Stop()
+
 	for {
 		select {
 		case <-ch:
 			fmt.Fprint(w, "event: update\ndata: \n\n")
+			flusher.Flush()
+		case <-keepalive.C:
+			fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		case <-r.Context().Done():
 			return
@@ -399,8 +415,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("websocket attached", "session", sessionName)
 
-	// Register viewer with the relay (sends reset + scrollback replay).
-	relay.AddViewer(conn)
+	// Register viewer with the relay (sends reset + scrollback replay). On
+	// failure the viewer was never registered — close instead of consuming
+	// input from a client that will never see output.
+	if err := relay.AddViewer(conn); err != nil {
+		slog.Debug("failed to add viewer", "session", sessionName, "error", err)
+		_ = conn.Close()
+		return
+	}
 
 	// Read loop: WebSocket → relay (input/resize).
 	// This goroutine runs until the WebSocket disconnects or the relay stops.

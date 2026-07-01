@@ -39,8 +39,9 @@ func main() {
 	NewServer(sm, broker, mux)
 
 	httpServer := &http.Server{
-		Addr:    listenAddr,
-		Handler: mux,
+		Addr:              listenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	sigCh := make(chan os.Signal, 1)
