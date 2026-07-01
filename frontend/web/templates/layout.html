@@ -36,7 +36,8 @@
 
             <div class="accpick" id="accpick">
                 <button class="acctrig" id="acctrig" title="Accent" aria-label="Accent color"
-                        onclick="document.getElementById('accpick').classList.toggle('open')"></button>
+                        aria-haspopup="true" aria-expanded="false" aria-controls="accpop"
+                        onclick="toggleAccentPicker()"></button>
                 <div class="accpop" id="accpop"></div>
             </div>
 
@@ -46,7 +47,8 @@
 
             <div class="themewrap">
                 <span>Light</span>
-                <div class="toggle" id="themeToggle" onclick="flipTheme()"><i></i></div>
+                <button type="button" class="toggle" id="themeToggle" onclick="flipTheme()"
+                        role="switch" aria-checked="true" aria-label="Dark theme"><i></i></button>
                 <span>Dark</span>
             </div>
         </div>
@@ -64,7 +66,9 @@
         <!-- ===== SIDEBAR ===== -->
         <aside id="sidebar" class="side">
             <div class="shead">
-                <button class="iconbtn" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+                <button class="iconbtn" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
                 <span class="kick">Sessions</span>
                 <button class="btn btn-primary btn-square btn-new" onclick="openNewSessionModal(event)"><span>+ NEW</span></button>
             </div>
@@ -108,7 +112,7 @@
                 <div class="mobile-bar-row">
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_ESCAPE)">Esc</button>
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_CTRL_C)">^C</button>
-                    <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_BACKSPACE)">&#x232B;</button>
+                    <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_BACKSPACE)">BKSP</button>
                     <div class="vdiv"></div>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('D')">&#x2190;</button>
                     <button class="keycap keycap--mobile" onclick="mobileInputSendArrow('C')">&#x2192;</button>
@@ -178,40 +182,43 @@
             <div class="note">Applies to <b>new sessions</b> — running sessions keep their current config.</div>
 
             <div>
-                <label>Model</label>
+                <label id="lblModel">Model</label>
                 <div class="sel" data-field="model">
-                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list">
-                        <div class="sel-opt" onclick="settingsPick(this)">opus[1m]</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">opus</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">sonnet</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">haiku</div>
+                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                         aria-controls="selListModel" aria-labelledby="lblModel"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list" id="selListModel" role="listbox">
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus[1m]</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">sonnet</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">haiku</div>
                     </div>
                 </div>
             </div>
 
             <div>
-                <label>Advisor model</label>
+                <label id="lblAdvisor">Advisor model</label>
                 <div class="sel" data-field="advisorModel">
-                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list">
-                        <div class="sel-opt" data-value="" onclick="settingsPick(this)">(none)</div>
-                        <div class="sel-opt" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
-                        <div class="sel-opt" data-value="claude-sonnet-4-6" onclick="settingsPick(this)">Sonnet 4.6</div>
+                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                         aria-controls="selListAdvisor" aria-labelledby="lblAdvisor"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list" id="selListAdvisor" role="listbox">
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="" onclick="settingsPick(this)">(none)</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-sonnet-4-6" onclick="settingsPick(this)">Sonnet 4.6</div>
                     </div>
                 </div>
             </div>
 
             <div>
-                <label>Effort level</label>
+                <label id="lblEffort">Effort level</label>
                 <div class="sel" data-field="effortLevel">
-                    <div class="sel-val"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list">
-                        <div class="sel-opt" onclick="settingsPick(this)">low</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">medium</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">high</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">xhigh</div>
-                        <div class="sel-opt" onclick="settingsPick(this)">max</div>
+                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                         aria-controls="selListEffort" aria-labelledby="lblEffort"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                    <div class="sel-list" id="selListEffort" role="listbox">
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">low</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">medium</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">high</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">xhigh</div>
+                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">max</div>
                     </div>
                 </div>
             </div>
@@ -223,7 +230,8 @@
 
             <div class="set-row">
                 <label>Always thinking</label>
-                <div class="toggle" id="settings-thinking" onclick="this.classList.toggle('on')"><i></i></div>
+                <button type="button" class="toggle" id="settings-thinking" onclick="toggleThinking(this)"
+                        role="switch" aria-checked="false" aria-label="Always thinking"><i></i></button>
             </div>
         </div>
         <div class="mfoot">

@@ -1,13 +1,13 @@
 {{define "directory-picker"}}
 <form id="dir-picker-form" hx-post="/api/sessions" hx-target="#session-list" hx-swap="innerHTML">
     <!-- Breadcrumb (HTMX navigates the browse level) -->
-    <div id="dp-breadcrumb" class="dp-crumb">
-        <span class="seg" hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</span>
+    <nav id="dp-breadcrumb" class="dp-crumb" aria-label="Breadcrumb">
+        <button type="button" class="seg" hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</button>
         {{range .Breadcrumbs}}
         <span class="sep">/</span>
-        <span class="seg" hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</span>
+        <button type="button" class="seg" hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</button>
         {{end}}
-    </div>
+    </nav>
 
     <!-- cwd = selected folder; resume = uuid when a previous session is selected -->
     <input type="hidden" name="cwd" id="dir-picker-cwd" value="" />

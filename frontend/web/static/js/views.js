@@ -449,6 +449,7 @@ async function dpSelectFolder(path, name) {
         sep.textContent = '/';
         const cur = document.createElement('span');
         cur.className = 'dp-cur seg cur';
+        cur.setAttribute('aria-current', 'page');
         cur.textContent = name;
         bc.appendChild(sep);
         bc.appendChild(cur);

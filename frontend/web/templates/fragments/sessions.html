@@ -15,12 +15,17 @@
         <span class="mono">{{printf "%.1s" .DisplayName}}</span>
         <span class="nm">{{.DisplayName}}</span>
         <div class="acts">
-            <div class="iconbtn" title="Rename" onclick="event.stopPropagation(); openRenameModal('{{.Name}}', '{{.DisplayName}}')">&#9998;</div>
-            <div class="iconbtn danger" title="Kill"
-                 hx-delete="/api/sessions/{{.Name}}"
-                 hx-target="#session-list"
-                 hx-swap="innerHTML"
-                 onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">&times;</div>
+            <button type="button" class="iconbtn" title="Rename" aria-label="Rename session"
+                    onclick="event.stopPropagation(); openRenameModal('{{.Name}}', '{{.DisplayName}}')">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <button type="button" class="iconbtn danger" title="Kill" aria-label="Kill session"
+                    hx-delete="/api/sessions/{{.Name}}"
+                    hx-target="#session-list"
+                    hx-swap="innerHTML"
+                    onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
         </div>
     </div>
     <div class="row2">

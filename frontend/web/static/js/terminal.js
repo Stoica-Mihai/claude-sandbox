@@ -250,6 +250,7 @@ const TerminalManager = {
                 viewport.addEventListener('click', () => term.focus());
             }
             const getSE = () => term._core?._viewport?._scrollableElement;
+            const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
             let lastTouchY = 0;
             let momentumRaf = 0;
             const samples = [];
@@ -277,6 +278,7 @@ const TerminalManager = {
             }, { passive: true });
 
             containerEl.addEventListener('touchend', () => {
+                if (reducedMotion) return; // scroll stops with the finger, no inertia coast
                 if (samples.length < 2) return;
                 const se = getSE();
                 if (!se) return;

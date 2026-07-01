@@ -46,17 +46,39 @@ function renderAccents() {
     pop.innerHTML = '';
     ACCENTS.forEach(function(a) {
         var s = document.createElement('button');
-        s.className = 'acc' + (a.name === curAccent.name ? ' on' : '');
+        var selected = a.name === curAccent.name;
+        s.className = 'acc' + (selected ? ' on' : '');
         s.style.background = dark ? a.dark : a.light;
         s.title = a.name;
+        s.setAttribute('aria-label', a.name);
+        s.setAttribute('aria-pressed', selected ? 'true' : 'false');
         s.onclick = function() {
             curAccent = a;
             applyAccent();
-            var pick = document.getElementById('accpick');
-            if (pick) pick.classList.remove('open');
+            closeAccentPicker();
         };
         pop.appendChild(s);
     });
+}
+
+// Open/close the accent popover, keeping aria-expanded in sync (mirrors the
+// kit's fdSelOpen contract for .sel, ported since futurism.js isn't vendored).
+function toggleAccentPicker() {
+    var pick = document.getElementById('accpick');
+    if (!pick) return;
+    setAccentPickerOpen(!pick.classList.contains('open'));
+}
+function setAccentPickerOpen(open) {
+    var pick = document.getElementById('accpick');
+    var trig = document.getElementById('acctrig');
+    if (!pick) return;
+    pick.classList.toggle('open', open);
+    if (trig) trig.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function closeAccentPicker() {
+    setAccentPickerOpen(false);
+    var trig = document.getElementById('acctrig');
+    if (trig) trig.focus();
 }
 
 function applyAccent() {
@@ -73,6 +95,17 @@ function applyAccent() {
     renderAccents();
 }
 
+// Sync aria-checked (role=switch) from the .on class — a real <button> handles
+// its own Enter/Space activation, so only the ARIA state needs wiring by hand.
+function fdSyncToggle(el) {
+    if (el) el.setAttribute('aria-checked', el.classList.contains('on') ? 'true' : 'false');
+}
+
+function toggleThinking(el) {
+    el.classList.toggle('on');
+    fdSyncToggle(el);
+}
+
 function flipTheme() {
     var r = document.documentElement;
     var dark = r.getAttribute('data-theme') === 'dark';
@@ -81,7 +114,7 @@ function flipTheme() {
     r.setAttribute('data-theme-base', next === 'light' ? 'light' : 'dark');
     localStorage.setItem('theme', next);
     var t = document.getElementById('themeToggle');
-    if (t) t.classList.toggle('on', !dark);
+    if (t) { t.classList.toggle('on', !dark); fdSyncToggle(t); }
     applyAccent();
     if (typeof syncTerminalBgVar === 'function') {
         syncTerminalBgVar();
@@ -93,7 +126,15 @@ function flipTheme() {
 
 document.addEventListener('click', function(e) {
     var p = document.getElementById('accpick');
-    if (p && !p.contains(e.target)) p.classList.remove('open');
+    if (p && !p.contains(e.target)) setAccentPickerOpen(false);
+});
+
+// Escape closes the accent popover and returns focus to its trigger — ported
+// from the kit's global keydown delegate (futurism.js), scoped to .accpick.open.
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var p = document.getElementById('accpick');
+    if (p && p.classList.contains('open')) closeAccentPicker();
 });
 
 // A pressed .btn depresses (kit :active drops translate + shrinks the offset
@@ -116,7 +157,7 @@ document.addEventListener('pointerdown', function(e) {
     root.setAttribute('data-theme-base', theme === 'light' ? 'light' : 'dark');
 
     var t = document.getElementById('themeToggle');
-    if (t) t.classList.toggle('on', theme === 'dark');
+    if (t) { t.classList.toggle('on', theme === 'dark'); fdSyncToggle(t); }
 
     applyAccent();
 

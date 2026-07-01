@@ -46,6 +46,11 @@
    kit idioms: fd-march/.skel barber-pole (no rotary spinner), --on-accent label on
    the accent fill, forced-colors fallback + role=status/aria-live per the kit's
    'when extending' checklist. See the '#pullIndicator' block. */
+/* D12: #pullIndicator .pull-fill uses transition:width 60ms linear, not
+   var(--ease) (Law #5) — deliberate: the fill 1:1-tracks a touchmove finger
+   position every frame, and the kit's cubic-bezier lags visibly behind a fast
+   drag. Linear keeps the fill glued to the finger; --ease is for discrete
+   state transitions (open/close, hover), not live-drag following. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -107,7 +112,7 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .scard .live.dead{background:var(--muted);animation:none}
 .scard .nm{font-weight:900;font-style:italic;font-size:14px;letter-spacing:-.3px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .acts{display:flex;gap:4px;opacity:0;transition:opacity var(--fast)}
-.scard:hover .acts{opacity:1}
+.scard:hover .acts,.scard:focus-within .acts{opacity:1}
 .scard .row2{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
 .scard .cwd{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .dur{font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:700;flex:none}
