@@ -111,11 +111,15 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .scard .live{width:9px;height:9px;flex:none;background:var(--accent);animation:var(--blink)}
 .scard .live.dead{background:var(--muted);animation:none}
 .scard .nm{font-weight:900;font-style:italic;font-size:14px;letter-spacing:-.3px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scard .acts{display:flex;gap:4px;opacity:0;transition:opacity var(--fast)}
-.scard:hover .acts,.scard:focus-within .acts{opacity:1}
 .scard .row2{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
 .scard .cwd{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard .dur{font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:700;flex:none}
+/* Rename/kill live in a sibling .row-act (kit row-host/row-act idiom), not
+   inside .scard — reserve room on the card so its text doesn't run under the
+   action strip. Always-visible-muted per the kit's own rationale (a
+   hover-only reveal is undiscoverable), not the previous opacity:0 hide. */
+.row-host{position:relative}
+.row-host .scard{padding-right:84px}
 
 /* Monogram: shown only in the collapsed rail. */
 .mono{display:none;font-weight:900;font-style:italic;font-size:14px;color:var(--ink)}
@@ -125,8 +129,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .side:not(.expanded) .scard .row1{gap:0}
 .side:not(.expanded) .scard .mono{display:block}
 .side:not(.expanded) .scard .nm,
-.side:not(.expanded) .scard .acts,
 .side:not(.expanded) .scard .row2{display:none}
+.side:not(.expanded) .row-act{display:none}
 .side:not(.expanded) .scard .live{position:absolute;top:3px;right:3px;width:7px;height:7px}
 /* Active chip: kit selection idiom (sel-bg wash + accent inset edge, matching
    .arow.sel/.sa-sel), keeping the kit offset shadow. Selection language is

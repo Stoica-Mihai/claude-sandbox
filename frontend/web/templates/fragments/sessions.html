@@ -2,6 +2,7 @@
 <span id="session-count" class="hidden">{{len .Sessions}}</span>
 {{if .Sessions}}
 {{range .Sessions}}
+<div class="row-host">
 <div class="scard session-card"
      data-terminal-id="{{.Name}}"
      data-session="{{.DisplayName}}"
@@ -14,24 +15,28 @@
         <i class="live{{if not .Alive}} dead{{end}}"></i>
         <span class="mono">{{printf "%.1s" .DisplayName}}</span>
         <span class="nm">{{.DisplayName}}</span>
-        <div class="acts">
-            <button type="button" class="iconbtn" title="Rename" aria-label="Rename session"
-                    onclick="event.stopPropagation(); openRenameModal('{{.Name}}', '{{.DisplayName}}')">
-                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </button>
-            <button type="button" class="iconbtn danger" title="Kill" aria-label="Kill session"
-                    hx-delete="/api/sessions/{{.Name}}"
-                    hx-target="#session-list"
-                    hx-swap="innerHTML"
-                    onclick="event.stopPropagation(); cleanupKilledSession('{{.Name}}')">
-                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
     </div>
     <div class="row2">
         <span class="cwd">{{.CWD}}</span>
         <span class="dur session-duration" data-created="{{.CreatedAt.Unix}}"></span>
     </div>
+</div>
+<!-- Kit .row-act is a CONTAINER (div), not a button — .scard stays role=button
+     without nesting interactive controls inside it (see components.md's
+     row-host/row-act gotcha; mirrors the same pattern in dpRenderHistory). -->
+<div class="row-act">
+    <button type="button" class="row-act-btn" title="Rename" aria-label="Rename session"
+            onclick="openRenameModal('{{.Name}}', '{{.DisplayName}}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </button>
+    <button type="button" class="row-act-btn" title="Kill" aria-label="Kill session"
+            hx-delete="/api/sessions/{{.Name}}"
+            hx-target="#session-list"
+            hx-swap="innerHTML"
+            onclick="cleanupKilledSession('{{.Name}}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+</div>
 </div>
 {{end}}
 {{else}}

@@ -523,7 +523,7 @@ async function dpRenderHistory(path) {
             row.type = 'button';
             row.className = 'arow sa-row';
             row.style.cssText = 'width:100%;background:var(--row-bg,transparent);border:none;border-bottom:2px solid var(--line);text-align:left;font-family:inherit;color:inherit';
-            row.innerHTML = '<svg class="aold" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+            row.innerHTML = '<svg class="aold" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
                 + '<div class="atxt"><div class="at1">' + escapeHtml(title) + '</div>'
                 + '<div class="at2">' + escapeHtml(sub) + '</div></div>';
             row.onclick = () => dirPickerSetSel('resume', s.uuid, row);
@@ -555,7 +555,7 @@ function dpDelToIdle(act, path, uuid) {
     btn.type = 'button';
     btn.className = 'row-act-btn';
     btn.title = 'Delete this conversation permanently';
-    btn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
+    btn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
     btn.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
