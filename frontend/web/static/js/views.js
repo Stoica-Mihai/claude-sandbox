@@ -66,6 +66,8 @@ function openSessionSingle(terminalId) {
     tabContainer.id = 'singleTab-' + terminalId;
     tabContainer.className = 'term-tab hidden';
     tabContainer.classList.add('terminal-bg');
+    tabContainer.setAttribute('role', 'tabpanel');
+    tabContainer.setAttribute('aria-labelledby', 'ttab-' + terminalId);
     wrapper.appendChild(tabContainer);
 
     // Add to tabs array
@@ -224,17 +226,54 @@ function updateSingleTabBar(activeTerminalId) {
         const card = document.querySelector(`[data-terminal-id="${id}"]`);
         const sessionName = card ? card.dataset.session : id.substring(0, 8);
         const isActive = id === activeTerminalId;
+        const safeId = escapeHtml(id);
         return `
-            <div class="ttab${isActive ? ' on' : ''}"
-                 onclick="switchSingleTab('${escapeHtml(id)}')"
-                 onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${escapeHtml(id)}');}">
+            <div class="ttab${isActive ? ' on' : ''}" id="ttab-${safeId}" data-terminal-id="${safeId}"
+                 role="tab" aria-selected="${isActive}" aria-controls="singleTab-${safeId}" tabindex="${isActive ? '0' : '-1'}"
+                 onclick="switchSingleTab('${safeId}')"
+                 onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${safeId}');}">
                 <span class="tdot${isActive ? ' on' : ''}"></span>
                 <span style="font-family:var(--mono);font-style:normal">${escapeHtml(sessionName)}</span>
-                <button type="button" class="x" aria-label="Close tab" onclick="closeSingleTab('${escapeHtml(id)}'); event.stopPropagation();">&times;</button>
+                <button type="button" class="x" tabindex="-1" aria-label="Close tab" onclick="closeSingleTab('${safeId}'); event.stopPropagation();">&times;</button>
             </div>`;
     }).join('');
 }
 
+// Keyboard contract for the tab strip (role=tablist/tab, roving tabindex) —
+// mirrors the kit's .tabs/fdTab pattern (ArrowLeft/Right move+activate,
+// Enter/Space activate) by hand rather than adopting .tabs/fdInit, since this
+// app hand-wires its own interaction logic throughout rather than depending
+// on futurism.js. Delete/Backspace-to-close has no kit precedent (the kit's
+// plain tab has no close affordance) — an app-original extension.
+document.addEventListener('keydown', (e) => {
+    const tab = e.target.closest && e.target.closest('.ttab[role="tab"]');
+    if (!tab) return;
+    const bar = document.getElementById('singleTabBar');
+    if (!bar) return;
+    const tabs = Array.from(bar.querySelectorAll('.ttab[role="tab"]'));
+    const i = tabs.indexOf(tab);
+    const id = tab.dataset.terminalId;
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const n = e.key === 'ArrowRight' ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length;
+        const nextId = tabs[n].dataset.terminalId;
+        switchSingleTab(nextId);
+        document.getElementById('ttab-' + nextId)?.focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchSingleTab(id);
+        document.getElementById('ttab-' + id)?.focus();
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        closeSingleTab(id);
+        if (singleTerminalId) {
+            document.getElementById('ttab-' + singleTerminalId)?.focus();
+        } else {
+            document.querySelector('.btn-new')?.focus();
+        }
+    }
+});
 
 function updateSessionCardStates() {
     document.querySelectorAll('.session-card').forEach(card => {

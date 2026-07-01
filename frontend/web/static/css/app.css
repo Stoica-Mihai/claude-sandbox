@@ -51,6 +51,17 @@
    position every frame, and the kit's cubic-bezier lags visibly behind a fast
    drag. Linear keeps the fill glued to the finger; --ease is for discrete
    state transitions (open/close, hover), not live-drag following. */
+/* D13: .ttab — the closeable terminal-tab strip; the kit's .tabs/.tab has no
+   close variant to extend. Follows the kit's tab contract exactly (role=
+   tablist/tab, aria-selected, roving tabindex, ArrowLeft/Right move+activate,
+   Enter/Space activate — ported by hand in views.js rather than adopting
+   .tabs/fdInit, consistent with how this app hand-wires every other
+   interaction). Delete/Backspace-to-close is an app-original addition with
+   no kit precedent (the kit's plain tab has nothing to dismiss). The nested
+   close <button> is NOT the .scard button-in-button hazard — role=tab isn't
+   role=button, so there's no activation-ambiguity between the tab's own
+   select gesture and the button's dismiss gesture; it's given tabindex=-1 so
+   it stays out of the tablist's roving-tabindex sequence. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
