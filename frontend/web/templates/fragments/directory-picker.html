@@ -33,6 +33,24 @@
         {{end}}
     </div>
 
+    <!-- Create a new project in the current browse dir. data-dp-* carry the browse
+         path so views.js POSTs the right parent and selects the new folder. -->
+    <button type="button" class="newrow" data-dp-path="{{.Path}}" data-dp-full="{{.FullPath}}" onclick="openEditor(this)">
+        <span class="plus">+</span> NEW PROJECT&hellip;
+    </button>
+    <div class="newedit hidden">
+        <input type="text" class="dp-newname" placeholder="project-name" autocomplete="off" spellcheck="false" aria-label="New project name" />
+        <span class="errline hidden" role="status"></span>
+        <div class="erow">
+            <label class="gitinit"><input type="checkbox" class="dp-gitinit" checked /> git init</label>
+            <div class="grp">
+                <button type="button" class="btn btn-ghost" onclick="closeEditor(this)"><span>CANCEL</span></button>
+                <button type="button" class="btn btn-primary" onclick="createProject(this)"><span>CREATE</span></button>
+            </div>
+        </div>
+        <span class="hintline">Enter to create &middot; Esc to cancel</span>
+    </div>
+
     <!-- Selected folder's actions (start-new + previous sessions); filled by views.js -->
     <div id="session-actions"></div>
 </form>

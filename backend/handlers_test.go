@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	api "claude-sandbox-api"
 )
 
 // newTestServer builds a Server wired to a real Broker and a SessionManager
@@ -153,6 +158,252 @@ func TestHandleUploadUnknownSession(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// TestHandleCreateDirectoryValidation exercises handleCreateDirectory's
+// validation branches: name regex, parent resolve/prefix, and parent existence.
+//
+// The 409 (EEXIST), 500 (mkdir failure), 201 (success), and git-init branches
+// require a writable path under workspaceRoot, a hardcoded const (Decision 6 —
+// not injectable). The tests below reach them wherever workspaceRoot is writable
+// (the container) and t.Skip on hosts where /workspace is absent/read-only.
+func TestHandleCreateDirectoryValidation(t *testing.T) {
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
+
+	tests := []struct {
+		name     string
+		reqName  string
+		reqPath  string
+		wantCode int
+		wantErr  string
+	}{
+		{name: "dotdot name", reqName: "..", wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "slash in name", reqName: "a/b", wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "leading dot name", reqName: ".hidden", wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "empty name", reqName: "", wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "65-char name", reqName: strings.Repeat("a", 65), wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "separator in name", reqName: "a" + string(filepath.Separator) + "b", wantCode: http.StatusBadRequest, wantErr: "Invalid name"},
+		{name: "valid name parent gone", reqName: "proj", reqPath: "nope-does-not-exist", wantCode: http.StatusBadRequest, wantErr: "directory not found"},
+		{name: "traversal escapes root", reqName: "proj", reqPath: "../../etc", wantCode: http.StatusBadRequest, wantErr: "invalid path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyBytes, err := json.Marshal(api.CreateDirectoryRequest{Name: tt.reqName, Path: tt.reqPath})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/directories", bytes.NewReader(bodyBytes))
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantCode)
+			}
+			var body map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["error"] != tt.wantErr {
+				t.Fatalf("error = %q, want %q", body["error"], tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestHandleCreateDirectoryInvalidBody covers the 400 branch when the request
+// body is not valid JSON (the decode fails before any filesystem access).
+func TestHandleCreateDirectoryInvalidBody(t *testing.T) {
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
+	req := httptest.NewRequest(http.MethodPost, "/api/directories", strings.NewReader("{not json"))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "invalid request body" {
+		t.Fatalf("error = %q, want %q", body["error"], "invalid request body")
+	}
+}
+
+// writableWorkspaceParent creates a unique, empty parent directory under
+// workspaceRoot and returns its path relative to workspaceRoot (the value a
+// request's Path field takes). It t.Skips when workspaceRoot is absent or
+// read-only (the host), and registers cleanup so /workspace stays clean.
+func writableWorkspaceParent(t *testing.T) string {
+	t.Helper()
+	rel := "createdir-test-" + t.Name()
+	rel = strings.NewReplacer("/", "_", " ", "_").Replace(rel)
+	abs := filepath.Join(workspaceRoot, rel)
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		t.Skipf("workspaceRoot %q not writable: %v", workspaceRoot, err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(abs) })
+	return rel
+}
+
+func postCreateDirectory(t *testing.T, s *Server, req api.CreateDirectoryRequest) *httptest.ResponseRecorder {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpReq := httptest.NewRequest(http.MethodPost, "/api/directories", bytes.NewReader(bodyBytes))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httpReq)
+	return rec
+}
+
+// TestHandleCreateDirectorySuccess covers the 201 path: os.Mkdir succeeds, the
+// rel path is computed, and CreateDirectoryResponse is written with no warning.
+func TestHandleCreateDirectorySuccess(t *testing.T) {
+	parent := writableWorkspaceParent(t)
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "proj", Path: parent})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp api.CreateDirectoryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	wantRel := filepath.Join(parent, "proj")
+	if resp.Path != wantRel {
+		t.Fatalf("path = %q, want %q", resp.Path, wantRel)
+	}
+	if resp.Warning != "" {
+		t.Fatalf("warning = %q, want empty", resp.Warning)
+	}
+	if info, err := os.Stat(filepath.Join(workspaceRoot, wantRel)); err != nil || !info.IsDir() {
+		t.Fatalf("new dir not created on disk: info=%v err=%v", info, err)
+	}
+}
+
+// TestHandleCreateDirectoryConflict covers the 409 branch: os.Mkdir returns
+// os.ErrExist when the target folder already exists.
+func TestHandleCreateDirectoryConflict(t *testing.T) {
+	parent := writableWorkspaceParent(t)
+	if err := os.Mkdir(filepath.Join(workspaceRoot, parent, "dup"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "dup", Path: parent})
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "Folder already exists" {
+		t.Fatalf("error = %q, want %q", body["error"], "Folder already exists")
+	}
+}
+
+// TestHandleCreateDirectoryMkdirError covers the 500 branch: os.Mkdir fails for
+// a reason other than EEXIST (here EACCES from a read-only parent).
+func TestHandleCreateDirectoryMkdirError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permission bits")
+	}
+	parent := writableWorkspaceParent(t)
+	absParent := filepath.Join(workspaceRoot, parent)
+	if err := os.Chmod(absParent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(absParent, 0o755) })
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "proj", Path: parent})
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "failed to create directory" {
+		t.Fatalf("error = %q, want %q", body["error"], "failed to create directory")
+	}
+}
+
+// TestHandleCreateDirectoryGitInit covers the git-init block: with GitInit set,
+// a successful `git init` leaves the folder with a .git dir and no warning.
+func TestHandleCreateDirectoryGitInit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	parent := writableWorkspaceParent(t)
+	s := newTestServer(loadSessionIndexFresh(t))
+
+	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "repo", Path: parent, GitInit: true})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp api.CreateDirectoryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if resp.Warning != "" {
+		t.Fatalf("warning = %q, want empty (git init should succeed)", resp.Warning)
+	}
+	gitDir := filepath.Join(workspaceRoot, parent, "repo", ".git")
+	if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
+		t.Fatalf("git init did not create .git: info=%v err=%v", info, err)
+	}
+}
+
+// TestHandleCreateDirectoryGitInitFailure covers the git-init failure branch:
+// the folder is still created (201) but a warning is returned. A stub `git`
+// that exits non-zero is placed first on PATH so the exec fails deterministically.
+func TestHandleCreateDirectoryGitInitFailure(t *testing.T) {
+	parent := writableWorkspaceParent(t)
+
+	binDir := t.TempDir()
+	stub := filepath.Join(binDir, "git")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if got, _ := exec.LookPath("git"); got != stub {
+		t.Skipf("stub git not first on PATH (resolved %q); cannot force failure", got)
+	}
+
+	s := newTestServer(loadSessionIndexFresh(t))
+	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "repo", Path: parent, GitInit: true})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (folder kept on git failure); body=%s", rec.Code, rec.Body.String())
+	}
+	var resp api.CreateDirectoryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if resp.Warning != "git init failed" {
+		t.Fatalf("warning = %q, want %q", resp.Warning, "git init failed")
+	}
+	if info, err := os.Stat(filepath.Join(workspaceRoot, parent, "repo")); err != nil || !info.IsDir() {
+		t.Fatalf("folder should survive git failure: info=%v err=%v", info, err)
 	}
 }
 

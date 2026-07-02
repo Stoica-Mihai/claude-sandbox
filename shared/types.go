@@ -32,3 +32,16 @@ type DirectoryData struct {
 	Dirs        []string     `json:"dirs"`
 	Breadcrumbs []Breadcrumb `json:"breadcrumbs"`
 }
+
+// CreateDirectoryRequest is the body for creating a new project folder under /workspace.
+type CreateDirectoryRequest struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	GitInit bool   `json:"gitInit"`
+}
+
+// CreateDirectoryResponse is the 201 payload for a created project folder.
+type CreateDirectoryResponse struct {
+	Path    string `json:"path"` // new folder relative to /workspace
+	Warning string `json:"warning,omitempty"`
+}

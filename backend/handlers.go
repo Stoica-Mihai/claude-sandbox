@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,6 +29,9 @@ const (
 	// persists them, so unbounded names mean unbounded index growth.
 	maxSessionNameLen = 120
 )
+
+// newDirNameRe restricts new project folder names to a single safe path segment.
+var newDirNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 type controlMessage struct {
 	Type string `json:"type"`
@@ -56,6 +61,7 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistory)
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
+	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("GET /events", s.handleSSE)
@@ -264,6 +270,62 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleCreateDirectory creates a new project folder under /workspace and
+// optionally runs `git init` in it. The parent is resolved with the same
+// join/prefix/stat logic as handleDirectories so both agree on error messages.
+func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateDirectoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate the name before any filesystem call.
+	if !newDirNameRe.MatchString(req.Name) {
+		writeErr(w, http.StatusBadRequest, "Invalid name")
+		return
+	}
+
+	// Resolve and validate the parent path (mirrors handleDirectories).
+	parent := filepath.Join(workspaceRoot, req.Path)
+	absParent, err := filepath.Abs(parent)
+	if err != nil || !underWorkspace(absParent) {
+		writeErr(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+
+	info, err := os.Stat(absParent)
+	if err != nil || !info.IsDir() {
+		writeErr(w, http.StatusBadRequest, "directory not found")
+		return
+	}
+
+	newDir := filepath.Join(absParent, req.Name)
+	if err := os.Mkdir(newDir, 0o755); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			writeErr(w, http.StatusConflict, "Folder already exists")
+			return
+		}
+		slog.Error("failed to create directory", "path", newDir, "error", err)
+		writeErr(w, http.StatusInternalServerError, "failed to create directory")
+		return
+	}
+
+	rel, _ := filepath.Rel(workspaceRoot, newDir)
+
+	// git init failures keep the folder — the directory itself succeeded.
+	var warning string
+	if req.GitInit {
+		out, gitErr := exec.Command("git", "-C", newDir, "init").CombinedOutput()
+		if gitErr != nil {
+			slog.Error("git init failed", "path", newDir, "error", gitErr, "output", string(out))
+			warning = "git init failed"
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, api.CreateDirectoryResponse{Path: rel, Warning: warning})
 }
 
 // handleUpload accepts an image file upload and saves it to a temp directory

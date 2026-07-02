@@ -58,6 +58,7 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
 	mux.HandleFunc("GET /api/directories", s.handleDirectories)
+	mux.HandleFunc("POST /api/directories", s.handleCreateDirectoryProxy)
 	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
 	mux.HandleFunc("GET /api/settings", s.handleSettingsProxy)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsProxy)
@@ -355,6 +356,14 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 // handleHistoryProxy proxies GET /api/sessions/history (JSON) to the backend.
 // Pure passthrough, so it uses the generic httpProxy like settings/upload/healthz.
 func (s *Server) handleHistoryProxy(w http.ResponseWriter, r *http.Request) {
+	httpProxy(w, r, s.backendURL)
+}
+
+// handleCreateDirectoryProxy proxies POST /api/directories (JSON) to the
+// backend. The response is consumed as JSON by views.js, never rendered, so it
+// passes the backend's status and body through verbatim via the generic
+// httpProxy rather than re-decoding like the GET template-render route.
+func (s *Server) handleCreateDirectoryProxy(w http.ResponseWriter, r *http.Request) {
 	httpProxy(w, r, s.backendURL)
 }
 

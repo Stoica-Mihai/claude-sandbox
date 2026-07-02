@@ -74,7 +74,7 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 - **Session list** — sidebar showing all running Claude Code sessions (managed and external)
 - **Terminal** — full xterm.js terminal with WebSocket relay for interactive sessions
 - **Tabbed terminals** — open multiple sessions as tabs, switch between them
-- **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory
+- **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory; a "+ NEW PROJECT…" row creates a folder at the current browse depth (optional `git init`, on by default) and immediately launches a session in it
 - **Mobile support** — responsive layout with slide-out drawer and touch input bar
 - **Theme toggle** — dark/light mode with localStorage persistence, plus a separate accent-color picker (7 colors, persisted)
 - **Settings editor** — header gear opens a modal to edit the container's Claude prefs (model, effort, thinking, language, advisor) — saved to `container-settings.json`, applied to new sessions

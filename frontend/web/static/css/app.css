@@ -65,6 +65,24 @@
    role=button, so there's no activation-ambiguity between the tab's own
    select gesture and the button's dismiss gesture; it's given tabindex=-1 so
    it stays out of the tablist's roving-tabindex sequence. */
+/* D14: .newrow — the "+ NEW PROJECT…" row pinned under the folder list; the kit
+   has no "row pinned under a list" component. Reuses the app's own list-row
+   language (top 2px var(--line) divider, --hover-bg on hover, muted→ink text)
+   already established by .frow/.arow rather than a kit component; the literal
+   2px border matches every neighboring app list rule (.frow/.arow/.dp-crumb),
+   which is the app-layer convention (var(--border) is 2px, so still an ink 2px
+   border — Law-conformant). Its :focus-visible insets the ring
+   (outline-offset:-3px) instead of the kit's +3px (kit .btn/.iconbtn/.acc etc.):
+   the row is edge-to-edge inside the modal frame, so an outside ring would be
+   clipped by the frame border — same inset-ring reasoning as .scard:focus-visible
+   and .ttab .x:focus-visible. */
+/* D15: .newedit .gitinit overrides the kit's block/uppercase/letter-spaced
+   `label` (a form-field caption) into an inline horizontal checkbox label
+   (flex, gap, no uppercase/tracking, white-space:nowrap) so the "git init"
+   label sits beside its checkbox on one line. The .newedit panel itself and
+   its .erow/.grp/.hintline/.errline sub-elements use only kit tokens with no
+   kit-rule override (no divergence); the git-init checkbox's own styling is a
+   markup concern (kit .check), not part of this CSS. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -212,6 +230,24 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .frow .drill{width:42px;flex:none;border-left:2px solid var(--line);display:flex;align-items:center;justify-content:center;font:inherit;font-weight:900;font-size:15px;color:var(--muted);cursor:pointer;
   transition:background var(--fast),color var(--fast)}
 .frow .drill:hover{background:var(--accent);color:var(--on-accent)}
+
+/* ===== New-project affordance (pinned under the folder list) ===== */
+/* D14: idle row + D15: inline editor — kit has no "row pinned under a list"
+   or inline-create component; both are documented in the ledger above. */
+.newrow{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;cursor:pointer;
+  font:inherit;font-weight:700;font-size:13px;color:var(--muted);text-align:left;
+  background:none;border:none;border-top:2px solid var(--line);transition:background var(--fast),color var(--fast)}
+.newrow:hover{background:var(--hover-bg);color:var(--ink)}
+.newrow:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.newrow .plus{color:var(--accent);font-weight:900;font-style:italic}
+.newedit{display:flex;flex-direction:column;gap:12px;padding:14px 16px;
+  border-top:2px solid var(--line);background:var(--field)}
+.newedit input[type=text]{width:100%}
+.newedit .erow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.newedit .gitinit{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.newedit .grp{display:flex;gap:10px}
+.newedit .hintline{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.newedit .errline{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
 
 /* ===== Modal actions (start-new + previous) ===== */
 .actitle{padding:9px 18px 6px;font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--muted)}

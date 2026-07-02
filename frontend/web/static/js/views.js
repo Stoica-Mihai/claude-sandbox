@@ -453,19 +453,166 @@ function dpFooter(label, enabled) {
     b.disabled = !enabled;
 }
 
-// Browse state: folder list visible, no folder selected, action disabled.
+// Browse state: folder list + new-project row visible, no folder selected, action disabled.
 function dpResetBrowse() {
     dirPickerSel = { kind: null, uuid: null };
     const actions = document.getElementById('session-actions');
     if (actions) actions.innerHTML = '';
     const folders = document.getElementById('dp-folders');
     if (folders) folders.classList.remove('hidden');
+    const els = dpEditorEls();
+    if (els) { els.newrow.classList.remove('hidden'); els.editor.classList.add('hidden'); }
     const cwd = document.getElementById('dir-picker-cwd');
     if (cwd) cwd.value = '';
     const resume = document.getElementById('dir-picker-resume');
     if (resume) resume.value = '';
     dpFooter('Launch', false);
 }
+
+// --- New Project inline editor (in-fragment state machine) ---
+// The fragment holds one .newrow (idle) + one .newedit (form) under #dp-folders.
+// openEditor/closeEditor/createProject are invoked from the fragment's onclick
+// attrs; each may be handed the .newrow or a button inside .newedit, so resolve
+// both siblings from the picker rather than trusting the passed element.
+
+function dpEditorEls() {
+    const picker = document.getElementById('dir-picker');
+    if (!picker) return null;
+    const newrow = picker.querySelector('.newrow');
+    const editor = picker.querySelector('.newedit');
+    if (!newrow || !editor) return null;
+    return { newrow, editor, input: editor.querySelector('.dp-newname'), errline: editor.querySelector('.errline') };
+}
+
+function dpEditorClearError(els) {
+    if (els.errline) { els.errline.textContent = ''; els.errline.classList.add('hidden'); }
+    if (els.input) els.input.classList.remove('err-flash');
+}
+
+// Inline error affordance shared by the client pre-check and the server 400/409
+// path: fill + reveal .errline, flash the input outline. Cleared on next
+// keystroke or on close (no auto-timeout, unlike the fire-and-forget rename flash).
+function dpEditorShowError(els, msg) {
+    if (els.errline) { els.errline.textContent = msg; els.errline.classList.remove('hidden'); }
+    if (els.input) els.input.classList.add('err-flash');
+}
+
+function openEditor() {
+    const els = dpEditorEls();
+    if (!els) return;
+    els.newrow.classList.add('hidden');
+    els.editor.classList.remove('hidden');
+    dpEditorClearError(els);
+    if (els.input) { els.input.value = ''; setTimeout(() => els.input.focus(), 0); }
+}
+
+function closeEditor() {
+    const els = dpEditorEls();
+    if (!els) return;
+    els.editor.classList.add('hidden');
+    els.newrow.classList.remove('hidden');
+    if (els.input) els.input.value = '';
+    dpEditorClearError(els);
+}
+
+const dpNameRe = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+// Read + validate the name (UX only; server is authoritative), then POST. The
+// browse path comes off the newrow's data-dp-* (Decision 10), not breadcrumbs.
+async function createProject() {
+    const els = dpEditorEls();
+    if (!els || !els.input) return;
+
+    const name = els.input.value.trim();
+    const gitInit = !!els.editor.querySelector('.dp-gitinit')?.checked;
+    const path = els.newrow.dataset.dpPath || '';
+    const full = els.newrow.dataset.dpFull || '';
+
+    if (!dpNameRe.test(name)) {
+        dpEditorShowError(els, 'Invalid name');
+        return;
+    }
+    const dup = Array.from(document.querySelectorAll('#dp-folders .fnm'))
+        .some(el => el.textContent.trim() === name);
+    if (dup) {
+        dpEditorShowError(els, 'Folder already exists');
+        return;
+    }
+
+    let res;
+    try {
+        res = await fetch('/api/directories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, name, gitInit }),
+        });
+    } catch (e) {
+        dpEditorShowError(els, 'Could not create — check the connection.');
+        return;
+    }
+
+    if (res.status === 201) {
+        let warning = '';
+        try { warning = (await res.json()).warning || ''; } catch (e) { /* body optional */ }
+        if (warning) dpToast('created, git init failed');
+        // A fresh folder has nothing to resume — skip the select+LAUNCH step
+        // and spawn directly; the spawn response's X-Terminal-Id handler
+        // closes the modal and opens the terminal tab.
+        document.getElementById('dir-picker-cwd').value = full + '/' + name;
+        const resume = document.getElementById('dir-picker-resume');
+        if (resume) resume.value = '';
+        document.getElementById('dir-picker-form')?.requestSubmit();
+        return;
+    }
+
+    if (res.status === 400 || res.status === 409) {
+        let msg = 'Could not create the folder.';
+        try { msg = (await res.json()).error || msg; } catch (e) { /* keep generic */ }
+        dpEditorShowError(els, msg);
+        return;
+    }
+
+    dpEditorShowError(els, 'Could not create the folder.');
+}
+
+// Kit toast (CSS lives in futurism.css; the .toaster host is built on demand).
+// For notices that must outlive the modal, e.g. "created, git init failed".
+function dpToast(msg) {
+    let host = document.querySelector('.toaster');
+    if (!host) {
+        host = document.createElement('div');
+        host.className = 'toaster';
+        document.body.appendChild(host);
+    }
+    const el = document.createElement('div');
+    el.className = 'toast err';
+    el.setAttribute('role', 'status');
+    el.textContent = msg;
+    host.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 3600);
+    setTimeout(() => el.remove(), 4000);
+}
+
+// Delegated on document so the handlers survive every #dir-picker fragment swap
+// (the input is re-rendered each time; per-element binding would be lost).
+document.addEventListener('keydown', (e) => {
+    if (!e.target.classList?.contains('dp-newname')) return;
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        createProject();
+    } else if (e.key === 'Escape') {
+        // preventDefault blocks the native <dialog> Esc-cancel (a keydown default
+        // action, which stopPropagation alone cannot stop); close only the editor.
+        e.preventDefault();
+        e.stopPropagation();
+        closeEditor();
+    }
+});
+document.addEventListener('input', (e) => {
+    if (!e.target.classList?.contains('dp-newname')) return;
+    const els = dpEditorEls();
+    if (els) dpEditorClearError(els);
+});
 
 // Choose start-new vs a previous session; relabel the footer in place.
 function dirPickerSetSel(kind, uuid, rowEl) {
@@ -483,6 +630,10 @@ async function dpSelectFolder(path, name) {
     document.getElementById('dir-picker-cwd').value = path;
     const folders = document.getElementById('dp-folders');
     if (folders) folders.classList.add('hidden');
+    // Selected state shows only the crumb + actions: the new-project affordance
+    // belongs to browse mode (dpResetBrowse restores it).
+    const els = dpEditorEls();
+    if (els) { els.newrow.classList.add('hidden'); els.editor.classList.add('hidden'); }
 
     // Append the selected folder to the breadcrumb as the current (non-link) crumb.
     const bc = document.getElementById('dp-breadcrumb');
