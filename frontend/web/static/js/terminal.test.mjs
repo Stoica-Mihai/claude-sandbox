@@ -82,13 +82,32 @@ test('syncTerminalBgVar sets data-theme-base=dark for a dark-base theme', () => 
     assert.equal(ctx.__attrs['data-theme-base'], 'dark');
 });
 
-test('syncTerminalBgVar sets data-theme-base=light for each light-base theme', () => {
-    for (const name of ['light', 'cupcake', 'autumn']) {
-        const c = loadTerminal();
-        c.__attrs['data-theme'] = name;
-        c.syncTerminalBgVar();
-        assert.equal(c.__attrs['data-theme-base'], 'light', `theme ${name}`);
-    }
+test('syncTerminalBgVar sets data-theme-base=light for the light theme', () => {
+    const c = loadTerminal();
+    c.__attrs['data-theme'] = 'light';
+    c.syncTerminalBgVar();
+    assert.equal(c.__attrs['data-theme-base'], 'light');
+});
+
+// Relative luminance (0=black, 1=white) of a #rrggbb hex color.
+function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return ((n >> 16 & 255) * 0.2126 + (n >> 8 & 255) * 0.7152 + (n & 255) * 0.0722) / 255;
+}
+
+// Regression guard: the light theme once shipped a dark palette
+// (background #1e1e2e), so light mode rendered a dark terminal. Assert actual
+// lightness, not just internal consistency.
+test('light theme background is actually light and foreground dark', () => {
+    const t = terminalThemes.light;
+    assert.ok(luminance(t.background) > 0.8, `light bg too dark: ${t.background}`);
+    assert.ok(luminance(t.foreground) < 0.4, `light fg too light: ${t.foreground}`);
+});
+
+test('dark theme background is actually dark and foreground light', () => {
+    const t = terminalThemes.dark;
+    assert.ok(luminance(t.background) < 0.2, `dark bg too light: ${t.background}`);
+    assert.ok(luminance(t.foreground) > 0.6, `dark fg too dark: ${t.foreground}`);
 });
 
 test('getTerminalTheme returns the matching theme object and the fg used by syncTerminalBgVar', () => {

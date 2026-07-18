@@ -26,26 +26,26 @@ export const terminalThemes = {
         brightWhite: '#f0f6fc',
     },
     light: {
-        background: '#1e1e2e',
-        foreground: '#cdd6f4',
+        background: '#ffffff',
+        foreground: '#24292f',
         cursor: '#0969da',
-        selectionBackground: '#313244',
-        black: '#1e1e2e',
-        red: '#f38ba8',
-        green: '#a6e3a1',
-        yellow: '#f9e2af',
-        blue: '#89b4fa',
-        magenta: '#cba6f7',
-        cyan: '#94e2d5',
-        white: '#cdd6f4',
-        brightBlack: '#585b70',
-        brightRed: '#f38ba8',
-        brightGreen: '#a6e3a1',
-        brightYellow: '#f9e2af',
-        brightBlue: '#89b4fa',
-        brightMagenta: '#cba6f7',
-        brightCyan: '#94e2d5',
-        brightWhite: '#f5f5f5',
+        selectionBackground: '#b4d7ff',
+        black: '#24292e',
+        red: '#d1242f',
+        green: '#1a7f37',
+        yellow: '#9a6700',
+        blue: '#0969da',
+        magenta: '#8250df',
+        cyan: '#1b7c83',
+        white: '#6e7781',
+        brightBlack: '#57606a',
+        brightRed: '#cf222e',
+        brightGreen: '#2da44e',
+        brightYellow: '#bf8700',
+        brightBlue: '#218bff',
+        brightMagenta: '#a475f9',
+        brightCyan: '#3192aa',
+        brightWhite: '#8c959f',
     },
 };
 
@@ -60,7 +60,7 @@ export function syncTerminalBgVar() {
     const theme = getTerminalTheme();
     document.documentElement.style.setProperty('--terminal-bg', theme.background);
     document.documentElement.style.setProperty('--terminal-fg', theme.foreground);
-    const lightThemes = ['light', 'cupcake', 'autumn'];
-    const isLight = lightThemes.includes(document.documentElement.getAttribute('data-theme'));
+    // The app theme is a binary light/dark toggle (theme.js); base follows it.
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     document.documentElement.setAttribute('data-theme-base', isLight ? 'light' : 'dark');
 }
