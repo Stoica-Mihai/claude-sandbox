@@ -48,6 +48,89 @@ func TestTrackAltScreenSplitSequence(t *testing.T) {
 	}
 }
 
+// TestTrackAltScreenModeVariants covers the CSI grammar: every DECSET spelling
+// of the alt screen toggles, including ?1047 and multi-param forms the old
+// exact-string matcher missed.
+func TestTrackAltScreenModeVariants(t *testing.T) {
+	cases := []struct {
+		name  string
+		enter string
+		exit  string
+	}{
+		{"1049", "\x1b[?1049h", "\x1b[?1049l"},
+		{"47", "\x1b[?47h", "\x1b[?47l"},
+		{"1047", "\x1b[?1047h", "\x1b[?1047l"},
+		{"multi-param", "\x1b[?2004;1049h", "\x1b[?1049;2004l"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := NewRelay("claude-test")
+			segments := r.trackAltScreen([]byte("pre" + c.enter + "TUI" + c.exit + "post"))
+			var ring bytes.Buffer
+			for _, s := range segments {
+				ring.Write(s)
+			}
+			if got := ring.String(); got != "prepost" {
+				t.Fatalf("ring = %q, want prepost", got)
+			}
+			if r.inAltScreen {
+				t.Fatal("inAltScreen should be false after exit")
+			}
+		})
+	}
+}
+
+// TestTrackAltScreenPassesThroughOtherEscapes: non-alt-screen sequences (SGR
+// colors, other private modes, non-CSI escapes) stay in the ring verbatim and
+// do not toggle the flag.
+func TestTrackAltScreenPassesThroughOtherEscapes(t *testing.T) {
+	r := NewRelay("claude-test")
+	in := "a\x1b[31mred\x1b[0m\x1b[?2004hb\x1b(Bc\x1b[4hd"
+	segments := r.trackAltScreen([]byte(in))
+	var ring bytes.Buffer
+	for _, s := range segments {
+		ring.Write(s)
+	}
+	if got := ring.String(); got != in {
+		t.Fatalf("ring = %q, want input verbatim %q", got, in)
+	}
+	if r.inAltScreen {
+		t.Fatal("no alt-screen switch present; flag must stay false")
+	}
+}
+
+// TestTrackAltScreenLoneEscAtChunkEnd: a bare ESC at the end of a chunk is
+// stashed and stitched with the next chunk.
+func TestTrackAltScreenLoneEscAtChunkEnd(t *testing.T) {
+	r := NewRelay("claude-test")
+	r.trackAltScreen([]byte("x\x1b"))
+	if r.inAltScreen {
+		t.Fatal("no toggle on a bare ESC")
+	}
+	r.trackAltScreen([]byte("[?1049h"))
+	if !r.inAltScreen {
+		t.Fatal("stitched sequence should enter alt screen")
+	}
+}
+
+// TestTrackAltScreenLongGarbageEscape: an over-long unterminated escape is not
+// stashed forever — the ESC passes through as data.
+func TestTrackAltScreenLongGarbageEscape(t *testing.T) {
+	r := NewRelay("claude-test")
+	garbage := "\x1b[" + strings.Repeat("1;", 40) // > csiMaxLen, no final byte
+	segments := r.trackAltScreen([]byte(garbage + "tail"))
+	var ring bytes.Buffer
+	for _, s := range segments {
+		ring.Write(s)
+	}
+	if !bytes.Contains(ring.Bytes(), []byte("tail")) {
+		t.Fatalf("data after a garbage escape lost: %q", ring.String())
+	}
+	if len(r.partial) != 0 {
+		t.Fatalf("garbage escape must not be stashed as partial, got %q", r.partial)
+	}
+}
+
 // socketpairFiles returns a connected bidirectional *os.File pair standing in
 // for the attach PTY (relay side, session side).
 func socketpairFiles(t *testing.T) (*os.File, *os.File) {

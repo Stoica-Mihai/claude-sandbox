@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,24 +36,17 @@ var (
 	errNotAttached  = errors.New("attach not connected")
 )
 
-// Alternate screen sequences to detect.
-var altScreenEnter = [][]byte{
-	[]byte("\x1b[?1049h"),
-	[]byte("\x1b[?47h"),
-}
+// altScreenModes are the DEC private modes whose set/reset switches the
+// alternate screen (DECSET/DECRST ?47, ?1047, ?1049).
+var altScreenModes = map[int]bool{47: true, 1047: true, 1049: true}
 
-var altScreenExit = [][]byte{
-	[]byte("\x1b[?1049l"),
-	[]byte("\x1b[?47l"),
-}
+// altScreenEnterSeq is the canonical enter sequence replayed to a viewer that
+// attaches while the session is in alternate screen mode.
+var altScreenEnterSeq = []byte("\x1b[?1049h")
 
-// allAltScreenSeqs is the combined list for scanning.
-var allAltScreenSeqs [][]byte
-
-func init() {
-	allAltScreenSeqs = append(allAltScreenSeqs, altScreenEnter...)
-	allAltScreenSeqs = append(allAltScreenSeqs, altScreenExit...)
-}
+// csiMaxLen bounds a buffered partial escape sequence; anything longer is not
+// a mode switch and is passed through as data.
+const csiMaxLen = 32
 
 // viewerSize is a viewer's last reported terminal dimensions.
 type viewerSize struct {
@@ -350,7 +342,7 @@ func (r *Relay) handleAddViewer(c cmdAddViewer) {
 		v.out <- viewerMsg{websocket.BinaryMessage, scrollback}
 	}
 	if r.inAltScreen {
-		v.out <- viewerMsg{websocket.BinaryMessage, altScreenEnter[0]}
+		v.out <- viewerMsg{websocket.BinaryMessage, altScreenEnterSeq}
 	}
 
 	r.viewers[c.conn] = v
@@ -619,9 +611,49 @@ func (r *Relay) reconnectLoop(gen int) {
 	r.Stop()
 }
 
-// trackAltScreen scans data for alternate screen sequences, toggles the
-// inAltScreen flag, and returns the normal-mode segments (for the ring buffer).
-// Viewers receive the raw stream directly, so no cleaned copy is built here.
+// csiScan parses a CSI private-mode sequence at data[0] (which must be ESC).
+// Returns the sequence length, whether it is a DECSET/DECRST touching an
+// alt-screen mode, whether it sets (h) or resets (l), and whether the bytes
+// form a complete sequence. A non-CSI escape or a CSI that is not a private
+// mode switch reports altMode=false with its consumed length.
+func csiScan(data []byte) (length int, altMode, enter, complete bool) {
+	if len(data) < 2 {
+		return 0, false, false, false
+	}
+	if data[1] != '[' {
+		return 1, false, false, true // not CSI: pass the ESC through as data
+	}
+	i := 2
+	private := i < len(data) && data[i] == '?'
+	if private {
+		i++
+	}
+	param := 0
+	hasAltParam := false
+	for ; i < len(data); i++ {
+		switch b := data[i]; {
+		case b >= '0' && b <= '9':
+			param = param*10 + int(b-'0')
+		case b == ';':
+			hasAltParam = hasAltParam || altScreenModes[param]
+			param = 0
+		case b >= 0x40 && b <= 0x7e: // final byte
+			hasAltParam = hasAltParam || altScreenModes[param]
+			isSwitch := private && (b == 'h' || b == 'l') && hasAltParam
+			return i + 1, isSwitch, b == 'h', true
+		default:
+			// Intermediate/other byte: not a mode switch; consume through it
+			// conservatively as data from the ESC on.
+			return 1, false, false, true
+		}
+	}
+	return 0, false, false, false // ran out of bytes mid-sequence
+}
+
+// trackAltScreen scans data for alternate-screen mode switches (any CSI
+// DECSET/DECRST carrying mode 47/1047/1049), toggles the inAltScreen flag,
+// and returns the normal-mode segments (for the ring buffer). Viewers receive
+// the raw stream directly, so no cleaned copy is built here.
 func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 	if len(r.partial) > 0 {
 		data = append(r.partial, data...)
@@ -632,66 +664,55 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 	if !r.inAltScreen {
 		currentNormal = make([]byte, 0, len(data))
 	}
+	flush := func() {
+		if !r.inAltScreen && len(currentNormal) > 0 {
+			normalSegments = append(normalSegments, currentNormal)
+		}
+	}
 
 	i := 0
 	for i < len(data) {
-		if data[i] == '\x1b' {
-			remaining := data[i:]
-			matched := false
-
-			for _, seq := range allAltScreenSeqs {
-				if len(remaining) < len(seq) {
-					if bytes.HasPrefix(seq, remaining) {
-						r.partial = make([]byte, len(remaining))
-						copy(r.partial, remaining)
-						if !r.inAltScreen && len(currentNormal) > 0 {
-							normalSegments = append(normalSegments, currentNormal)
-						}
-						return normalSegments
-					}
-					continue
-				}
-
-				if bytes.Equal(remaining[:len(seq)], seq) {
-					isEnter := false
-					for _, enterSeq := range altScreenEnter {
-						if bytes.Equal(seq, enterSeq) {
-							isEnter = true
-							break
-						}
-					}
-
-					if isEnter {
-						if !r.inAltScreen && len(currentNormal) > 0 {
-							normalSegments = append(normalSegments, currentNormal)
-							currentNormal = nil
-						}
-						r.inAltScreen = true
-					} else {
-						r.inAltScreen = false
-						currentNormal = make([]byte, 0, len(data)-i)
-					}
-
-					i += len(seq)
-					matched = true
-					break
-				}
+		if data[i] != '\x1b' {
+			if !r.inAltScreen {
+				currentNormal = append(currentNormal, data[i])
 			}
-
-			if matched {
-				continue
-			}
+			i++
+			continue
 		}
 
-		if !r.inAltScreen {
-			currentNormal = append(currentNormal, data[i])
+		length, altMode, enter, complete := csiScan(data[i:])
+		if !complete {
+			if len(data)-i <= csiMaxLen {
+				// Possible mode switch split across chunks: stash and finish.
+				r.partial = append([]byte(nil), data[i:]...)
+				flush()
+				return normalSegments
+			}
+			// Too long to be a mode switch: treat the ESC as plain data.
+			length, altMode = 1, false
 		}
-		i++
+
+		if !altMode {
+			if !r.inAltScreen {
+				currentNormal = append(currentNormal, data[i:i+length]...)
+			}
+			i += length
+			continue
+		}
+
+		// Alt-screen switch. The sequence itself is not written to the ring:
+		// replay re-enters via altScreenEnterSeq when needed.
+		if enter {
+			flush()
+			currentNormal = nil
+			r.inAltScreen = true
+		} else {
+			r.inAltScreen = false
+			currentNormal = make([]byte, 0, len(data)-i)
+		}
+		i += length
 	}
 
-	if !r.inAltScreen && len(currentNormal) > 0 {
-		normalSegments = append(normalSegments, currentNormal)
-	}
-
+	flush()
 	return normalSegments
 }
