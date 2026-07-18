@@ -147,26 +147,28 @@ function updateSingleWelcome(hasTerminal) {
 }
 
 // ===== Mobile control bar =====
-// Send a single control byte to the active terminal
-function sendKeyToTerminal(charCode) {
-    if (!singleTerminalId) return;
+// Send bytes to the active terminal's socket and scroll it to the bottom.
+// Returns the instance (for callers that also focus) or null if none is ready.
+function sendToActiveTerminal(bytes) {
+    if (!singleTerminalId) return null;
     const inst = TerminalManager.get(singleTerminalId);
     if (inst?.ws?.readyState === WebSocket.OPEN) {
-        inst.ws.send(new Uint8Array([charCode]));
+        inst.ws.send(bytes);
         inst.term?.scrollToBottom();
-        inst.term?.focus();
+        return inst;
     }
+    return null;
+}
+
+// Send a single control byte to the active terminal (and refocus it).
+function sendKeyToTerminal(charCode) {
+    const inst = sendToActiveTerminal(new Uint8Array([charCode]));
+    inst?.term?.focus();
 }
 
 // Send an arrow key escape sequence (\x1b[A, \x1b[B, etc.)
 function mobileInputSendArrow(code) {
-    if (!singleTerminalId) return;
-    const inst = TerminalManager.get(singleTerminalId);
-    if (inst?.ws?.readyState === WebSocket.OPEN) {
-        const encoder = new TextEncoder();
-        inst.ws.send(encoder.encode('\x1b[' + code));
-        inst.term?.scrollToBottom();
-    }
+    sendToActiveTerminal(new TextEncoder().encode('\x1b[' + code));
 }
 
 // Toggle a selectable text overlay over the terminal (mobile).
@@ -666,7 +668,7 @@ async function dpSelectFolder(path, name) {
     const newRow = document.createElement('button');
     newRow.type = 'button';
     newRow.className = 'arow sa-row';
-    newRow.style.cssText = 'width:100%;background:var(--row-bg,transparent);border:none;text-align:left;font-family:inherit;color:inherit';
+    newRow.style.cssText = AROW_CSS;
     newRow.innerHTML = '<div class="atxt"><div class="at1">Start a new session</div>'
         + '<div class="at2">Fresh conversation in ' + escapeHtml(path) + '</div></div>';
     newRow.onclick = () => dirPickerSetSel('new', null, newRow);
@@ -728,7 +730,7 @@ async function dpRenderHistory(path) {
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'arow sa-row';
-            row.style.cssText = 'width:100%;background:var(--row-bg,transparent);border:none;border-bottom:2px solid var(--line);text-align:left;font-family:inherit;color:inherit';
+            row.style.cssText = AROW_CSS + ';border-bottom:2px solid var(--line)';
             row.innerHTML = '<svg class="aold" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" d="M8 10h8M8 14h5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
                 + '<div class="atxt"><div class="at1">' + escapeHtml(title) + '</div>'
                 + '<div class="at2">' + escapeHtml(sub) + '</div></div>';
@@ -753,6 +755,15 @@ async function dpRenderHistory(path) {
     }
 }
 
+// Wrap a row-action handler so the click doesn't bubble to the row/card select
+// and the button's default action is suppressed.
+function stopAnd(fn) {
+    return (e) => { e.stopPropagation(); e.preventDefault(); fn(); };
+}
+
+// Base inline style for an .arow action button (history rows add a border-bottom).
+const AROW_CSS = 'width:100%;background:var(--row-bg,transparent);border:none;text-align:left;font-family:inherit;color:inherit';
+
 // Idle state: a trash button inside the .row-act container; click arms the confirm.
 function dpDelToIdle(act, path, uuid) {
     act.classList.remove('confirming', 'failed', 'centered');
@@ -763,11 +774,7 @@ function dpDelToIdle(act, path, uuid) {
     btn.className = 'row-act-btn';
     btn.title = 'Delete this conversation permanently';
     btn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>';
-    btn.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        dpDelToConfirm(act, path, uuid);
-    };
+    btn.onclick = stopAnd(() => dpDelToConfirm(act, path, uuid));
     act.appendChild(btn);
 }
 
@@ -783,21 +790,13 @@ function dpDelToConfirm(act, path, uuid) {
     yes.type = 'button';
     yes.className = 'confirm-yes';
     yes.textContent = 'Delete';
-    yes.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        dpDelConfirmed(act, path, uuid);
-    };
+    yes.onclick = stopAnd(() => dpDelConfirmed(act, path, uuid));
 
     const no = document.createElement('button');
     no.type = 'button';
     no.className = 'confirm-no';
     no.textContent = 'Cancel';
-    no.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        dpDelToIdle(act, path, uuid);
-    };
+    no.onclick = stopAnd(() => dpDelToIdle(act, path, uuid));
 
     act.appendChild(yes);
     act.appendChild(no);
