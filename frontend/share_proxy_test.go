@@ -13,13 +13,12 @@ import (
 // status, headers, and body unchanged.
 func TestHandleShareProxyForwardsRequest(t *testing.T) {
 	var gotMethod, gotPath string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"state":"public","url":"hs://s000ab","error":null}`)
-	}))
-	defer upstream.Close()
+		io.WriteString(w, stubStatusBody)
+	})
 
 	s := newTestServer("http://unused-backend")
 	s.holesailURL = upstream.URL
@@ -46,12 +45,11 @@ func TestHandleShareProxyForwardsRequest(t *testing.T) {
 // TestHandleShareProxyPassesUpstreamError verifies the wrapper's error shape
 // (502 + JSON status body) reaches the browser unchanged.
 func TestHandleShareProxyPassesUpstreamError(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
 		io.WriteString(w, `{"state":"error","url":null,"error":"tunnel did not become ready in time"}`)
-	}))
-	defer upstream.Close()
+	})
 
 	s := newTestServer("http://unused-backend")
 	s.holesailURL = upstream.URL
@@ -75,10 +73,8 @@ func TestHandleShareProxyUpstreamUnreachable(t *testing.T) {
 	s := newTestServer("http://unused-backend")
 	s.holesailURL = "http://127.0.0.1:1" // nothing listens here
 
-	req := httptest.NewRequest(http.MethodGet, "/api/share/status", nil)
-	req.RemoteAddr = "192.168.1.10:40000"
 	rec := httptest.NewRecorder()
-	s.handleShareProxy(rec, req)
+	s.handleShareProxy(rec, reqFrom("192.168.1.10:40000"))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for unreachable sidecar, got %d", rec.Code)

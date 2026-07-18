@@ -124,10 +124,9 @@ func TestGuardKeepsStaleCacheOnResolveFailure(t *testing.T) {
 // tunnel is 403'd before the sidecar is contacted.
 func TestHandleShareProxyBlocksTunnelMutation(t *testing.T) {
 	upstreamCalled := false
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
-	}))
-	defer upstream.Close()
+	})
 
 	calls := 0
 	s := newTestServer(upstream.URL)
@@ -152,12 +151,11 @@ func TestHandleShareProxyBlocksTunnelMutation(t *testing.T) {
 // see the sharing state (and its ambient glow).
 func TestHandleShareProxyAllowsTunnelStatus(t *testing.T) {
 	upstreamCalled := false
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"state":"public","url":"hs://s000ab","error":null}`)
-	}))
-	defer upstream.Close()
+		io.WriteString(w, stubStatusBody)
+	})
 
 	calls := 0
 	s := newTestServer(upstream.URL)
