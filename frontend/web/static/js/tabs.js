@@ -4,13 +4,13 @@ import { isMobile, escapeHtml, fmtDuration } from './ui-utils.js';
 import { collapseSidebar } from './sidebar.js';
 import { TerminalManager } from './terminal.js';
 import { register } from './actions.js';
+import { getSession, subscribe } from './store.js';
 
 // Single terminal view with tabs.
 export let singleTerminalId = null;    // currently active tab
 export let singleTabs = [];            // array of open tab terminal IDs
-// Last-known display name per tab. The tab bar reads names off the sidebar
-// cards; when a session dies its card disappears, and without this cache the
-// tab label silently degraded to a truncated dtach id on the next render.
+// Last-known display name per tab, so a tab whose session ended keeps its
+// label instead of degrading to a truncated dtach id.
 const tabNames = {};
 
 // Open a session terminal
@@ -136,10 +136,10 @@ export function updateSingleTabBar(activeTerminalId) {
     updateSingleWelcome(true);
 
     tabBar.innerHTML = singleTabs.map(id => {
-        const card = document.querySelector(`[data-terminal-id="${id}"]`);
-        if (card) tabNames[id] = card.dataset.session;
-        const sessionName = card ? card.dataset.session : (tabNames[id] || id.substring(0, 8));
-        const dead = !card; // session gone from the sidebar = ended
+        const session = getSession(id);
+        if (session) tabNames[id] = session.display_name;
+        const sessionName = session ? session.display_name : (tabNames[id] || id.substring(0, 8));
+        const dead = !session; // gone from the server's session list = ended
         const isActive = id === activeTerminalId;
         const safeId = escapeHtml(id);
         return `
@@ -262,18 +262,17 @@ export function init() {
         if (terminalId) openSession(terminalId);
     });
 
-    // Re-apply session card active states after HTMX swaps in fresh session list HTML
-    document.addEventListener('htmx:afterSwap', (event) => {
-        if (event.target?.id === 'session-list') {
-            updateSessionCardStates();
-            tickDurations(); // fill the freshly-swapped cards' duration immediately
-            // Re-render the tab bar from the fresh cards: renames propagate to tab
-            // labels, and tabs whose session ended get their dead marker. Skip when
-            // focus is inside the strip so an SSE update can't yank keyboard focus.
-            const bar = document.getElementById('singleTabBar');
-            if (singleTabs.length && bar && !bar.contains(document.activeElement)) {
-                updateSingleTabBar(singleTerminalId);
-            }
+    // Re-render on every session-list change (the store re-reads after each
+    // HTMX sidebar swap): card active states, fresh cards' durations, and the
+    // tab bar — renames propagate to tab labels, and tabs whose session ended
+    // get their dead marker. Skip the tab bar when focus is inside the strip
+    // so an SSE update can't yank keyboard focus.
+    subscribe(() => {
+        updateSessionCardStates();
+        tickDurations();
+        const bar = document.getElementById('singleTabBar');
+        if (singleTabs.length && bar && !bar.contains(document.activeElement)) {
+            updateSingleTabBar(singleTerminalId);
         }
     });
 }

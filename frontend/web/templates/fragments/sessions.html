@@ -1,11 +1,10 @@
 {{define "sessions"}}
-<span id="session-count" class="hidden">{{len .Sessions}}</span>
+<script type="application/json" id="session-data">{{sessionsJSON .Sessions}}</script>
 {{if .Sessions}}
 {{range .Sessions}}
 <div class="row-host">
 <div class="scard session-card"
      data-terminal-id="{{.Name}}"
-     data-session="{{.DisplayName}}"
      title="{{.DisplayName}}"
      aria-label="{{.DisplayName}}"
      role="button"

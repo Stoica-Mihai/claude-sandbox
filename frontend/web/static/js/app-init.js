@@ -4,6 +4,7 @@ import { applySidebar } from './sidebar.js';
 import { isMobile } from './ui-utils.js';
 import { openNewSessionModal } from './picker.js';
 import { closeSingleTab, switchSingleTab, singleTerminalId, singleTabs, tickDurations } from './tabs.js';
+import { subscribe } from './store.js';
 
 // ===== Keyboard shortcuts (desktop only) =====
 export function handleShortcuts(e) {
@@ -107,6 +108,15 @@ export function initPullToRefresh() {
 export function init() {
     applySidebar(localStorage.getItem('sidebar') === 'expanded');
     initPullToRefresh();
+
+    // Header session badge follows the store.
+    subscribe((sessions) => {
+        const badgeText = document.getElementById('session-badge-text');
+        if (!badgeText) return;
+        const count = sessions.length;
+        badgeText.textContent = `${count} session${count !== 1 ? 's' : ''}`;
+        badgeText.classList.toggle('alive', count > 0);
+    });
 
     // Register keyboard shortcuts on desktop only
     if (!isMobile()) {

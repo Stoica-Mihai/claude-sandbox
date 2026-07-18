@@ -9,6 +9,7 @@ import { makeTimers } from './timers.mjs';
 import * as uiUtils from '../ui-utils.js';
 import * as terminal from '../terminal.js';
 import * as actions from '../actions.js';
+import * as store from '../store.js';
 import * as sidebar from '../sidebar.js';
 import * as tabs from '../tabs.js';
 import * as mobileBar from '../mobile-bar.js';
@@ -18,10 +19,11 @@ import * as rename from '../rename.js';
 import * as appInit from '../app-init.js';
 
 // Namespaces whose exports the tests reach for via env.sandbox.
-const NAMESPACES = [uiUtils, actions, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit];
+const NAMESPACES = [uiUtils, actions, store, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit];
 // history-del has no init; terminal.init wires browser-only listeners the view
-// tests don't exercise. TerminalManager is stubbed instead.
-const INIT_ORDER = [sidebar, tabs, mobileBar, picker, rename, appInit];
+// tests don't exercise. TerminalManager is stubbed instead. The store inits
+// first (main.js order): the views subscribe to it in their inits.
+const INIT_ORDER = [store, sidebar, tabs, mobileBar, picker, rename, appInit];
 
 // Load views into a fresh fake environment with controllable globals/timers.
 // Returns the live document plus a flushTimers() to fire pending setTimeout cbs.

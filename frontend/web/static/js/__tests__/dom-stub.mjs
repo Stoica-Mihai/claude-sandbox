@@ -38,7 +38,14 @@ class FakeElement {
         this.classList = new ClassList();
         String(v).split(/\s+/).filter(Boolean).forEach(c => this.classList.add(c));
     }
-    set textContent(v) { this._textContent = String(v); this.children = []; }
+    set textContent(v) {
+        this._textContent = String(v);
+        this.children = [];
+        // Mirror the real DOM: reading innerHTML after a textContent write
+        // returns the escaped text (ui-utils' escapeHtml depends on this).
+        this._innerHTML = this._textContent
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
     // Real DOM concatenates all descendant text; app code here never mixes
     // literal text with children on the same node (always clears one before
     // appending the other), so children-present implies "reflect them".
@@ -91,6 +98,13 @@ class FakeElement {
             el = el.parentNode;
         }
         return null;
+    }
+    contains(el) {
+        while (el) {
+            if (el === this) return true;
+            el = el.parentNode;
+        }
+        return false;
     }
     focus() {}
     select() {}

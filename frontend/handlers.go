@@ -134,6 +134,16 @@ func templateFuncs() template.FuncMap {
 			b, err := json.Marshal(api.Accents)
 			return template.JS(b), err
 		},
+		// sessionsJSON embeds the session list as the fragment's data payload
+		// (the client store's source). json.Marshal escapes <,>,& so the output
+		// is safe inside the <script type="application/json"> block.
+		"sessionsJSON": func(sessions []api.DisplaySession) (template.JS, error) {
+			if sessions == nil {
+				return template.JS("[]"), nil
+			}
+			b, err := json.Marshal(sessions)
+			return template.JS(b), err
+		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
 	}
 }

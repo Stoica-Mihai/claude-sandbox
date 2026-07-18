@@ -230,19 +230,4 @@ export function init() {
             }
         });
     }
-
-    // Keep the header session-badge count in sync with the session list.
-    const observer = new MutationObserver(() => {
-        const countEl = document.getElementById('session-count');
-        const badgeText = document.getElementById('session-badge-text');
-        if (countEl && badgeText) {
-            const count = parseInt(countEl.textContent, 10) || 0;
-            badgeText.textContent = `${count} session${count !== 1 ? 's' : ''}`;
-            badgeText.classList.toggle('alive', count > 0);
-        }
-    });
-    const sessionList = document.getElementById('session-list');
-    if (sessionList) {
-        observer.observe(sessionList, { childList: true, subtree: true });
-    }
 }

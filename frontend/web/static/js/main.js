@@ -1,6 +1,7 @@
 // Entry module: install delegated dispatch, then init every module in load order.
 
 import { initActions } from './actions.js';
+import { init as initStore } from './store.js';
 import { init as initTabs } from './tabs.js';
 import { init as initSidebar } from './sidebar.js';
 import { init as initMobileBar } from './mobile-bar.js';
@@ -14,6 +15,7 @@ import { init as initApp } from './app-init.js';
 
 function boot() {
     initActions();
+    initStore(); // before the views: they subscribe to it in their inits
 
     initSidebar();
     initTabs();
