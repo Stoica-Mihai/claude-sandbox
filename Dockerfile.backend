@@ -1,5 +1,10 @@
+# Pinned Go version; each stage re-declares `ARG GO_VERSION` to inherit it.
+ARG GO_VERSION=1.26.1
+
 # ── Builder stage: compile the Go backend binary ──
 FROM debian:bookworm-slim AS builder
+
+ARG GO_VERSION
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -8,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Shared API-contract module (resolved via the go.mod replace => ../shared).
@@ -24,6 +29,8 @@ RUN cd /src/backend && go build -o /backend-server .
 
 # ── Runtime stage ──
 FROM debian:bookworm-slim
+
+ARG GO_VERSION
 
 # Runtime packages — everything Claude Code and dtach sessions need
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -45,7 +52,7 @@ RUN curl -fsSL https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64
     | tar -xz -C /usr/local/bin
 
 # Go toolchain — needed for go test -race and dev workflow
-RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # UTF-8 locale for Unicode rendering
