@@ -6,7 +6,16 @@ const vm = require('node:vm');
 const { FakeDocument, FakeElement } = require('./dom-stub');
 const { makeTimers } = require('./timers');
 
-const VIEWS_PATH = path.join(__dirname, '..', 'views.js');
+const VIEWS_FILES = [
+    'ui-utils.js',
+    'sidebar.js',
+    'tabs.js',
+    'mobile-bar.js',
+    'picker.js',
+    'history-del.js',
+    'rename.js',
+    'app-init.js',
+];
 
 // Load views.js into a fresh sandbox with controllable globals/timers.
 // Returns the live document plus a flushTimers() to fire pending setTimeout cbs.
@@ -54,7 +63,9 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     };
     sandbox.globalThis = sandbox;
 
-    const code = fs.readFileSync(VIEWS_PATH, 'utf8');
+    const code = VIEWS_FILES
+        .map(f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8'))
+        .join('\n');
     vm.createContext(sandbox);
     vm.runInContext(code, sandbox, { filename: 'views.js' });
 

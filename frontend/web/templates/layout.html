@@ -66,7 +66,7 @@
     <!-- ===== BODY SPLIT ===== -->
     <div class="body">
 
-        <!-- Sidebar backdrop overlay (mobile only); views.js toggles .hidden -->
+        <!-- Sidebar backdrop overlay (mobile only); sidebar.js toggles .hidden -->
         <div id="sidebarBackdrop" class="hidden" onclick="toggleSidebar()"></div>
 
         <!-- ===== SIDEBAR ===== -->
@@ -89,14 +89,14 @@
             <!-- Tab bar -->
             <div id="singleTabBar" class="tabbar" role="tablist" aria-label="Open sessions"></div>
 
-            <!-- Desktop terminal controls; views.js toggles .hidden -->
+            <!-- Desktop terminal controls; tabs.js toggles .hidden -->
             <div id="singleControls" class="ctrlbar hidden">
                 <button class="keycap" onclick="sendKeyToTerminal(KEY_ESCAPE)" title="Send Escape">Esc</button>
                 <button class="keycap" onclick="sendKeyToTerminal(KEY_CTRL_C)" title="Send Ctrl+C">Ctrl+C</button>
                 <button class="keycap" onclick="sendKeyToTerminal(KEY_CTRL_D)" title="Send Ctrl+D">Ctrl+D</button>
             </div>
 
-            <!-- Terminal; views.js toggles .hidden -->
+            <!-- Terminal; tabs.js toggles .hidden -->
             <div id="singleTerminal" class="terminal-bg hidden"></div>
 
             <!-- Welcome screen (shown when no terminal is open) -->
@@ -113,7 +113,7 @@
                 </div>
             </div>
 
-            <!-- Mobile control bar (mobile-only when a terminal is open); views.js toggles .hidden -->
+            <!-- Mobile control bar (mobile-only when a terminal is open); tabs.js toggles .hidden -->
             <div id="mobileInputBar" class="terminal-controls-bg hidden">
                 <div class="mobile-bar-row">
                     <button class="keycap keycap--mobile" onclick="sendKeyToTerminal(KEY_ESCAPE)">Esc</button>
@@ -320,7 +320,14 @@ window.ACCENTS = {{accentsJSON}};
 window.NEW_PROJECT_NAME_PATTERN = "{{newProjectPattern}}";
 </script>
 <script src="/static/js/terminal.js"></script>
-<script src="/static/js/views.js"></script>
+<script src="/static/js/ui-utils.js"></script>
+<script src="/static/js/sidebar.js"></script>
+<script src="/static/js/tabs.js"></script>
+<script src="/static/js/mobile-bar.js"></script>
+<script src="/static/js/picker.js"></script>
+<script src="/static/js/history-del.js"></script>
+<script src="/static/js/rename.js"></script>
+<script src="/static/js/app-init.js"></script>
 <script src="/static/js/theme.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/share.js"></script>

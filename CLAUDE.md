@@ -64,7 +64,7 @@ One relay per session connects the dtach session to WebSocket viewers.
 
 ### Frontend assets (`frontend/web/`, `go:embed`)
 - `templates/layout.html`, `templates/fragments/{sessions,directory-picker}.html`
-- `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `views.js`, `theme.js`, `settings.js`, `share.js`
+- `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `ui-utils.js`, `sidebar.js`, `tabs.js`, `mobile-bar.js`, `picker.js`, `history-del.js`, `rename.js`, `app-init.js`, `theme.js`, `settings.js`, `share.js`
 - `static/css/futurism.css` (vendored kit — verbatim) + `static/css/app.css` (app components + override ledger + responsive), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons, qrcode-generator)
 
 ## Common Commands
