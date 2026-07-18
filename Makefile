@@ -1,4 +1,4 @@
-.PHONY: setup build rebuild up down shell claude restart-frontend restart-backend restart-holesail watch
+.PHONY: setup build rebuild up down shell claude watch
 
 setup:
 	@./generate-env.sh
@@ -15,14 +15,9 @@ up: setup
 down:
 	docker compose down
 
-restart-frontend:
-	docker compose up -d --build frontend
-
-restart-backend:
-	docker compose up -d --build backend
-
-restart-holesail:
-	docker compose up -d --build holesail
+# Not in .PHONY: make skips implicit/pattern-rule search for phony targets.
+restart-%:
+	docker compose up -d --build $*
 
 watch:
 	docker compose watch
