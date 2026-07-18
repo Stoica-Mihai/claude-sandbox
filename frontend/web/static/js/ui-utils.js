@@ -6,12 +6,16 @@ export function isMobile() {
     return getComputedStyle(document.documentElement).getPropertyValue('--is-mobile').trim() === '1';
 }
 
-// Escape HTML for safe insertion.
+// Escape HTML for safe insertion, in text AND attribute contexts (quotes
+// escaped too — callers interpolate into double-quoted attributes).
 export function escapeHtml(str) {
     if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Set a .btn's visible label without dropping its <span> (the kit counter-skews

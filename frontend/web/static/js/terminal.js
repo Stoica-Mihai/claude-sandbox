@@ -127,6 +127,8 @@ export const TerminalManager = {
                     socket.sendResize(term.cols, term.rows);
                 } else if (status === 'reconnecting') {
                     term.write(`\r\n${ANSI_GRAY}[Reconnecting... (attempt ${info.attempt})]${ANSI_RESET}`);
+                } else if (status === 'connecting' && info.retry) {
+                    term.write(`\r\n${ANSI_GRAY}[Retrying...]${ANSI_RESET}`);
                 } else if (status === 'ended') {
                     term.write(`\r\n${ANSI_GRAY}[Session ended]${ANSI_RESET}\r\n`);
                 } else if (status === 'lost') {

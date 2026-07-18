@@ -26,6 +26,10 @@ export function init() {
     register('toggle-sidebar', () => toggleSidebar());
     document.getElementById('sidebarBackdrop')?.addEventListener('click', collapseSidebar);
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !document.querySelector('dialog[open]')) collapseSidebar();
+        if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+        // Only dismiss an EXPANDED sidebar; otherwise a stray Escape (focused
+        // session card, tab strip) triggers a pointless collapse + reflow.
+        const side = document.getElementById('sidebar');
+        if (side && side.classList.contains('expanded')) collapseSidebar();
     });
 }

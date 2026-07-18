@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { loadViews } from './load-views.mjs';
+import { loadViews, FakeElement } from './load-views.mjs';
+
+// keydown event with a real target: other document-level handlers (tabs.js)
+// call e.target.closest on the same dispatch.
+function escapeEvent() {
+    return { key: 'Escape', target: new FakeElement('div') };
+}
 
 test('default collapsed: no expanded class, backdrop hidden', () => {
   const store = {};
@@ -35,4 +41,27 @@ test('collapseSidebar collapses when expanded', () => {
   const env = loadViews({ ids: ['sidebar', 'sidebarBackdrop'], localStorage: store });
   env.sandbox.collapseSidebar();
   assert.equal(env.document.getElementById('sidebar').classList.contains('expanded'), false);
+});
+
+test('Escape collapses an expanded sidebar', () => {
+  const store = { sidebar: 'expanded' };
+  const env = loadViews({ ids: ['sidebar', 'sidebarBackdrop'], localStorage: store });
+  env.document.dispatch('keydown', escapeEvent());
+  assert.equal(env.document.getElementById('sidebar').classList.contains('expanded'), false);
+});
+
+test('Escape on a collapsed sidebar is a no-op (no stray reflow/persist)', () => {
+  const store = {};
+  const env = loadViews({ ids: ['sidebar', 'sidebarBackdrop'], localStorage: store });
+  delete store['sidebar']; // drop the init-time write; Escape must not re-add it
+  env.document.dispatch('keydown', escapeEvent());
+  assert.equal('sidebar' in store, false, 'collapsed sidebar must ignore Escape');
+});
+
+test('escapeHtml escapes quotes for attribute contexts', () => {
+  const env = loadViews({ ids: [] });
+  assert.equal(
+    env.sandbox.escapeHtml(`a"b'c<d>&`),
+    'a&quot;b&#39;c&lt;d&gt;&amp;'
+  );
 });

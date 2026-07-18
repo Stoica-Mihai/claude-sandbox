@@ -132,6 +132,22 @@ test('exhausted attempts → lost; retry() re-arms from scratch', () => {
     assert.equal(sock.status, 'open');
 });
 
+test('retry() announces the manual attempt via onStatus', () => {
+    const sock = newSocket();
+    sock.connect();
+    for (let i = 0; i < 10; i++) {
+        sockets.at(-1).drop(1006);
+        fireTimer();
+    }
+    sockets.at(-1).drop(1006);
+    assert.equal(sock.status, 'lost');
+
+    sock.retry();
+    const last = statuses.at(-1);
+    assert.equal(last.s, 'connecting');
+    assert.equal(last.retry, true, 'manual retry must be announced for UI feedback');
+});
+
 test('retry() is a no-op unless lost', () => {
     const sock = newSocket();
     sock.connect();

@@ -101,6 +101,9 @@ export class SessionSocket {
     retry() {
         if (this.status !== 'lost') return;
         this.retryCount = 0;
+        // Announce before connect (which sets status silently), so the UI can
+        // show feedback between the retry keypress and the socket opening.
+        this._setStatus('connecting', { retry: true });
         this.connect();
     }
 
