@@ -66,6 +66,8 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
 	mux.HandleFunc("GET /api/settings", s.handleSettingsProxy)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsProxy)
+	mux.HandleFunc("GET /api/ui-prefs", s.handleUIPrefsProxy)
+	mux.HandleFunc("PUT /api/ui-prefs", s.handleUIPrefsProxy)
 	mux.HandleFunc("GET /api/share/status", s.handleShareProxy)
 	mux.HandleFunc("POST /api/share/start", s.handleShareProxy)
 	mux.HandleFunc("POST /api/share/stop", s.handleShareProxy)
@@ -399,6 +401,11 @@ func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
 
 // handleSettingsProxy proxies GET/PUT /api/settings (JSON) to the backend.
 func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
+	httpProxy(w, r, s.backendURL)
+}
+
+// handleUIPrefsProxy proxies GET/PUT /api/ui-prefs (JSON) to the backend.
+func (s *Server) handleUIPrefsProxy(w http.ResponseWriter, r *http.Request) {
 	httpProxy(w, r, s.backendURL)
 }
 

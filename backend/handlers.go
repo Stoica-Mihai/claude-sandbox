@@ -64,6 +64,8 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	mux.HandleFunc("GET /api/ui-prefs", s.handleGetUIPrefs)
+	mux.HandleFunc("PUT /api/ui-prefs", s.handlePutUIPrefs)
 	mux.HandleFunc("GET /events", s.handleSSE)
 	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)

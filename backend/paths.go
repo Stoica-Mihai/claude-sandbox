@@ -67,6 +67,10 @@ func claudeConfigDir() string {
 // in the persistent config dir so it survives container restarts.
 func sessionIndexPath() string { return filepath.Join(claudeConfigDir(), "dashboard-sessions.json") }
 
+// dashboardPrefsPath is the cross-device dashboard UI prefs (accent + theme),
+// in the persistent config dir so they sync across devices and survive restarts.
+func dashboardPrefsPath() string { return filepath.Join(claudeConfigDir(), "dashboard-ui.json") }
+
 // containerSettingsPath is the authoritative container settings file the
 // settings editor reads and writes ($CONTAINER_SETTINGS_PATH, default the
 // compose bind-mount location).

@@ -55,6 +55,7 @@ function renderAccents() {
         s.onclick = function() {
             curAccent = a;
             applyAccent();
+            saveUIPrefs();
         };
         row.appendChild(s);
     });
@@ -85,15 +86,15 @@ function toggleThinking(el) {
     fdSyncToggle(el);
 }
 
-function flipTheme() {
+// Apply a theme value everywhere (attributes, toggle, accent, terminals) and
+// cache it locally. Shared by flipTheme (user action) and loadUIPrefs (sync).
+function setTheme(next) {
     var r = document.documentElement;
-    var dark = r.getAttribute('data-theme') === 'dark';
-    var next = dark ? 'light' : 'dark';
     r.setAttribute('data-theme', next);
     r.setAttribute('data-theme-base', next === 'light' ? 'light' : 'dark');
     localStorage.setItem('theme', next);
     var t = document.getElementById('themeToggle');
-    if (t) { t.classList.toggle('on', !dark); fdSyncToggle(t); }
+    if (t) { t.classList.toggle('on', next === 'dark'); fdSyncToggle(t); }
     applyAccent();
     if (typeof syncTerminalBgVar === 'function') {
         syncTerminalBgVar();
@@ -101,6 +102,41 @@ function flipTheme() {
     if (typeof TerminalManager !== 'undefined') {
         TerminalManager.rethemeAll();
     }
+}
+
+function flipTheme() {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    saveUIPrefs();
+}
+
+// Accent + theme sync server-side (dashboard-ui.json) so they carry across
+// devices. localStorage stays the instant-paint cache; the server is the source
+// of truth, reconciled on load. Single-tenant dashboard, so last write wins.
+function saveUIPrefs() {
+    var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    fetch('/api/ui-prefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accent: curAccent.name, theme: theme })
+    }).catch(function() {});
+}
+
+function loadUIPrefs() {
+    fetch('/api/ui-prefs').then(function(r) {
+        return r.ok ? r.json() : null;
+    }).then(function(p) {
+        if (!p) return;
+        if ((p.theme === 'light' || p.theme === 'dark') &&
+            document.documentElement.getAttribute('data-theme') !== p.theme) {
+            setTheme(p.theme);
+        }
+        var a = p.accent && ACCENTS.find(function(x) { return x.name === p.accent; });
+        if (a && a.name !== curAccent.name) {
+            curAccent = a;
+            applyAccent();
+        }
+    }).catch(function() {});
 }
 
 // A pressed .btn depresses (kit :active drops translate + shrinks the offset
@@ -130,4 +166,7 @@ document.addEventListener('pointerdown', function(e) {
     if (typeof syncTerminalBgVar === 'function') {
         syncTerminalBgVar();
     }
+
+    // Reconcile from the server (source of truth) after the instant local paint.
+    loadUIPrefs();
 })();
