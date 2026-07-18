@@ -77,6 +77,52 @@ func TestCreateDirectoryResponseOmitsEmptyWarning(t *testing.T) {
 	}
 }
 
+// TestSpawnWireShapes pins the spawn request/response JSON keys both services
+// depend on.
+func TestSpawnWireShapes(t *testing.T) {
+	b, err := json.Marshal(SpawnRequest{CWD: "/workspace/x", Resume: "u1"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	if got, want := string(b), `{"cwd":"/workspace/x","resume":"u1"}`; got != want {
+		t.Errorf("SpawnRequest JSON = %s, want %s", got, want)
+	}
+	b, _ = json.Marshal(SpawnRequest{CWD: "/w"})
+	if got, want := string(b), `{"cwd":"/w"}`; got != want {
+		t.Errorf("SpawnRequest without resume = %s, want %s (resume omitted)", got, want)
+	}
+
+	b, err = json.Marshal(SpawnResponse{SessionName: "claude-abc"})
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if got, want := string(b), `{"session_name":"claude-abc"}`; got != want {
+		t.Errorf("SpawnResponse JSON = %s, want %s", got, want)
+	}
+}
+
+// TestShareStatusWireShape pins the ShareStatus envelope against the sidecar's
+// JSON (holesail/server.js status()): null url/error when not applicable.
+func TestShareStatusWireShape(t *testing.T) {
+	b, err := json.Marshal(ShareStatus{State: SharePrivate})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got, want := string(b), `{"state":"private","url":null,"error":null}`; got != want {
+		t.Errorf("private ShareStatus = %s, want %s", got, want)
+	}
+
+	// Round-trip the exact string server.js produces when public.
+	const sidecar = `{"state":"public","url":"hs://s000ab","error":null}`
+	var got ShareStatus
+	if err := json.Unmarshal([]byte(sidecar), &got); err != nil {
+		t.Fatalf("unmarshal sidecar status: %v", err)
+	}
+	if got.State != SharePublic || got.URL == nil || *got.URL != "hs://s000ab" || got.Error != nil {
+		t.Errorf("sidecar status decoded to %+v", got)
+	}
+}
+
 func TestCreateDirectoryResponseIncludesWarning(t *testing.T) {
 	b, err := json.Marshal(CreateDirectoryResponse{Path: "sub/proj", Warning: "git init failed"})
 	if err != nil {

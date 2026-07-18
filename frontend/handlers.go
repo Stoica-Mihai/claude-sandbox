@@ -287,7 +287,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward as JSON to backend.
-	payload, _ := json.Marshal(map[string]string{"cwd": cwd, "resume": resume})
+	payload, _ := json.Marshal(api.SpawnRequest{CWD: cwd, Resume: resume})
 	resp, err := s.backendRequest(r.Context(), "POST", api.RouteSessions, bytes.NewReader(payload))
 	if err != nil {
 		badGateway(w, "failed to spawn session via backend", err)
@@ -302,17 +302,15 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse the backend response to get the session name.
-	var spawnResp struct {
-		SessionName string `json:"session_name"`
-	}
+	var spawnResp api.SpawnResponse
 	if err := json.NewDecoder(resp.Body).Decode(&spawnResp); err != nil {
 		slog.Error("failed to decode spawn response", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	// Set the X-Terminal-Id header for the client JS to pick up.
-	w.Header().Set("X-Terminal-Id", spawnResp.SessionName)
+	// Set the terminal-id header for the client JS to pick up.
+	w.Header().Set(api.HeaderTerminalID, spawnResp.SessionName)
 
 	// Fetch updated sessions and render the fragment.
 	s.handleSessionsFragment(w, r)
@@ -435,11 +433,12 @@ func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 // over the tunnel still sees the (necessarily public) sharing state.
 func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && isTunnelRequest(r) {
-		// Same {state,url,error} shape the sidecar returns, so share.js's
+		// Same ShareStatus shape the sidecar returns, so share.js's
 		// renderShare surfaces the message instead of dropping it.
+		msg := "Share controls are not available over the tunnel."
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		io.WriteString(w, `{"state":"error","url":null,"error":"Share controls are not available over the tunnel."}`)
+		_ = json.NewEncoder(w).Encode(api.ShareStatus{State: api.ShareError, Error: &msg})
 		return
 	}
 	s.holesailProxy.ServeHTTP(w, r)

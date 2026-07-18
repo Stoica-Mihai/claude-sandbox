@@ -9,6 +9,9 @@
 //   state: "private" | "publishing" | "public" | "error"
 //   url:   "hs://s000<key>" when public, else null
 //
+// The status shape is the ShareStatus/ShareState contract in shared/types.go —
+// the frontend's tunnel-guard 403 marshals the same type; keep them in sync.
+//
 // Boot state is always private — public is never restored across restarts.
 
 const http = require('http')

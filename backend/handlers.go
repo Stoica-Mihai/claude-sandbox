@@ -133,10 +133,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 // handleSpawn starts a new conversation, or resumes one when "resume" (a
 // conversation uuid) is present.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		CWD    string `json:"cwd"`
-		Resume string `json:"resume"`
-	}
+	var req api.SpawnRequest
 	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
@@ -158,7 +155,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{"session_name": sessionName})
+	writeJSON(w, http.StatusCreated, api.SpawnResponse{SessionName: sessionName})
 }
 
 // handleHistory returns the previous sessions recorded for a folder.

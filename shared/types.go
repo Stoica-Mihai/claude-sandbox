@@ -33,6 +33,38 @@ type DirectoryData struct {
 	Breadcrumbs []Breadcrumb `json:"breadcrumbs"`
 }
 
+// SpawnRequest is the body for POST /api/sessions: a new conversation in CWD,
+// or a resumed one when Resume (a conversation uuid) is set.
+type SpawnRequest struct {
+	CWD    string `json:"cwd"`
+	Resume string `json:"resume,omitempty"`
+}
+
+// SpawnResponse is the 201 payload; SessionName is the dtach terminal id.
+type SpawnResponse struct {
+	SessionName string `json:"session_name"`
+}
+
+// ShareState is the share-tunnel lifecycle state. The holesail sidecar
+// (holesail/server.js) produces these values; this enum is the contract.
+type ShareState string
+
+const (
+	SharePrivate    ShareState = "private"
+	SharePublishing ShareState = "publishing"
+	SharePublic     ShareState = "public"
+	ShareError      ShareState = "error"
+)
+
+// ShareStatus is the share-control JSON envelope: served by the holesail
+// sidecar for every /api/share/* response and echoed by the frontend's
+// tunnel-guard 403. URL and Error are null unless applicable.
+type ShareStatus struct {
+	State ShareState `json:"state"`
+	URL   *string    `json:"url"`
+	Error *string    `json:"error"`
+}
+
 // CreateDirectoryRequest is the body for creating a new project folder under /workspace.
 type CreateDirectoryRequest struct {
 	Path    string `json:"path"`

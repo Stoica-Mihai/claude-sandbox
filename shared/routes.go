@@ -7,6 +7,10 @@ package api
 // registration sites; only the path is shared. The share-tunnel routes
 // (/api/share/*) live only in the frontend proxy + holesail sidecar and are not
 // here.
+// HeaderTerminalID carries the spawned session's terminal id on the frontend's
+// spawn response, so the dashboard JS can open the tab (picker.js reads it).
+const HeaderTerminalID = "X-Terminal-Id"
+
 const (
 	RouteSessions        = "/api/sessions"
 	RouteSessionsHistory = "/api/sessions/history"
