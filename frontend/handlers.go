@@ -403,10 +403,12 @@ func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleShareProxy proxies /api/share/* (JSON) to the holesail sidecar, which
-// serves the same paths. Requests arriving through the tunnel itself are
-// rejected so tunnel visitors cannot operate the share controls.
+// serves the same paths. Mutating actions (start/stop/regenerate) arriving
+// through the tunnel itself are rejected so tunnel visitors cannot operate the
+// controls; the read-only status GET is always allowed, so a client browsing
+// over the tunnel still sees the (necessarily public) sharing state.
 func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
-	if s.guard.isTunnelRequest(r) {
+	if r.Method != http.MethodGet && s.guard.isTunnelRequest(r) {
 		// Same {state,url,error} shape the sidecar returns, so share.js's
 		// renderShare surfaces the message instead of dropping it.
 		w.Header().Set("Content-Type", "application/json")

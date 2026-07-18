@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -119,9 +120,9 @@ func TestGuardKeepsStaleCacheOnResolveFailure(t *testing.T) {
 	}
 }
 
-// TestHandleShareProxyBlocksTunnelOrigin verifies the 403 short-circuits
-// before the sidecar is contacted.
-func TestHandleShareProxyBlocksTunnelOrigin(t *testing.T) {
+// TestHandleShareProxyBlocksTunnelMutation verifies a mutating action from the
+// tunnel is 403'd before the sidecar is contacted.
+func TestHandleShareProxyBlocksTunnelMutation(t *testing.T) {
 	upstreamCalled := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
@@ -133,13 +134,43 @@ func TestHandleShareProxyBlocksTunnelOrigin(t *testing.T) {
 	s.holesailURL = upstream.URL
 	s.guard = newFixedGuard(&calls, "172.18.0.5")
 
+	req := httptest.NewRequest(http.MethodPost, "/api/share/start", nil)
+	req.RemoteAddr = "172.18.0.5:53210"
 	rec := httptest.NewRecorder()
-	s.handleShareProxy(rec, reqFrom("172.18.0.5:53210"))
+	s.handleShareProxy(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", rec.Code)
 	}
 	if upstreamCalled {
-		t.Fatal("sidecar must not be contacted for a tunneled request")
+		t.Fatal("sidecar must not be contacted for a tunneled mutation")
+	}
+}
+
+// TestHandleShareProxyAllowsTunnelStatus verifies the read-only status GET is
+// proxied even from the tunnel, so a client browsing over the tunnel can still
+// see the sharing state (and its ambient glow).
+func TestHandleShareProxyAllowsTunnelStatus(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"state":"public","url":"hs://s000ab","error":null}`)
+	}))
+	defer upstream.Close()
+
+	calls := 0
+	s := newTestServer(upstream.URL)
+	s.holesailURL = upstream.URL
+	s.guard = newFixedGuard(&calls, "172.18.0.5")
+
+	rec := httptest.NewRecorder()
+	s.handleShareProxy(rec, reqFrom("172.18.0.5:53210")) // GET /api/share/status
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a tunnel status read, got %d", rec.Code)
+	}
+	if !upstreamCalled {
+		t.Fatal("status GET should be proxied to the sidecar even over the tunnel")
 	}
 }
