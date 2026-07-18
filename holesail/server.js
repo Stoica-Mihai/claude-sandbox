@@ -22,7 +22,10 @@ const crypto = require('crypto')
 const Holesail = require('holesail')
 
 const TARGET_HOST = process.env.SHARE_TARGET_HOST || 'frontend'
-const TARGET_PORT = Number(process.env.SHARE_TARGET_PORT || 8080)
+// Default matches the frontend's TUNNEL LISTENER (8090), not the dashboard
+// port: which socket tunnel traffic lands on is the share-origin security
+// model, so the safe default must be the tunnel side.
+const TARGET_PORT = Number(process.env.SHARE_TARGET_PORT || 8090)
 const CONTROL_PORT = Number(process.env.SHARE_CONTROL_PORT || 9000)
 // Holesail publishes its target host/port to the DHT, and the CLIENT uses that
 // host as its own LOCAL bind address (holesail-client reads dhtData.host). So
@@ -34,6 +37,10 @@ const KEY_FILE = process.env.SHARE_KEY_FILE || '/data/share.key'
 // Must stay under the frontend proxy's 30s client timeout so failures
 // surface as this wrapper's JSON body, not a bare proxy 502.
 const READY_TIMEOUT_MS = 25000
+// Liveness probe cadence + per-probe timeout; two consecutive failures flip
+// state to error so a transient DHT hiccup doesn't flap the status.
+const PROBE_INTERVAL_MS = Number(process.env.SHARE_PROBE_INTERVAL_MS || 5 * 60 * 1000)
+const PROBE_TIMEOUT_MS = 20000
 
 // Load the persisted key, or create one. The key IS the credential:
 // the secure connection string is literally "hs://s000" + key.
@@ -56,6 +63,10 @@ const relay = net.createServer((client) => {
   upstream.on('error', () => client.destroy())
   client.pipe(upstream)
   upstream.pipe(client)
+})
+relay.on('error', (err) => {
+  console.error(`relay listener failed on :${RELAY_PORT}: ${err.message}`)
+  process.exit(1)
 })
 relay.listen(RELAY_PORT, '127.0.0.1')
 
@@ -118,6 +129,42 @@ async function stopTunnel() {
   lastError = null
 }
 
+// Liveness watchdog: Holesail exposes no lifecycle events, so while public we
+// periodically dial our own key as a client (a real end-to-end DHT probe).
+// Two consecutive failures flip state to error so status() stops advertising
+// a dead hs:// URL.
+let probeFailures = 0
+
+async function probeTunnel() {
+  if (state !== 'public') {
+    probeFailures = 0
+    return
+  }
+  let probe = null
+  try {
+    probe = new Holesail({ client: true, secure: true, key })
+    await withTimeout(probe.ready(), PROBE_TIMEOUT_MS, 'tunnel probe timed out')
+    probeFailures = 0
+  } catch (err) {
+    probeFailures++
+    console.error(`tunnel probe failed (${probeFailures}): ${err.message || err}`)
+    if (probeFailures >= 2 && state === 'public') {
+      state = 'error'
+      lastError = 'tunnel unreachable: ' + (err.message || String(err))
+      await closeInstance()
+      probeFailures = 0
+    }
+  } finally {
+    if (probe) {
+      try { await probe.close() } catch {}
+    }
+  }
+}
+
+setInterval(() => {
+  op = op.then(probeTunnel).catch(() => {})
+}, PROBE_INTERVAL_MS).unref()
+
 async function regenerate() {
   const wasPublic = state === 'public'
   await closeInstance()
@@ -163,11 +210,17 @@ const server = http.createServer((req, res) => {
   }
 })
 
+server.on('error', (err) => {
+  console.error(`control API listener failed on :${CONTROL_PORT}: ${err.message}`)
+  process.exit(1)
+})
 server.listen(CONTROL_PORT, () => {
   console.log(`share control API on :${CONTROL_PORT} -> ${TARGET_HOST}:${TARGET_PORT} (${state})`)
 })
 
 async function shutdown() {
+  relay.close()
+  server.close()
   await closeInstance()
   process.exit(0)
 }
