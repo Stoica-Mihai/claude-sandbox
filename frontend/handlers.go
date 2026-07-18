@@ -29,7 +29,6 @@ type Server struct {
 	templates    *template.Template
 	backendURL   string
 	holesailURL  string
-	guard        *tunnelGuard
 	client       *http.Client
 	backendProxy http.Handler // verbatim reverse proxy for passthrough /api routes
 }
@@ -73,7 +72,6 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		templates:   tmpl,
 		backendURL:  backendURL,
 		holesailURL: holesailURL,
-		guard:       newTunnelGuard(holesailURL),
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -436,7 +434,7 @@ func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 // controls; the read-only status GET is always allowed, so a client browsing
 // over the tunnel still sees the (necessarily public) sharing state.
 func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && s.guard.isTunnelRequest(r) {
+	if r.Method != http.MethodGet && isTunnelRequest(r) {
 		// Same {state,url,error} shape the sidecar returns, so share.js's
 		// renderShare surfaces the message instead of dropping it.
 		w.Header().Set("Content-Type", "application/json")

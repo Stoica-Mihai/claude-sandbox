@@ -87,6 +87,7 @@ services:
 
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - TUNNEL_PORT=${TUNNEL_PORT:-8090}
       - BACKEND_URL=http://backend:${BACKEND_PORT:-8081}
       - HOLESAIL_URL=http://holesail:${SHARE_CONTROL_PORT:-9000}
       - ALLOWED_WS_ORIGINS=${ALLOWED_WS_ORIGINS:-}
@@ -123,7 +124,9 @@ services:
 
     environment:
       - SHARE_TARGET_HOST=frontend
-      - SHARE_TARGET_PORT=${DASHBOARD_PORT:-8080}
+      # Tunnel traffic targets the frontend's dedicated tunnel listener, so the
+      # frontend can tell tunnel visitors from LAN users by socket, not by IP.
+      - SHARE_TARGET_PORT=${TUNNEL_PORT:-8090}
       - SHARE_CONTROL_PORT=${SHARE_CONTROL_PORT:-9000}
 
     volumes:

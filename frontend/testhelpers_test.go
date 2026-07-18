@@ -19,12 +19,11 @@ func newUpstream(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 
 // newTestServer builds a bare Server pointed at backendURL for handler-level
 // tests (share routes). The client has a short timeout so the unreachable case
-// fails fast; the guard's resolver never succeeds, so share routes stay
-// permissive (guard behavior is covered in shareguard_test.go).
+// fails fast. Requests built with httptest are not tunnel-stamped, so share
+// routes stay permissive (guard behavior is covered in shareguard_test.go).
 func newTestServer(backendURL string) *Server {
 	return &Server{
 		backendURL: backendURL,
-		guard:      newFailingGuard(),
 		client:     &http.Client{Timeout: 2 * time.Second},
 	}
 }

@@ -58,6 +58,24 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Tunnel listener: the holesail sidecar relays share-tunnel traffic here,
+	// so tunnel origin is a property of the socket (see shareguard.go). Not
+	// published to the host; reachable only on the compose network.
+	tunnelAddr := ":8090"
+	if envPort := os.Getenv("TUNNEL_PORT"); envPort != "" {
+		port := strings.TrimLeft(envPort, ":")
+		if _, err := strconv.Atoi(port); err == nil {
+			tunnelAddr = ":" + port
+		} else {
+			slog.Warn("ignoring invalid TUNNEL_PORT", "value", envPort)
+		}
+	}
+	tunnelServer := &http.Server{
+		Addr:              tunnelAddr,
+		Handler:           markTunnel(mux),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
 	// Graceful shutdown on SIGTERM/SIGINT.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -69,8 +87,18 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		if err := tunnelServer.Shutdown(ctx); err != nil {
+			slog.Error("tunnel server shutdown error", "error", err)
+		}
 		if err := httpServer.Shutdown(ctx); err != nil {
 			slog.Error("http server shutdown error", "error", err)
+		}
+	}()
+
+	go func() {
+		slog.Info("tunnel listener up", "addr", tunnelAddr)
+		if err := tunnelServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("tunnel server error", "error", err)
 		}
 	}()
 

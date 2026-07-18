@@ -74,7 +74,7 @@ func TestHandleShareProxyUpstreamUnreachable(t *testing.T) {
 	s.holesailURL = "http://127.0.0.1:1" // nothing listens here
 
 	rec := httptest.NewRecorder()
-	s.handleShareProxy(rec, reqFrom("192.168.1.10:40000"))
+	s.handleShareProxy(rec, httptest.NewRequest(http.MethodGet, "/api/share/status", nil))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for unreachable sidecar, got %d", rec.Code)
