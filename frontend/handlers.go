@@ -26,20 +26,21 @@ import (
 // It renders HTML templates with data fetched from the backend API,
 // and proxies WebSocket, SSE, and healthz requests to the backend.
 type Server struct {
-	templates    *template.Template
-	backendURL   string
-	holesailURL  string
-	client       *http.Client
-	backendProxy http.Handler // verbatim reverse proxy for passthrough /api routes
+	templates     *template.Template
+	backendURL    string
+	client        *http.Client
+	backendProxy  http.Handler // verbatim reverse proxy for passthrough /api routes + SSE
+	holesailProxy http.Handler // verbatim reverse proxy for /api/share/* (guarded)
 }
 
-// newBackendProxy builds a reverse proxy that forwards verbatim to the backend,
-// with bounded dial + response-header timeouts so a hung backend can't wedge a
-// request goroutine.
-func newBackendProxy(backendURL string) (http.Handler, error) {
-	target, err := url.Parse(backendURL)
+// newReverseProxy builds a reverse proxy that forwards verbatim to the target,
+// with bounded dial + response-header timeouts so a hung upstream can't wedge a
+// request goroutine. SSE responses (text/event-stream) flush immediately —
+// httputil.ReverseProxy detects the content type itself.
+func newReverseProxy(targetURL string) (http.Handler, error) {
+	target, err := url.Parse(targetURL)
 	if err != nil {
-		return nil, fmt.Errorf("parsing backend URL: %w", err)
+		return nil, fmt.Errorf("parsing proxy target URL: %w", err)
 	}
 	rp := httputil.NewSingleHostReverseProxy(target)
 	rp.Transport = &http.Transport{
@@ -63,19 +64,23 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		return nil, fmt.Errorf("creating static sub-FS: %w", err)
 	}
 
-	backendProxy, err := newBackendProxy(backendURL)
+	backendProxy, err := newReverseProxy(backendURL)
+	if err != nil {
+		return nil, err
+	}
+	holesailProxy, err := newReverseProxy(holesailURL)
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		templates:   tmpl,
-		backendURL:  backendURL,
-		holesailURL: holesailURL,
+		templates:  tmpl,
+		backendURL: backendURL,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		backendProxy: backendProxy,
+		backendProxy:  backendProxy,
+		holesailProxy: holesailProxy,
 	}
 
 	// Transform routes: translate the request or render HTML — not verbatim
@@ -89,14 +94,14 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	mux.HandleFunc("PUT "+api.RouteSessionName, s.handleSetSessionName)
 	mux.HandleFunc("GET "+api.RouteDirectories, s.handleDirectories)
 
-	// Share-tunnel routes proxied to the holesail sidecar (guarded).
-	mux.HandleFunc("GET /api/share/status", s.handleShareProxy)
-	mux.HandleFunc("POST /api/share/start", s.handleShareProxy)
-	mux.HandleFunc("POST /api/share/stop", s.handleShareProxy)
-	mux.HandleFunc("POST /api/share/regenerate", s.handleShareProxy)
+	// Share-tunnel routes proxied to the holesail sidecar (guarded). Registered
+	// method-blind on the whole prefix so no method/path variant can fall
+	// through to the /api/ backend catch-all; the sidecar 404s unknown routes.
+	mux.HandleFunc("/api/share/", s.handleShareProxy)
 
-	// Streaming proxy routes.
-	mux.HandleFunc("GET "+api.RouteEvents, s.handleSSEProxy)
+	// Streaming proxy routes. SSE goes through the reverse proxy, which
+	// auto-flushes text/event-stream responses.
+	mux.Handle("GET "+api.RouteEvents, s.backendProxy)
 	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocketProxy)
 
 	// Catch-all: every other /api/ path (settings, ui-prefs, session history,
@@ -418,11 +423,6 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 
 // --- Streaming and share proxy routes ---
 
-// handleSSEProxy proxies the SSE event stream from the backend.
-func (s *Server) handleSSEProxy(w http.ResponseWriter, r *http.Request) {
-	sseProxy(w, r, s.backendURL)
-}
-
 // handleWebSocketProxy proxies a WebSocket connection to the backend.
 func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 	wsProxy(w, r, s.backendURL)
@@ -442,7 +442,7 @@ func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"state":"error","url":null,"error":"Share controls are not available over the tunnel."}`)
 		return
 	}
-	httpProxy(w, r, s.holesailURL)
+	s.holesailProxy.ServeHTTP(w, r)
 }
 
 // --- Helpers ---

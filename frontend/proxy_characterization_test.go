@@ -371,6 +371,35 @@ func TestShareStatusRoutesToHolesail(t *testing.T) {
 	}
 }
 
+// TestShareUnknownMethodStaysOnHolesail locks the method-blind share prefix:
+// a method the share API doesn't define (PUT) must still route to the sidecar
+// (which 404s), never fall through to the backend catch-all.
+func TestShareUnknownMethodStaysOnHolesail(t *testing.T) {
+	backendHit := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendHit = true
+	}))
+	defer backend.Close()
+	holesailStatus := 0
+	holesail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		holesailStatus = http.StatusNotFound
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer holesail.Close()
+
+	mux := newMuxServer(t, backend.URL, holesail.URL)
+	req := httptest.NewRequest("PUT", "/api/share/status", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if backendHit {
+		t.Error("PUT /api/share/status reached the backend; must stay on the share proxy")
+	}
+	if holesailStatus != http.StatusNotFound || rec.Code != http.StatusNotFound {
+		t.Errorf("expected sidecar 404 passthrough, got %d (sidecar saw %d)", rec.Code, holesailStatus)
+	}
+}
+
 // TestSSEProxyForwardsEventStream locks that /events streams from the backend
 // with the event-stream content type.
 func TestSSEProxyForwardsEventStream(t *testing.T) {

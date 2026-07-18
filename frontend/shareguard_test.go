@@ -36,7 +36,7 @@ func TestHandleShareProxyBlocksTunnelMutation(t *testing.T) {
 	})
 
 	s := newTestServer(upstream.URL)
-	s.holesailURL = upstream.URL
+	setHolesail(t, s, upstream.URL)
 
 	rec := httptest.NewRecorder()
 	s.handleShareProxy(rec, tunnelRequest(http.MethodPost, "/api/share/start"))
@@ -60,7 +60,7 @@ func TestHandleShareProxyAllowsDirectMutation(t *testing.T) {
 	})
 
 	s := newTestServer(upstream.URL)
-	s.holesailURL = upstream.URL
+	setHolesail(t, s, upstream.URL)
 
 	rec := httptest.NewRecorder()
 	s.handleShareProxy(rec, httptest.NewRequest(http.MethodPost, "/api/share/start", nil))
@@ -85,7 +85,7 @@ func TestHandleShareProxyAllowsTunnelStatus(t *testing.T) {
 	})
 
 	s := newTestServer(upstream.URL)
-	s.holesailURL = upstream.URL
+	setHolesail(t, s, upstream.URL)
 
 	rec := httptest.NewRecorder()
 	s.handleShareProxy(rec, tunnelRequest(http.MethodGet, "/api/share/status"))

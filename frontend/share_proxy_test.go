@@ -21,7 +21,7 @@ func TestHandleShareProxyForwardsRequest(t *testing.T) {
 	})
 
 	s := newTestServer("http://unused-backend")
-	s.holesailURL = upstream.URL
+	setHolesail(t, s, upstream.URL)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/share/start", nil)
 	req.RemoteAddr = "192.168.1.10:40000"
@@ -52,7 +52,7 @@ func TestHandleShareProxyPassesUpstreamError(t *testing.T) {
 	})
 
 	s := newTestServer("http://unused-backend")
-	s.holesailURL = upstream.URL
+	setHolesail(t, s, upstream.URL)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/share/start", nil)
 	req.RemoteAddr = "192.168.1.10:40000"
@@ -71,7 +71,7 @@ func TestHandleShareProxyPassesUpstreamError(t *testing.T) {
 // yields a 502 rather than a hang or panic.
 func TestHandleShareProxyUpstreamUnreachable(t *testing.T) {
 	s := newTestServer("http://unused-backend")
-	s.holesailURL = "http://127.0.0.1:1" // nothing listens here
+	setHolesail(t, s, "http://127.0.0.1:1") // nothing listens here
 
 	rec := httptest.NewRecorder()
 	s.handleShareProxy(rec, httptest.NewRequest(http.MethodGet, "/api/share/status", nil))
