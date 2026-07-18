@@ -18,7 +18,6 @@ function copyFallback(text) {
 
 // ANSI escape codes for terminal status messages
 const ANSI_RED = '\x1b[31m';
-const ANSI_GREEN = '\x1b[32m';
 const ANSI_GRAY = '\x1b[90m';
 const ANSI_RESET = '\x1b[0m';
 
@@ -336,7 +335,13 @@ const TerminalManager = {
             ws.onopen = () => {
                 if (retryCount > 0) {
                     retryCount = 0;
-                    term.write(`\r\n${ANSI_GREEN}[Reconnected]${ANSI_RESET}`);
+                    // The server replays its full ring buffer on every (re)attach.
+                    // Our buffer still holds the pre-disconnect scrollback, so
+                    // without a reset the replay appends a second copy — the
+                    // duplication seen on mobile, where the socket drops often.
+                    // Reset so the replay resyncs us to the server's current
+                    // buffer instead of doubling it.
+                    term.reset();
                 }
                 // Send initial resize
                 const resizeMsg = JSON.stringify({
