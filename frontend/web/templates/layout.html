@@ -47,20 +47,6 @@
                 <span id="session-badge-text">{{len .Sessions}} session{{if ne (len .Sessions) 1}}s{{end}}</span>
             </div>
 
-            <div class="accpick" id="accpick">
-                <button class="acctrig" id="acctrig" title="Accent" aria-label="Accent color"
-                        aria-haspopup="true" aria-expanded="false" aria-controls="accpop"
-                        onclick="toggleAccentPicker()"></button>
-                <div class="accpop" id="accpop"></div>
-            </div>
-
-            <span class="share-wrap">
-                <button class="iconbtn share-btn" id="shareBtn" title="Share" aria-label="Remote access" onclick="openShareModal()">
-                    <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9S14.5 18.4 12 21M12 3C9.5 5.6 8.1 8.7 8.1 12s1.4 6.4 3.9 9"/></svg>
-                </button>
-                <i class="live-dot hidden" id="shareDot"></i>
-            </span>
-
             <button class="iconbtn settings-btn" title="Settings" aria-label="Settings" onclick="openSettingsModal()">
                 <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
@@ -193,127 +179,138 @@
 <!-- ===== SETTINGS MODAL ===== -->
 <dialog id="settingsModal">
     {{template "modalBackdrop"}}
-    <div class="modal">
+    <div class="modal modal--settings">
         <div class="mhead">
-            <div class="kick">Container Settings</div>
+            <div class="kick">Dashboard</div>
             <h2>SETTINGS.</h2>
         </div>
-        <div class="mbody">
-            <div class="note">Applies to <b>new sessions</b> — running sessions keep their current config.</div>
+        <div class="settings-body">
+            <nav class="settings-nav" role="tablist" aria-label="Settings categories">
+                <button type="button" class="snav active" data-cat="session" role="tab" aria-selected="true"
+                        onclick="settingsSelectCategory('session')">Session</button>
+                <button type="button" class="snav" data-cat="appearance" role="tab" aria-selected="false"
+                        onclick="settingsSelectCategory('appearance')">Appearance</button>
+                <button type="button" class="snav" data-cat="sharing" role="tab" aria-selected="false"
+                        onclick="settingsSelectCategory('sharing')">Sharing</button>
+            </nav>
 
-            <div>
-                <label id="lblModel">Model</label>
-                <div class="sel" data-field="model">
-                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
-                         aria-controls="selListModel" aria-labelledby="lblModel"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list" id="selListModel" role="listbox">
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus[1m]</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">sonnet</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">haiku</div>
+            <div class="settings-panels">
+                <!-- Session -->
+                <section class="settings-panel active" data-cat="session" role="tabpanel">
+                    <div class="note">Applies to <b>new sessions</b> — running sessions keep their current config.</div>
+
+                    <div>
+                        <label id="lblModel">Model</label>
+                        <div class="sel" data-field="model">
+                            <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                                 aria-controls="selListModel" aria-labelledby="lblModel"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                            <div class="sel-list" id="selListModel" role="listbox">
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus[1m]</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">sonnet</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">haiku</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            <div>
-                <label id="lblAdvisor">Advisor model</label>
-                <div class="sel" data-field="advisorModel">
-                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
-                         aria-controls="selListAdvisor" aria-labelledby="lblAdvisor"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list" id="selListAdvisor" role="listbox">
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="" onclick="settingsPick(this)">(none)</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-fable-5" onclick="settingsPick(this)">Fable 5</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-sonnet-5" onclick="settingsPick(this)">Sonnet 5</div>
+                    <div>
+                        <label id="lblAdvisor">Advisor model</label>
+                        <div class="sel" data-field="advisorModel">
+                            <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                                 aria-controls="selListAdvisor" aria-labelledby="lblAdvisor"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                            <div class="sel-list" id="selListAdvisor" role="listbox">
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="" onclick="settingsPick(this)">(none)</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-fable-5" onclick="settingsPick(this)">Fable 5</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-sonnet-5" onclick="settingsPick(this)">Sonnet 5</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            <div>
-                <label id="lblEffort">Effort level</label>
-                <div class="sel" data-field="effortLevel">
-                    <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
-                         aria-controls="selListEffort" aria-labelledby="lblEffort"><span class="sel-cur">—</span><i class="caret">›</i></div>
-                    <div class="sel-list" id="selListEffort" role="listbox">
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">low</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">medium</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">high</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">xhigh</div>
-                        <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">max</div>
+                    <div>
+                        <label id="lblEffort">Effort level</label>
+                        <div class="sel" data-field="effortLevel">
+                            <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
+                                 aria-controls="selListEffort" aria-labelledby="lblEffort"><span class="sel-cur">—</span><i class="caret">›</i></div>
+                            <div class="sel-list" id="selListEffort" role="listbox">
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">low</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">medium</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">high</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">xhigh</div>
+                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">max</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            <div>
-                <label>Language</label>
-                <input id="settings-language" autocomplete="off" />
-            </div>
+                    <div>
+                        <label>Language</label>
+                        <input id="settings-language" autocomplete="off" />
+                    </div>
 
-            <div class="set-row">
-                <label>Always thinking</label>
-                <button type="button" class="toggle" id="settings-thinking" onclick="toggleThinking(this)"
-                        role="switch" aria-checked="false" aria-label="Always thinking"><i></i></button>
+                    <div class="set-row">
+                        <label>Always thinking</label>
+                        <button type="button" class="toggle" id="settings-thinking" onclick="toggleThinking(this)"
+                                role="switch" aria-checked="false" aria-label="Always thinking"><i></i></button>
+                    </div>
+                </section>
+
+                <!-- Appearance -->
+                <section class="settings-panel" data-cat="appearance" role="tabpanel" hidden>
+                    <div>
+                        <label id="lblAccent">Accent color</label>
+                        <div class="acc-row" id="accpop" role="group" aria-labelledby="lblAccent"></div>
+                    </div>
+                    <p class="set-desc">The accent carries links, buttons, and highlights. Saved to this browser.</p>
+                </section>
+
+                <!-- Sharing -->
+                <section class="settings-panel" data-cat="sharing" role="tabpanel" hidden>
+                    <div class="share-status" id="shareStatus"><span>Status:</span><b class="st">PRIVATE</b></div>
+
+                    <div id="statePrivate">
+                        <div class="note"><b>The connection string is the only credential.</b> Anyone who
+                            has it gets full dashboard access — terminals included. Treat it like a
+                            password; regenerate it immediately if it leaks.</div>
+                    </div>
+
+                    <div id="statePublishing" class="hidden">
+                        <div class="pub-wait">
+                            <div class="skel"></div>
+                            <span class="msg" role="status" aria-live="polite">Announcing on the DHT&hellip;</span>
+                        </div>
+                    </div>
+
+                    <div id="statePublic" class="hidden">
+                        <div class="share-center">
+                            <div class="qr-frame"><canvas id="qrCanvas" width="232" height="232" aria-label="Connection QR code"></canvas></div>
+                            <div class="qr-caption">Scan with the Holesail Go app</div>
+                        </div>
+                        <div class="str-row">
+                            <span class="weld">
+                                <code id="connStr">hs://s000&hellip;</code>
+                                <button class="btn btn-square btn-ink" id="copyBtn" onclick="copyShareString()"><span class="lbl">COPY</span></button>
+                            </span>
+                            <button class="btn btn-square btn-ghost" id="regenBtn" onclick="regenerateShareKey()" title="Regenerate key — the old string stops working immediately" aria-label="Regenerate key">
+                                <span><svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="share-actions">
+                        <span class="hint" id="shareHint">Tunnel may take a few seconds to become reachable</span>
+                        <div class="grp">
+                            <button class="btn btn-primary" id="goPublicBtn" onclick="goPublic()"><span>GO PUBLIC</span></button>
+                            <button class="btn btn-ink hidden" id="goPrivateBtn" onclick="goPrivate()"><span>GO PRIVATE</span></button>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
         <div class="mfoot">
             <span class="hint" id="settings-hint">Applies to new sessions</span>
             <div class="grp">
-                {{template "modalCancel"}}
-                <button id="settings-save" class="btn btn-primary" onclick="saveSettings()"><span>SAVE</span></button>
-            </div>
-        </div>
-    </div>
-</dialog>
-
-<!-- ===== SHARE MODAL ===== -->
-<dialog id="shareModal">
-    {{template "modalBackdrop"}}
-    <div class="modal modal--narrow">
-        <div class="mhead">
-            <div class="kick">Remote Access</div>
-            <h2>SHARE.</h2>
-            <p>Expose this dashboard over an encrypted peer-to-peer Holesail tunnel.</p>
-        </div>
-
-        <div class="mbody">
-            <div class="share-status" id="shareStatus"><span>Status:</span><b class="st">PRIVATE</b></div>
-
-            <div id="statePrivate">
-                <div class="note"><b>The connection string is the only credential.</b> Anyone who
-                    has it gets full dashboard access — terminals included. Treat it like a
-                    password; regenerate it immediately if it leaks.</div>
-            </div>
-
-            <div id="statePublishing" class="hidden">
-                <div class="pub-wait">
-                    <div class="skel"></div>
-                    <span class="msg" role="status" aria-live="polite">Announcing on the DHT&hellip;</span>
-                </div>
-            </div>
-
-            <div id="statePublic" class="hidden">
-                <div class="share-center">
-                    <div class="qr-frame"><canvas id="qrCanvas" width="232" height="232" aria-label="Connection QR code"></canvas></div>
-                    <div class="qr-caption">Scan with the Holesail Go app</div>
-                </div>
-                <div class="str-row">
-                    <span class="weld">
-                        <code id="connStr">hs://s000&hellip;</code>
-                        <button class="btn btn-square btn-ink" id="copyBtn" onclick="copyShareString()"><span class="lbl">COPY</span></button>
-                    </span>
-                    <button class="btn btn-square btn-ghost" id="regenBtn" onclick="regenerateShareKey()" title="Regenerate key — the old string stops working immediately" aria-label="Regenerate key">
-                        <span><svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="mfoot">
-            <span class="hint" id="shareHint">Tunnel may take a few seconds to become reachable</span>
-            <div class="grp">
                 <form method="dialog"><button class="btn btn-ghost" autofocus><span>CLOSE</span></button></form>
-                <button class="btn btn-primary" id="goPublicBtn" onclick="goPublic()"><span>GO PUBLIC</span></button>
-                <button class="btn btn-ink hidden" id="goPrivateBtn" onclick="goPrivate()"><span>GO PRIVATE</span></button>
+                <button id="settings-save" class="btn btn-primary" onclick="saveSettings()"><span>SAVE</span></button>
             </div>
         </div>
     </div>

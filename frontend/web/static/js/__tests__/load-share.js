@@ -12,10 +12,9 @@ const SHARE_PATH = path.join(__dirname, '..', 'share.js');
 function loadShare({ fetchResponses = [] } = {}) {
     const document = new FakeDocument();
 
-    // Header globe + modal elements share.js addresses by id.
-    const ids = ['shareModal', 'shareBtn', 'shareDot', 'statePrivate',
-        'statePublishing', 'statePublic', 'connStr', 'regenBtn',
-        'goPublicBtn', 'goPrivateBtn', 'shareHint'];
+    // Sharing-panel elements share.js addresses by id.
+    const ids = ['statePrivate', 'statePublishing', 'statePublic', 'connStr',
+        'regenBtn', 'goPublicBtn', 'goPrivateBtn', 'shareHint'];
     ids.forEach(id => document.register(id, new FakeElement('div')));
 
     const shareStatus = new FakeElement('div');

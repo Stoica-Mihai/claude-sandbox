@@ -37,16 +37,16 @@ function fdOnAccent(col) {
 var savedAccent = localStorage.getItem('accent') || 'Red';
 var curAccent = ACCENTS.find(function(a) { return a.name === savedAccent; }) || ACCENTS[0];
 
+// Renders the accent swatches inline into the Appearance settings panel.
 function renderAccents() {
     var dark = currentBaseIsDark();
-    var pop = document.getElementById('accpop');
-    var trig = document.getElementById('acctrig');
-    if (trig) trig.style.background = dark ? curAccent.dark : curAccent.light;
-    if (!pop) return;
-    pop.innerHTML = '';
+    var row = document.getElementById('accpop');
+    if (!row) return;
+    row.innerHTML = '';
     ACCENTS.forEach(function(a) {
         var s = document.createElement('button');
         var selected = a.name === curAccent.name;
+        s.type = 'button';
         s.className = 'acc' + (selected ? ' on' : '');
         s.style.background = dark ? a.dark : a.light;
         s.title = a.name;
@@ -55,50 +55,9 @@ function renderAccents() {
         s.onclick = function() {
             curAccent = a;
             applyAccent();
-            closeAccentPicker();
         };
-        pop.appendChild(s);
+        row.appendChild(s);
     });
-    syncSwatchFocus();
-}
-
-// Swatches default to real <button>s (natively tabbable), so without this
-// they'd stay in Tab order even while the popover is closed/invisible
-// (transform:scaleY(0) blocks pointer/visual access but not keyboard focus).
-// Pull them out of the tab order when closed, same as .sel-opt's tabindex=-1.
-// Ported from the kit's fdAccent(); our setAccentPickerOpen() is the single
-// funnel every open/close path already goes through (toggle, outside-click,
-// Escape), so — unlike the kit's version — no MutationObserver is needed to
-// catch a bypass path; there isn't one.
-function syncSwatchFocus() {
-    var pick = document.getElementById('accpick');
-    var pop = document.getElementById('accpop');
-    if (!pick || !pop) return;
-    var open = pick.classList.contains('open');
-    Array.prototype.slice.call(pop.querySelectorAll('.acc')).forEach(function(s) {
-        s.tabIndex = open ? 0 : -1;
-    });
-}
-
-// Open/close the accent popover, keeping aria-expanded in sync (mirrors the
-// kit's fdSelOpen contract for .sel, ported since futurism.js isn't vendored).
-function toggleAccentPicker() {
-    var pick = document.getElementById('accpick');
-    if (!pick) return;
-    setAccentPickerOpen(!pick.classList.contains('open'));
-}
-function setAccentPickerOpen(open) {
-    var pick = document.getElementById('accpick');
-    var trig = document.getElementById('acctrig');
-    if (!pick) return;
-    pick.classList.toggle('open', open);
-    if (trig) trig.setAttribute('aria-expanded', open ? 'true' : 'false');
-    syncSwatchFocus();
-}
-function closeAccentPicker() {
-    setAccentPickerOpen(false);
-    var trig = document.getElementById('acctrig');
-    if (trig) trig.focus();
 }
 
 function applyAccent() {
@@ -143,19 +102,6 @@ function flipTheme() {
         TerminalManager.rethemeAll();
     }
 }
-
-document.addEventListener('click', function(e) {
-    var p = document.getElementById('accpick');
-    if (p && !p.contains(e.target)) setAccentPickerOpen(false);
-});
-
-// Escape closes the accent popover and returns focus to its trigger — ported
-// from the kit's global keydown delegate (futurism.js), scoped to .accpick.open.
-document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Escape') return;
-    var p = document.getElementById('accpick');
-    if (p && p.classList.contains('open')) closeAccentPicker();
-});
 
 // A pressed .btn depresses (kit :active drops translate + shrinks the offset
 // shadow), which slides it out from under a press begun on the hovered top

@@ -38,10 +38,9 @@
    exactly what D8 hand-rolled — the override was redundant and removed. */
 /* D9: .only-desktop/.only-mobile — responsive show/hide utilities the kit lacks,
    toggled at the 768px breakpoint (welcome hints). See the .only-desktop rule below. */
-/* D10: header controls (.accpick/.acctrig/.settings-btn) — flex the .accpick wrapper
-   so the accent swatch loses its inline-block baseline gap and lines up with the
-   settings button, and size both controls from one rule so their 30/40px breakpoints
-   can't drift. Kit sizes .acctrig on its own. See the '.hdr .right' block. */
+/* D10 retired: the accent picker moved out of the header into the Appearance
+   settings panel (see .acc-row / .settings-* below), so the .accpick wrapper
+   alignment override is gone. */
 /* D11: #pullIndicator — pull-to-refresh; built independently from kit idioms
    (fd-march/.skel barber-pole, --on-accent label, forced-colors fallback,
    role=status/aria-live) before the kit shipped its own fdPull() (0.6.17+).
@@ -87,6 +86,11 @@
    #efe9dc) in BOTH themes instead of tokens: a machine-readable artifact never
    themes (scanners want dark-on-light on carbon too), per the kit's
    machine-readable-artifacts rule. The 2px frame border stays tokenized. */
+/* D17: body.sharing-public .hdr .mark — ambient "tunnel is public" cue as an
+   accent glow pulse on the logo mark, instead of a dedicated header glyph.
+   Same-hue accent (law 4 holds); reduced-motion drops to a static glow. The
+   glow is app-level state signalling the kit has no component for. See the
+   'body.sharing-public' rule below. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -103,11 +107,6 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .hdr .title em{color:var(--accent);font-style:italic}
 .hdr .sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-left:6px}
 .hdr .right{display:flex;align-items:center;gap:16px}
-/* D10: .acctrig is an inline-block button inside .accpick (block) — the inline
-   baseline leaves a descender gap below it, pushing the swatch's center above
-   the row and out of line with the flex-centered settings button. Flex the
-   wrapper so the swatch is flush and both align. */
-.accpick{display:flex;align-items:center}
 .statpill{display:flex;align-items:center;gap:7px;border:2px solid var(--line);padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
 .statpill .dot{width:8px;height:8px;background:var(--accent);animation:var(--blink)}
 
@@ -283,11 +282,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
    flash grow chunky; centering a fixed height keeps them one compact size. */
 
 /* ===== Settings modal: button + note ===== */
-/* Size the accent trigger and settings button from one rule so they stay
-   identical (the kit sizes .acctrig on its own; pinning both here prevents the
-   two from drifting and misaligning). 30px desktop, 40px touch. */
-.acctrig,.settings-btn,.share-btn{width:30px;height:30px;flex:none}
-@media (max-width:640px){.acctrig,.settings-btn,.share-btn{width:40px;height:40px}}
+.settings-btn{width:30px;height:30px;flex:none}
+@media (max-width:640px){.settings-btn{width:40px;height:40px}}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
 
 /* ===== Grain overlay ===== */
@@ -419,18 +415,27 @@ input.err-flash{outline:3px solid var(--accent)}
   .acc{width:34px;height:34px}
 }
 
-/* ===== Share tunnel (globe + SHARE modal) ===== */
+/* ===== Categorized settings modal ===== */
+.modal--settings{width:600px;max-width:calc(100vw - 24px)}
+.settings-body{display:flex;gap:0;min-height:340px}
+/* Left category rail. */
+.settings-nav{display:flex;flex-direction:column;gap:2px;padding:16px 12px;
+  border-right:3px solid var(--line);flex:none;width:132px}
+.snav{text-align:left;padding:8px 12px;font-weight:700;font-size:13px;color:var(--muted);
+  background:transparent;border:2px solid transparent;cursor:pointer}
+.snav:hover{color:var(--ink)}
+/* ink = selected, matching the kit's .seg/.tab/.switch convention. */
+.snav.active{background:var(--ink);color:var(--bg)}
+.snav:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.settings-panels{flex:1;min-width:0;padding:16px 18px}
+.settings-panel{display:flex;flex-direction:column;gap:16px}
+.settings-panel[hidden]{display:none}
+.set-desc{font-size:11px;color:var(--muted);line-height:1.5}
 
-/* Globe when the tunnel is live: accent + blinking corner dot. */
-.iconbtn.share-on{color:var(--accent)}
-.share-wrap{position:relative;display:inline-flex}
-.share-wrap .live-dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;
-  background:var(--accent);border:2px solid var(--surf);
-  animation:fd-blink 1.2s steps(1) infinite}
-@media (prefers-reduced-motion:reduce){
-  .share-wrap .live-dot{animation:none;outline:2px solid var(--accent);outline-offset:1px}
-}
+/* Accent swatch row — the header popover collapses to an inline row in the panel. */
+.acc-row{display:flex;flex-wrap:wrap;gap:8px}
 
+/* Share (Sharing panel) */
 .share-status{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.06em;
   text-transform:uppercase;color:var(--muted)}
 .share-status b{color:var(--ink);font-style:italic}
@@ -458,8 +463,28 @@ input.err-flash{outline:3px solid var(--accent)}
 .str-row .btn-square{white-space:nowrap}
 .str-row .btn-square svg{width:14px;height:14px;display:block}
 
-/* Narrow screens: the footer hint yields to the buttons. */
+/* Sharing action row (in-panel, since the shared footer's SAVE is Session-only). */
+.share-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-top:4px;padding-top:14px;border-top:2px solid var(--line)}
+.share-actions .hint{font-size:11px;color:var(--muted);font-family:var(--mono);min-width:0}
+.share-actions .hint.err{color:var(--accent)}
+
+/* D17: ambient "you're broadcasting" cue — when the tunnel is public the logo
+   mark gains an accent glow (a soft pulse) instead of a dedicated header glyph.
+   Same-hue accent, so law 4 holds; reduced-motion drops the pulse to a static
+   glow. The kit's mark keeps its 3px ink offset shadow underneath. */
+body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
+@keyframes mark-broadcast{
+  0%,100%{box-shadow:3px 3px 0 var(--ink),0 0 0 1px var(--accent)}
+  50%{box-shadow:3px 3px 0 var(--ink),0 0 14px 2px var(--accent)}
+}
+@media (prefers-reduced-motion:reduce){
+  body.sharing-public .hdr .mark{animation:none;box-shadow:3px 3px 0 var(--ink),0 0 10px 1px var(--accent)}
+}
+
+/* Narrow screens: the share action row stacks. */
 @media (max-width:640px){
-  #shareModal .mfoot{flex-wrap:wrap}
-  #shareModal .mfoot .hint{display:none}
+  .settings-body{flex-direction:column;min-height:0}
+  .settings-nav{flex-direction:row;width:auto;border-right:0;border-bottom:3px solid var(--line);overflow-x:auto}
+  .share-actions{flex-wrap:wrap}
 }

@@ -17,27 +17,23 @@ test('script load fetches status once and renders private', async () => {
     assert.equal(doc.getElementById('statePrivate').classList.contains('hidden'), false);
     assert.equal(doc.getElementById('statePublic').classList.contains('hidden'), true);
     assert.equal(doc.getElementById('goPublicBtn').classList.contains('hidden'), false);
-    assert.equal(doc.getElementById('shareDot').classList.contains('hidden'), true);
+    assert.equal(doc.body.classList.contains('sharing-public'), false);
 });
 
-test('page load with a live tunnel lights the globe without opening the modal', async () => {
+test('page load with a live tunnel sets the ambient public glow', async () => {
     const env = loadShare({ fetchResponses: [PUBLIC] });
     await env.settle();
 
-    const doc = env.document;
-    assert.equal(doc.getElementById('shareBtn').classList.contains('share-on'), true);
-    assert.equal(doc.getElementById('shareDot').classList.contains('hidden'), false);
-    assert.equal(doc.getElementById('shareModal')._open, undefined);
+    assert.equal(env.document.body.classList.contains('sharing-public'), true);
 });
 
-test('openShareModal shows the dialog and refetches status', async () => {
+test('refreshShareStatus re-fetches on demand (panel open)', async () => {
     const env = loadShare({ fetchResponses: [PRIVATE, PRIVATE] });
     await env.settle();
 
-    env.sandbox.openShareModal();
+    env.sandbox.refreshShareStatus();
     await env.settle();
 
-    assert.equal(env.document.getElementById('shareModal')._open, true);
     assert.equal(env.fetchCalls.length, 2);
 });
 
@@ -70,8 +66,7 @@ test('goPublic posts start, shows publishing in flight, renders public result', 
     assert.equal(doc.getElementById('statePublic').classList.contains('hidden'), false);
     assert.equal(doc.getElementById('connStr').textContent, 'hs://s000abc123');
     assert.deepEqual(env.qrCalls, ['hs://s000abc123']);
-    assert.equal(doc.getElementById('shareBtn').classList.contains('share-on'), true);
-    assert.equal(doc.getElementById('shareDot').classList.contains('hidden'), false);
+    assert.equal(doc.body.classList.contains('sharing-public'), true);
     assert.equal(doc.getElementById('goPrivateBtn').classList.contains('hidden'), false);
 });
 
@@ -85,8 +80,7 @@ test('goPrivate posts stop and returns to private', async () => {
     const doc = env.document;
     assert.deepEqual(env.fetchCalls[1], { url: '/api/share/stop', method: 'POST' });
     assert.equal(doc.getElementById('statePrivate').classList.contains('hidden'), false);
-    assert.equal(doc.getElementById('shareBtn').classList.contains('share-on'), false);
-    assert.equal(doc.getElementById('shareDot').classList.contains('hidden'), true);
+    assert.equal(doc.body.classList.contains('sharing-public'), false);
 });
 
 test('regenerate renders the new string and redraws the QR', async () => {

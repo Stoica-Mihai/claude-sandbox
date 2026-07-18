@@ -1,9 +1,11 @@
-// Share tunnel UI: globe indicator + SHARE modal, driven by /api/share/*.
-// No SSE — status is fetched on page load and after each action (the wrapper
-// answers mutations with the final state).
+// Share tunnel UI: lives in the Sharing settings panel, driven by /api/share/*.
+// No SSE — status is fetched when the panel opens and after each action (the
+// wrapper answers mutations with the final state). When public, the whole app
+// carries a `sharing-public` class so the logo mark glows (the ambient "you're
+// exposed" signal, in place of a dedicated header glyph).
 
 const SHARE_HINT = 'Tunnel may take a few seconds to become reachable';
-const SHARE_HINT_PUBLIC = 'Closing this window keeps the tunnel running';
+const SHARE_HINT_PUBLIC = 'The tunnel stays up until you go private';
 
 function shareEl(id) { return document.getElementById(id); }
 
@@ -12,8 +14,8 @@ function showShare(id, on) {
     if (el) el.classList.toggle('hidden', !on);
 }
 
-// Drives panes, footer buttons, hint, and the header globe from a status
-// object {state, url, error}.
+// Drives the sharing panel, its action buttons, and the ambient logo glow from
+// a status object {state, url, error}.
 function renderShare(st) {
     if (!st || !st.state) return;
     const pub = st.state === 'public';
@@ -27,20 +29,23 @@ function renderShare(st) {
     showShare('goPrivateBtn', pub);
 
     const status = shareEl('shareStatus');
-    status.classList.toggle('is-public', pub);
-    status.querySelector('.st').textContent = st.state.toUpperCase();
-
-    const hint = shareEl('shareHint');
-    if (st.state === 'error') {
-        hint.textContent = st.error || 'Something went wrong';
-        hint.classList.add('err');
-    } else {
-        hint.textContent = pub ? SHARE_HINT_PUBLIC : SHARE_HINT;
-        hint.classList.remove('err');
+    if (status) {
+        status.classList.toggle('is-public', pub);
+        status.querySelector('.st').textContent = st.state.toUpperCase();
     }
 
-    shareEl('shareBtn').classList.toggle('share-on', pub);
-    showShare('shareDot', pub);
+    const hint = shareEl('shareHint');
+    if (hint) {
+        if (st.state === 'error') {
+            hint.textContent = st.error || 'Something went wrong';
+            hint.classList.add('err');
+        } else {
+            hint.textContent = pub ? SHARE_HINT_PUBLIC : SHARE_HINT;
+            hint.classList.remove('err');
+        }
+    }
+
+    document.body.classList.toggle('sharing-public', pub);
 
     if (pub) {
         shareEl('connStr').textContent = st.url;
@@ -52,12 +57,7 @@ async function refreshShareStatus() {
     try {
         const res = await fetch('/api/share/status');
         if (res.ok) renderShare(await res.json());
-    } catch (e) { /* globe keeps its last state; modal actions surface errors */ }
-}
-
-function openShareModal() {
-    shareEl('shareModal').showModal();
-    refreshShareStatus();
+    } catch (e) { /* the glow keeps its last state; panel actions surface errors */ }
 }
 
 // POST a mutating action; both 200 and 502 carry the wrapper's status JSON.

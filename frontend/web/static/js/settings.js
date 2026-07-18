@@ -105,10 +105,30 @@ function getSel(field) {
     return sel ? (sel.dataset.value || '') : '';
 }
 
+// Switch the visible settings category. Only Session persists via SAVE; the
+// Appearance (accent) and Sharing (tunnel) panels act instantly, so the footer
+// SAVE button and hint are shown for Session only.
+function settingsSelectCategory(cat) {
+    document.querySelectorAll('#settingsModal .snav').forEach(b => {
+        const on = b.dataset.cat === cat;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('#settingsModal .settings-panel').forEach(p => {
+        p.hidden = p.dataset.cat !== cat;
+    });
+    const save = document.getElementById('settings-save');
+    const hint = document.getElementById('settings-hint');
+    if (save) save.classList.toggle('hidden', cat !== 'session');
+    if (hint) hint.classList.toggle('hidden', cat !== 'session');
+    if (cat === 'sharing' && typeof refreshShareStatus === 'function') refreshShareStatus();
+}
+
 async function openSettingsModal() {
     const dlg = document.getElementById('settingsModal');
     const hint = document.getElementById('settings-hint');
     if (hint) { hint.textContent = SETTINGS_HINT; hint.classList.remove('err'); }
+    settingsSelectCategory('session');
     try {
         const res = await fetch('/api/settings');
         if (res.ok) {
