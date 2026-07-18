@@ -1,5 +1,3 @@
-'use strict';
-
 // Fake timer harness shared by the sandbox loaders: queue setTimeout callbacks
 // and fire the pending ones on flush().
 function makeTimers() {
@@ -15,4 +13,4 @@ function makeTimers() {
     };
 }
 
-module.exports = { makeTimers };
+export { makeTimers };

@@ -1,13 +1,11 @@
-'use strict';
-
 // Covers the delegated-dispatch mechanism (actions.js): a single document click
 // listener resolves the nearest [data-action] ancestor and calls its handler.
 // Without this, the whole inline-onclick replacement is untested.
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { FakeDocument, FakeElement } = require('./dom-stub');
-const actions = require('../actions.js');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { FakeDocument, FakeElement } from './dom-stub.mjs';
+import * as actions from '../actions.js';
 
 function freshDoc() {
     const document = new FakeDocument();

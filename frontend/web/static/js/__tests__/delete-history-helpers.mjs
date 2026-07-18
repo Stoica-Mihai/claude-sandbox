@@ -1,5 +1,3 @@
-'use strict';
-
 // Shared setup helpers for the delete-session-history view tests
 // (delete-session-history.test.js + views.delete-history.test.js).
 
@@ -20,4 +18,4 @@ function clickTrash(act, e = clickEvent()) {
     return e;
 }
 
-module.exports = { clickEvent, clickTrash };
+export { clickEvent, clickTrash };

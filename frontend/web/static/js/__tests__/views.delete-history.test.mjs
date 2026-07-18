@@ -1,9 +1,7 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { loadViews, FakeElement } = require('./load-views');
-const { clickEvent, clickTrash } = require('./delete-history-helpers');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadViews, FakeElement } from './load-views.mjs';
+import { clickEvent, clickTrash } from './delete-history-helpers.mjs';
 
 // Covers the "delete-session-history" UI wiring in views.js — dpRenderHistory
 // (rebuilds the previous-sessions list in place and attaches a per-row delete

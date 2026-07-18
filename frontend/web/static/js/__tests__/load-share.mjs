@@ -1,13 +1,11 @@
-'use strict';
-
-// Loads the real share.js ES module (via require()), installs the share modal's
+// Loads the real share.js ES module, installs the share modal's
 // fake DOM, a scripted fetch, a recording qrcode stub, and a clipboard spy, then
 // calls share.init() (which fetches status once, like the browser boot does).
 
-const { FakeDocument, FakeElement } = require('./dom-stub');
-const { makeTimers } = require('./timers');
+import { FakeDocument, FakeElement } from './dom-stub.mjs';
+import { makeTimers } from './timers.mjs';
 
-const share = require('../share.js');
+import * as share from '../share.js';
 
 function loadShare({ fetchResponses = [] } = {}) {
     const document = new FakeDocument();
@@ -97,4 +95,4 @@ function loadShare({ fetchResponses = [] } = {}) {
     return { document, sandbox, fetchCalls, qrCalls, clipboardWrites, flushTimers: timers.flush, settle };
 }
 
-module.exports = { loadShare };
+export { loadShare };

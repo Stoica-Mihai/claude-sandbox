@@ -1,9 +1,7 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { loadViews, FakeElement } = require('./load-views');
-const { clickEvent, clickTrash } = require('./delete-history-helpers');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadViews, FakeElement } from './load-views.mjs';
+import { clickEvent, clickTrash } from './delete-history-helpers.mjs';
 
 // These tests pin the "delete-session-history" change. The resume-row delete
 // affordance uses the Futurism kit component (futurism.css): .row-host wraps the

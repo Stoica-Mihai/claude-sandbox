@@ -1,7 +1,6 @@
-'use strict';
-const { test } = require('node:test');
-const assert = require('node:assert');
-const { loadViews } = require('./load-views');
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { loadViews } from './load-views.mjs';
 
 test('default collapsed: no expanded class, backdrop hidden', () => {
   const store = {};

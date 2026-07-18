@@ -1,5 +1,3 @@
-'use strict';
-
 // Minimal DOM stub: just enough surface for views.js to load and for the
 // class/text state-toggle paths under test to be driven and asserted.
 
@@ -163,4 +161,4 @@ class FakeDocument {
     }
 }
 
-module.exports = { ClassList, FakeElement, FakeDocument, makeStyle };
+export { ClassList, FakeElement, FakeDocument, makeStyle };

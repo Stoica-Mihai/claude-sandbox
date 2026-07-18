@@ -1,8 +1,6 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { loadShare } = require('./load-share');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadShare } from './load-share.mjs';
 
 const PRIVATE = { ok: true, body: { state: 'private', url: null, error: null } };
 const PUBLIC = { ok: true, body: { state: 'public', url: 'hs://s000abc123', error: null } };

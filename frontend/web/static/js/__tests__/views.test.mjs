@@ -1,8 +1,6 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { loadViews, FakeElement } = require('./load-views');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadViews, FakeElement } from './load-views.mjs';
 
 // These tests pin the "frontend-css-single-source-cleanup" change: inline
 // style writes were replaced with class/text toggles in three state paths —

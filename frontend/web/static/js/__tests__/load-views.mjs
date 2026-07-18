@@ -1,24 +1,21 @@
-'use strict';
-
-// Loads the real ES-module view sources (via require(), which Node resolves
-// synchronously for ESM graphs without top-level await), installs fake browser
+// Loads the real ES-module view sources, installs fake browser
 // globals, and calls each module's init() so listeners wire onto a fresh
 // FakeDocument and module state resets. Tests reach exports through env.sandbox
 // (which is globalThis, so global reads like fetch/openSession see overrides).
 
-const { FakeDocument, FakeElement } = require('./dom-stub');
-const { makeTimers } = require('./timers');
+import { FakeDocument, FakeElement } from './dom-stub.mjs';
+import { makeTimers } from './timers.mjs';
 
-const uiUtils = require('../ui-utils.js');
-const terminal = require('../terminal.js');
-const actions = require('../actions.js');
-const sidebar = require('../sidebar.js');
-const tabs = require('../tabs.js');
-const mobileBar = require('../mobile-bar.js');
-const picker = require('../picker.js');
-const historyDel = require('../history-del.js');
-const rename = require('../rename.js');
-const appInit = require('../app-init.js');
+import * as uiUtils from '../ui-utils.js';
+import * as terminal from '../terminal.js';
+import * as actions from '../actions.js';
+import * as sidebar from '../sidebar.js';
+import * as tabs from '../tabs.js';
+import * as mobileBar from '../mobile-bar.js';
+import * as picker from '../picker.js';
+import * as historyDel from '../history-del.js';
+import * as rename from '../rename.js';
+import * as appInit from '../app-init.js';
 
 // Namespaces whose exports the tests reach for via env.sandbox.
 const NAMESPACES = [uiUtils, actions, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit];
@@ -80,4 +77,4 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     return { document, window, sandbox, flushTimers: timers.flush, pendingTimers: timers.pending };
 }
 
-module.exports = { loadViews, FakeElement };
+export { loadViews, FakeElement };
