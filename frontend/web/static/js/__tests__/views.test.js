@@ -225,10 +225,8 @@ test('spawn-fail restores Resume label when a resume was selected', () => {
 });
 
 test('successful spawn (2xx) closes the modal, opens the session, no fail flag', () => {
-    const env = spawnEnv();
-    let opened = null;
+    const env = loadViews({ mobile: false, ids: ['dir-picker-submit', 'newSessionModal', 'singleTerminal'] });
     let closed = false;
-    env.sandbox.openSession = (id) => { opened = id; };
     env.document.getElementById('newSessionModal').close = () => { closed = true; };
     const btn = env.document.getElementById('dir-picker-submit');
 
@@ -236,7 +234,10 @@ test('successful spawn (2xx) closes the modal, opens the session, no fail flag',
 
     assert.equal(btn.classList.contains('btn-spawn-fail'), false, 'no fail class on success');
     assert.equal(closed, true, 'new-session modal closed');
-    assert.equal(opened, 'term-ok', 'opened the spawned terminal');
+    // Effect assertion: openSession (imported from tabs) created the tab container.
+    const terminal = env.document.getElementById('singleTerminal');
+    const tab = terminal.children.find(c => c.id === 'singleTab-term-ok');
+    assert.ok(tab, 'opened the spawned terminal (tab container created)');
 });
 
 test('afterRequest without X-Terminal-Id header is ignored (not a spawn response)', () => {

@@ -3,9 +3,7 @@
 import { escapeHtml, setBtnLabel, dpSkelRows, AROW_CSS, relTime, dpToast } from './ui-utils.js';
 import { dpDelToIdle } from './history-del.js';
 import { register } from './actions.js';
-
-// openSession is wired onto globalThis by main.js (tabs.openSession); read it
-// late so a spawn response opens the terminal, and so tests can stub it.
+import { openSession } from './tabs.js';
 
 // --- New Session modal: browse folders → select one → start new / resume ---
 
