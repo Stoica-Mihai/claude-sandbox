@@ -4,13 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
-
-	api "claude-sandbox-api"
 )
 
 // writeSessionMeta writes the per-session metadata sidecar.
@@ -34,21 +29,21 @@ func readSessionMeta(name string) sessionMeta {
 	return m
 }
 
-// discoverSessions scans the PID sidecars for live claude-* sessions, unlinking
-// the sidecars of any whose process is gone. Discovery keys off the PID sidecar
-// (which the backend owns) rather than the socket: dtach removes its own socket
-// when the inner process exits, so a socket scan would miss dead sessions and
-// leak their metadata sidecars. (Keying off the PID sidecar also avoids a
-// premature-cleanup race: the meta is written before the socket exists, so a
-// meta scan could delete a session still mid-spawn. spawnDtach waits for the PID
-// sidecar before publishing, so a new session is discoverable as soon as it's up.)
-func discoverSessions() []api.DisplaySession {
+// adoptSessions runs ONCE at boot: it scans the PID sidecars for claude-*
+// sessions that survived a backend restart (dtach masters are init children),
+// unlinks the files of dead ones, and returns records for the live ones. After
+// this the in-memory store is authoritative and updated by events; the scan is
+// never repeated. Adoption keys off the PID sidecar (which the backend owns)
+// rather than the socket: dtach removes its own socket when the inner process
+// exits, so a socket scan would miss dead sessions and leak their metadata
+// sidecars.
+func adoptSessions() []sessionRecord {
 	entries, err := os.ReadDir(metaDir)
 	if err != nil {
 		return nil
 	}
 
-	var sessions []api.DisplaySession
+	var records []sessionRecord
 
 	for _, e := range entries {
 		n := e.Name()
@@ -62,37 +57,16 @@ func discoverSessions() []api.DisplaySession {
 		}
 
 		meta := readSessionMeta(name)
-		createdAt := meta.createdTime(name)
-
-		sessions = append(sessions, api.DisplaySession{
+		records = append(records, sessionRecord{
 			Name:      name,
 			CWD:       meta.CWD,
-			DirName:   filepath.Base(meta.CWD),
-			CreatedAt: createdAt,
-			Alive:     true,
+			Created:   meta.createdTime(name),
 			SessionID: meta.SessionID,
+			PID:       sessionPID(name),
 		})
 	}
 
-	// Oldest first → newest last, matching the tab bar (new tabs append on the
-	// right), so a session sits in the same relative spot in sidebar and tabs.
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
-	})
-
-	return sessions
-}
-
-// sessionsSignature builds a deterministic change-detection signature.
-func sessionsSignature(sessions []api.DisplaySession) string {
-	var b strings.Builder
-	for _, s := range sessions {
-		b.WriteString(s.Name)
-		b.WriteByte('|')
-		b.WriteString(strconv.FormatInt(s.CreatedAt.Unix(), 10))
-		b.WriteByte('\n')
-	}
-	return b.String()
+	return records
 }
 
 // generateSessionName creates a session name like "claude-a1b2c3d4".

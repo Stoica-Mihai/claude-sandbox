@@ -21,7 +21,7 @@ func setSessionDirs(t *testing.T) (sock, meta string) {
 }
 
 // spawnLiveSession starts a real, killable child process in its own process
-// group and writes the pid + meta sidecars so discoverSessions lists it as a
+// group and writes the pid + meta sidecars so adoptSessions lists it as a
 // live session whose SessionID is uuid. It returns the dtach session name and
 // the running command (already started).
 func spawnLiveSession(t *testing.T, uuid string) (string, *exec.Cmd) {
@@ -59,7 +59,7 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	setSessionDirs(t)
 	sm := &SessionManager{
 		relays: newRelayRegistry(),
-		cache:  &sessionCache{},
+		store:  newSessionStore(),
 		index:  &SessionIndex{entries: map[string]indexEntry{}},
 		broker: NewBroker(),
 	}
@@ -69,6 +69,7 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	if err := os.WriteFile(metaPath(name), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	sm.store.add(sessionRecord{Name: name, CWD: "/workspace/a"})
 
 	relaySide, sessionSide := socketpairFiles(t)
 	relay := NewRelay(name)
@@ -92,6 +93,9 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	if _, err := os.Stat(metaPath(name)); !os.IsNotExist(err) {
 		t.Fatalf("relayExited did not remove session files: %v", err)
 	}
+	if _, ok := sm.store.get(name); ok {
+		t.Fatal("relayExited did not drop the store record")
+	}
 	select {
 	case <-ch:
 	case <-time.After(2 * time.Second):
@@ -99,10 +103,11 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	}
 }
 
-// TestDeleteHistoryKillsLiveSession covers the branch where discoverSessions
-// returns a live session whose SessionID matches the uuid: DeleteHistory must
-// invoke Kill (terminating the process group), then drop the index entry and
-// transcript.
+// TestDeleteHistoryKillsLiveSession covers the branch where the store holds a
+// live session whose SessionID matches the uuid: DeleteHistory must invoke
+// Kill (terminating the process group), then drop the index entry and
+// transcript. The store is seeded through adoptSessions, covering the boot
+// adoption path against real sidecars too.
 func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 	setSessionDirs(t)
 	uuid := testUUID1
@@ -112,17 +117,14 @@ func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	sm := &SessionManager{index: idx, relays: newRelayRegistry(), cache: &sessionCache{}, broker: NewBroker()}
-
-	// Precondition: discovery sees the live session by its uuid.
-	found := false
-	for _, s := range discoverSessions() {
-		if s.SessionID == uuid {
-			found = true
-		}
+	sm := &SessionManager{index: idx, relays: newRelayRegistry(), store: newSessionStore(), broker: NewBroker()}
+	for _, rec := range adoptSessions() {
+		sm.store.add(rec)
 	}
-	if !found {
-		t.Fatal("setup: discoverSessions did not list the live session")
+
+	// Precondition: adoption saw the live session by its uuid.
+	if rec, ok := sm.store.byUUID(uuid); !ok || rec.Name != name || rec.PID != cmd.Process.Pid {
+		t.Fatalf("setup: adoptSessions did not record the live session: %+v ok=%v", rec, ok)
 	}
 
 	if err := sm.DeleteHistory(uuid); err != nil {

@@ -17,9 +17,7 @@ const (
 	sessionPrefix = "claude-"
 	// workspaceRoot is the base directory users may spawn sessions in.
 	workspaceRoot = "/workspace"
-	// cacheTTL is how long discovery results are cached.
-	cacheTTL = 2 * time.Second
-	// pollInterval is how often the background poller checks for session changes.
+	// pollInterval is how often the fallback poller verifies store liveness.
 	pollInterval = 5 * time.Second
 	// maxSpawnRetries is the number of retries on session-name collision.
 	maxSpawnRetries = 3
@@ -27,33 +25,36 @@ const (
 	termType = "xterm-256color"
 	// killGracePeriod is how long Kill waits after SIGTERM before SIGKILL.
 	killGracePeriod = 2 * time.Second
-	// pidWaitTimeout bounds how long Spawn waits for the inner bash to write the
-	// PID sidecar before publishing, so discovery (keyed off the PID sidecar)
-	// sees the new session immediately instead of after a later poll.
+	// pidWaitTimeout bounds how long Spawn waits for the inner bash to write
+	// the PID sidecar, so the new record carries a real PID.
 	pidWaitTimeout = 1 * time.Second
 )
 
-// SessionManager coordinates session discovery, the relay registry, the
-// session-list cache, and the persistent index; it provides spawn/kill/resume.
+// SessionManager owns the authoritative in-memory session store and the relay
+// registry; it provides spawn/kill/resume. State changes are event-driven
+// (spawn, kill, relay exit); the sidecar files are read once at boot.
 type SessionManager struct {
 	relays   *relayRegistry
-	cache    *sessionCache
+	store    *sessionStore
 	index    *SessionIndex // persisted uuid → {cwd,created,name}
 	broker   *Broker
 	stopPoll chan struct{}
 }
 
-// NewSessionManager creates a SessionManager wired to the given SSE broker and
-// starts the background polling goroutine.
+// NewSessionManager adopts sessions that survived a backend restart, wires
+// their relays, and starts the fallback liveness poller.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
 		relays:   newRelayRegistry(),
-		cache:    &sessionCache{},
+		store:    newSessionStore(),
 		index:    loadSessionIndex(),
 		broker:   broker,
 		stopPoll: make(chan struct{}),
 	}
-	sm.syncRelays(discoverSessions())
+	for _, rec := range adoptSessions() {
+		sm.store.add(rec)
+	}
+	sm.syncRelays()
 	go sm.pollLoop()
 	return sm
 }
@@ -66,16 +67,17 @@ func (sm *SessionManager) GetRelay(sessionName string) *Relay {
 // SetSessionName stores a custom name on the live session's conversation (keyed
 // by its uuid in the persistent index), so it shows in the sidebar and resume list.
 func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
-	uuid := readSessionMeta(sessionName).SessionID
-	if uuid == "" {
+	rec, ok := sm.store.get(sessionName)
+	if !ok || rec.SessionID == "" {
 		return
 	}
-	sm.index.setName(uuid, displayName)
+	sm.index.setName(rec.SessionID, displayName)
 }
 
 // GetSessionName returns the custom name for a live session via its conversation uuid.
 func (sm *SessionManager) GetSessionName(sessionName string) string {
-	return sm.index.name(readSessionMeta(sessionName).SessionID)
+	rec, _ := sm.store.get(sessionName)
+	return sm.index.name(rec.SessionID)
 }
 
 // History returns the previous RESUMABLE sessions for a folder (newest first).
@@ -91,13 +93,30 @@ func (sm *SessionManager) History(cwd string) []SessionHistoryEntry {
 	return out
 }
 
-// syncRelays ensures every live session has a running relay and relays for gone
-// sessions are stopped. The caller supplies the discovered session list to avoid
-// a redundant directory scan.
-func (sm *SessionManager) syncRelays(sessions []api.DisplaySession) {
-	alive := make(map[string]bool, len(sessions))
-	for _, s := range sessions {
-		alive[s.Name] = true
+// ListSessions returns all sessions from the in-memory store, with display
+// names (custom name from the index, else the directory basename).
+func (sm *SessionManager) ListSessions() []api.DisplaySession {
+	records := sm.store.list()
+	sessions := make([]api.DisplaySession, 0, len(records))
+	for _, rec := range records {
+		s := rec.display()
+		if customName := sm.index.name(s.SessionID); customName != "" {
+			s.DisplayName = customName
+		} else {
+			s.DisplayName = s.DirName
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions
+}
+
+// syncRelays ensures every session in the store has a running relay and relays
+// for gone sessions are stopped.
+func (sm *SessionManager) syncRelays() {
+	records := sm.store.list()
+	alive := make(map[string]bool, len(records))
+	for _, rec := range records {
+		alive[rec.Name] = true
 	}
 	// Relays for gone sessions are stopped and dropped; custom names live in the
 	// persistent index (keyed by conversation uuid) and intentionally survive a
@@ -119,7 +138,7 @@ func (sm *SessionManager) newRelay(name string) *Relay {
 
 // relayExited handles a relay that stopped on its own (attach reconnect
 // exhausted or session gone). If the session still lives, a fresh relay is
-// attached; otherwise the session's files are cleaned up and clients notified.
+// attached; otherwise the session is dropped and clients notified.
 func (sm *SessionManager) relayExited(name string, relay *Relay) {
 	if !sm.relays.dropIf(name, relay) {
 		return // manager already removed/replaced it (e.g. Kill)
@@ -130,44 +149,14 @@ func (sm *SessionManager) relayExited(name string, relay *Relay) {
 		}
 		return
 	}
-	removeSessionFiles(name)
-	sm.invalidateCache()
+	sm.dropSession(name)
 	sm.broker.Publish()
 }
 
-// ListSessions returns all sessions, using cache if fresh. Display-name
-// enrichment is applied on every call.
-func (sm *SessionManager) ListSessions() []api.DisplaySession {
-	if cached, ok := sm.cache.fresh(cacheTTL); ok {
-		return sm.enrichSessions(cached)
-	}
-	return sm.enrichSessions(sm.refreshSessions())
-}
-
-// enrichSessions sets each session's display name (custom name from the index,
-// else the directory basename). The index is internally synchronized.
-func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.DisplaySession {
-	for i := range sessions {
-		if customName := sm.index.name(sessions[i].SessionID); customName != "" {
-			sessions[i].DisplayName = customName
-		} else {
-			sessions[i].DisplayName = sessions[i].DirName
-		}
-	}
-	return sessions
-}
-
-// refreshSessions queries discovery, updates the cache, and returns the fresh
-// list (the cache holds its own copy, so the caller may enrich this one).
-func (sm *SessionManager) refreshSessions() []api.DisplaySession {
-	sessions := discoverSessions()
-	sm.cache.store(sessions, sessionsSignature(sessions))
-	return sessions
-}
-
-// invalidateCache forces the next ListSessions call to re-discover.
-func (sm *SessionManager) invalidateCache() {
-	sm.cache.invalidate()
+// dropSession removes a dead session's record and sidecar files.
+func (sm *SessionManager) dropSession(name string) {
+	sm.store.remove(name)
+	removeSessionFiles(name)
 }
 
 // Shutdown stops the polling goroutine. Sessions are NOT killed — they persist
@@ -177,7 +166,9 @@ func (sm *SessionManager) Shutdown() {
 	slog.Info("session manager shut down (sessions preserved)")
 }
 
-// pollLoop periodically re-discovers sessions and publishes SSE events on change.
+// pollLoop is the safety net behind the event-driven paths: it verifies the
+// liveness of every stored session (catching anything the relay-exit path
+// missed) and restarts relays that failed to attach.
 func (sm *SessionManager) pollLoop() {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -185,21 +176,15 @@ func (sm *SessionManager) pollLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			sessions := discoverSessions()
-			sig := sessionsSignature(sessions)
-
-			// Relay self-death is event-driven (relayExited); the poll only
-			// reconciles on session-set changes.
-			changed := sig != sm.cache.signature()
-			if changed {
-				sm.cache.store(sessions, sig)
-				sm.syncRelays(sessions)
+			changed := false
+			for _, rec := range sm.store.list() {
+				if !rec.alive() {
+					sm.relays.remove(rec.Name)
+					sm.dropSession(rec.Name)
+					changed = true
+				}
 			}
-
-			// Publish only on change — clients refetch the sessions fragment on
-			// every event, and durations tick client-side, so an unconditional
-			// 5s publish was N-clients × render for nothing. SSE keepalive is
-			// handled by the SSE handler itself.
+			sm.syncRelays()
 			if changed {
 				sm.broker.Publish()
 			}

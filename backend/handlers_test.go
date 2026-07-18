@@ -18,7 +18,7 @@ import (
 // backed by the given index, with no polling goroutine.
 func newTestServer(idx *SessionIndex) *Server {
 	return &Server{
-		sm:     &SessionManager{index: idx, relays: newRelayRegistry(), cache: &sessionCache{}},
+		sm:     &SessionManager{index: idx, relays: newRelayRegistry(), store: newSessionStore()},
 		broker: NewBroker(),
 	}
 }
@@ -51,8 +51,8 @@ func TestHandleDeleteHistoryUnknownUUID(t *testing.T) {
 }
 
 func TestHandleDeleteHistorySuccess(t *testing.T) {
-	// No CLAUDE_META_DIR: discoverSessions finds nothing, so the kill step is a
-	// no-op and the handler exercises the 204 + Publish path.
+	// Empty store: the kill step is a no-op and the handler exercises the
+	// 204 + Publish path.
 	uuid := testUUID1
 	_, tx := seedTranscript(t, uuid, "/workspace/a")
 

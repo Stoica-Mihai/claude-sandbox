@@ -105,7 +105,7 @@ func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	sm := &SessionManager{index: idx}
+	sm := &SessionManager{index: idx, store: newSessionStore()}
 
 	if err := sm.DeleteHistory(uuid); err != nil {
 		t.Fatalf("DeleteHistory returned error: %v", err)
@@ -125,7 +125,7 @@ func TestDeleteHistoryUnknownUUIDErrors(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(known, "/workspace/a", 100)
-	sm := &SessionManager{index: idx}
+	sm := &SessionManager{index: idx, store: newSessionStore()}
 
 	if err := sm.DeleteHistory(unknown); err == nil {
 		t.Fatal("DeleteHistory(unknown) should return an error")

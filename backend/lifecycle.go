@@ -48,14 +48,10 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 		return fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
 	}
 
-	// Resolve the live session via discoverSessions (not the cached, heavier
-	// ListSessions) and kill it by dtach name before dropping its history.
-	for _, s := range discoverSessions() {
-		if s.SessionID == uuid {
-			if err := sm.Kill(s.Name); err != nil {
-				return err
-			}
-			break
+	// Kill the live session running this conversation, if any.
+	if rec, ok := sm.store.byUUID(uuid); ok {
+		if err := sm.Kill(rec.Name); err != nil {
+			return err
 		}
 	}
 
@@ -104,8 +100,7 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 		}
 
 		// Wait for the inner bash to write the PID sidecar (it does so before
-		// exec'ing claude) so discovery sees the session right away — otherwise
-		// the sidebar card lags the tab until a later poll.
+		// exec'ing claude) so the record carries a real PID for kill/liveness.
 		deadline := time.Now().Add(pidWaitTimeout)
 		for time.Now().Before(deadline) {
 			if _, statErr := os.Stat(pidPath(sessionName)); statErr == nil {
@@ -114,7 +109,13 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 			time.Sleep(20 * time.Millisecond)
 		}
 
-		sm.invalidateCache()
+		sm.store.add(sessionRecord{
+			Name:      sessionName,
+			CWD:       absPath,
+			Created:   time.Now(),
+			SessionID: uuid,
+			PID:       sessionPID(sessionName),
+		})
 		sm.broker.Publish()
 		return sessionName, nil
 	}
@@ -122,13 +123,18 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 	return "", fmt.Errorf("failed to create session after %d attempts", maxSpawnRetries)
 }
 
-// Kill terminates a session by signalling its process group via the PID sidecar.
+// Kill terminates a session by signalling its process group.
 func (sm *SessionManager) Kill(sessionName string) error {
-	if !sessionAlive(sessionName) {
+	rec, ok := sm.store.get(sessionName)
+	if !ok {
 		return fmt.Errorf("session not found: %s", sessionName)
 	}
 
-	if pid := sessionPID(sessionName); pid > 0 {
+	pid := rec.PID
+	if pid == 0 {
+		pid = sessionPID(sessionName)
+	}
+	if pid > 0 {
 		// Signal the process group (negative pid); the inner bash is the session
 		// leader, so this reaps claude and any children it spawned.
 		_ = syscall.Kill(-pid, syscall.SIGTERM)
@@ -147,9 +153,7 @@ func (sm *SessionManager) Kill(sessionName string) error {
 	slog.Info("killed session", "session", sessionName)
 
 	sm.relays.remove(sessionName)
-
-	removeSessionFiles(sessionName)
-	sm.invalidateCache()
+	sm.dropSession(sessionName)
 	sm.broker.Publish()
 	return nil
 }
