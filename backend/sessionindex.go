@@ -46,13 +46,8 @@ func (s *SessionIndex) save() {
 		slog.Warn("failed to marshal session index", "error", err)
 		return
 	}
-	tmp := sessionIndexPath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := writeFileAtomic(sessionIndexPath(), data); err != nil {
 		slog.Warn("failed to write session index", "error", err)
-		return
-	}
-	if err := os.Rename(tmp, sessionIndexPath()); err != nil {
-		slog.Warn("failed to commit session index", "error", err)
 	}
 }
 

@@ -216,6 +216,13 @@ func writeMessage(conn *websocket.Conn, msgType int, data []byte) error {
 	return conn.WriteMessage(msgType, data)
 }
 
+// writeToViewer writes a message to a viewer under its write lock.
+func writeToViewer(conn *websocket.Conn, v *viewer, msgType int, data []byte) error {
+	v.writeMu.Lock()
+	defer v.writeMu.Unlock()
+	return writeMessage(conn, msgType, data)
+}
+
 // AddViewer registers a WebSocket connection, replays the ring buffer, and adds
 // it to the broadcast list. Replay and registration happen under the write lock
 // so no broadcast can interleave between them — otherwise output produced in
@@ -324,9 +331,7 @@ func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
 
 	// Network writes happen outside the lock.
 	for _, t := range others {
-		t.vw.writeMu.Lock()
-		_ = writeMessage(t.conn, websocket.TextMessage, deactivatedMsg)
-		t.vw.writeMu.Unlock()
+		_ = writeToViewer(t.conn, t.vw, websocket.TextMessage, deactivatedMsg)
 	}
 
 	r.applyResize(size.cols, size.rows)
@@ -507,9 +512,7 @@ func (r *Relay) broadcast(data []byte) {
 		if v.suspended.Load() {
 			continue
 		}
-		v.writeMu.Lock()
-		err := writeMessage(conn, websocket.BinaryMessage, data)
-		v.writeMu.Unlock()
+		err := writeToViewer(conn, v, websocket.BinaryMessage, data)
 		if err != nil {
 			slog.Debug("viewer write error, evicting", "session", r.SessionName, "error", err)
 			failed = append(failed, conn)
