@@ -31,16 +31,7 @@ func TestHandleDeleteHistoryMissingUUID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.handleDeleteHistory(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rec.Code)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "missing uuid" {
-		t.Fatalf("error = %q, want %q", body["error"], "missing uuid")
-	}
+	assertErrorBody(t, rec, http.StatusBadRequest, "missing uuid")
 }
 
 func TestHandleDeleteHistoryUnknownUUID(t *testing.T) {
@@ -52,37 +43,18 @@ func TestHandleDeleteHistoryUnknownUUID(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistory)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/history/22222222-2222-4222-8222-222222222222", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/history/"+testUUID2, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", rec.Code)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "unknown session: 22222222-2222-4222-8222-222222222222" {
-		t.Fatalf("error = %q", body["error"])
-	}
+	assertErrorBody(t, rec, http.StatusNotFound, "unknown session: "+testUUID2)
 }
 
 func TestHandleDeleteHistorySuccess(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 	// No CLAUDE_META_DIR: discoverSessions finds nothing, so the kill step is a
 	// no-op and the handler exercises the 204 + Publish path.
-
-	uuid := "11111111-1111-4111-8111-111111111111"
-	proj := filepath.Join(dir, "projects", "-workspace-a")
-	if err := os.MkdirAll(proj, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx := filepath.Join(proj, uuid+".jsonl")
-	if err := os.WriteFile(tx, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	uuid := testUUID1
+	_, tx := seedTranscript(t, uuid, "/workspace/a")
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
@@ -201,16 +173,7 @@ func TestHandleCreateDirectoryValidation(t *testing.T) {
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
 
-			if rec.Code != tt.wantCode {
-				t.Fatalf("status = %d, want %d", rec.Code, tt.wantCode)
-			}
-			var body map[string]string
-			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
-			if body["error"] != tt.wantErr {
-				t.Fatalf("error = %q, want %q", body["error"], tt.wantErr)
-			}
+			assertErrorBody(t, rec, tt.wantCode, tt.wantErr)
 		})
 	}
 }
@@ -226,16 +189,7 @@ func TestHandleCreateDirectoryInvalidBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rec.Code)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "invalid request body" {
-		t.Fatalf("error = %q, want %q", body["error"], "invalid request body")
-	}
+	assertErrorBody(t, rec, http.StatusBadRequest, "invalid request body")
 }
 
 // writableWorkspaceParent creates a unique, empty parent directory under
@@ -306,16 +260,7 @@ func TestHandleCreateDirectoryConflict(t *testing.T) {
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "dup", Path: parent})
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "Folder already exists" {
-		t.Fatalf("error = %q, want %q", body["error"], "Folder already exists")
-	}
+	assertErrorBody(t, rec, http.StatusConflict, "Folder already exists")
 }
 
 // TestHandleCreateDirectoryMkdirError covers the 500 branch: os.Mkdir fails for
@@ -334,16 +279,7 @@ func TestHandleCreateDirectoryMkdirError(t *testing.T) {
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "proj", Path: parent})
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "failed to create directory" {
-		t.Fatalf("error = %q, want %q", body["error"], "failed to create directory")
-	}
+	assertErrorBody(t, rec, http.StatusInternalServerError, "failed to create directory")
 }
 
 // TestHandleCreateDirectoryGitInit covers the git-init block: with GitInit set,

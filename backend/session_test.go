@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
@@ -58,19 +57,9 @@ func spawnLiveSession(t *testing.T, uuid string) (string, *exec.Cmd) {
 // invoke Kill (terminating the process group), then drop the index entry and
 // transcript.
 func TestDeleteHistoryKillsLiveSession(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 	setSessionDirs(t)
-
-	uuid := "11111111-1111-4111-8111-111111111111"
-	proj := filepath.Join(dir, "projects", "-workspace-a")
-	if err := os.MkdirAll(proj, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx := filepath.Join(proj, uuid+".jsonl")
-	if err := os.WriteFile(tx, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	uuid := testUUID1
+	_, tx := seedTranscript(t, uuid, "/workspace/a")
 
 	name, cmd := spawnLiveSession(t, uuid)
 

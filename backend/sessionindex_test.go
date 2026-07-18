@@ -2,23 +2,14 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"testing"
 )
 
 func TestHasTranscript(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-	proj := filepath.Join(dir, "projects", "-workspace-foo")
-	if err := os.MkdirAll(proj, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	withTx := "11111111-1111-4111-8111-111111111111"
-	without := "22222222-2222-4222-8222-222222222222"
-	if err := os.WriteFile(filepath.Join(proj, withTx+".jsonl"), []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	withTx := testUUID1
+	without := testUUID2
+	seedTranscript(t, withTx, "/workspace/foo")
 	if !hasTranscript(withTx) {
 		t.Error("expected transcript to be found")
 	}
@@ -107,20 +98,10 @@ func TestSessionIndexRemovePersists(t *testing.T) {
 }
 
 func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 	// No meta dir in the tempdir, so DeleteHistory's discover/kill step is a
 	// no-op and only the index entry + transcript are touched.
-
-	uuid := "11111111-1111-4111-8111-111111111111"
-	proj := filepath.Join(dir, "projects", "-workspace-a")
-	if err := os.MkdirAll(proj, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx := filepath.Join(proj, uuid+".jsonl")
-	if err := os.WriteFile(tx, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	uuid := testUUID1
+	_, tx := seedTranscript(t, uuid, "/workspace/a")
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
@@ -138,19 +119,9 @@ func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
 }
 
 func TestDeleteHistoryUnknownUUIDErrors(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-
-	known := "11111111-1111-4111-8111-111111111111"
-	unknown := "22222222-2222-4222-8222-222222222222"
-	proj := filepath.Join(dir, "projects", "-workspace-a")
-	if err := os.MkdirAll(proj, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx := filepath.Join(proj, known+".jsonl")
-	if err := os.WriteFile(tx, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	known := testUUID1
+	unknown := testUUID2
+	_, tx := seedTranscript(t, known, "/workspace/a")
 
 	idx := loadSessionIndex()
 	idx.add(known, "/workspace/a", 100)
