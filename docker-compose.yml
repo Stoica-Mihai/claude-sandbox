@@ -85,6 +85,7 @@ services:
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
       - BACKEND_URL=http://backend:8081
+      - HOLESAIL_URL=http://holesail:9000
       - ALLOWED_WS_ORIGINS=${ALLOWED_WS_ORIGINS:-}
 
     ports:
@@ -95,6 +96,8 @@ services:
 
     depends_on:
       backend:
+        condition: service_healthy
+      holesail:
         condition: service_healthy
 
     healthcheck:

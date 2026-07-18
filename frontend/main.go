@@ -30,6 +30,12 @@ func main() {
 		backendURL = strings.TrimRight(envURL, "/")
 	}
 
+	// Holesail sidecar control URL (share tunnel).
+	holesailURL := "http://holesail:9000"
+	if envURL := os.Getenv("HOLESAIL_URL"); envURL != "" {
+		holesailURL = strings.TrimRight(envURL, "/")
+	}
+
 	// Structured logging to stderr.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -39,7 +45,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	srv, err := NewServer(backendURL, mux)
+	srv, err := NewServer(backendURL, holesailURL, mux)
 	if err != nil {
 		slog.Error("failed to create server", "error", err)
 		os.Exit(1)

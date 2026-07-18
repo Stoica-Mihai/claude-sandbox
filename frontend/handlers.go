@@ -23,14 +23,16 @@ import (
 // It renders HTML templates with data fetched from the backend API,
 // and proxies WebSocket, SSE, and healthz requests to the backend.
 type Server struct {
-	templates  *template.Template
-	backendURL string
-	client     *http.Client
+	templates   *template.Template
+	backendURL  string
+	holesailURL string
+	guard       *tunnelGuard
+	client      *http.Client
 }
 
 // NewServer creates a Server by parsing embedded templates and registering
 // all routes on the provided mux.
-func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
+func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, error) {
 	tmpl, err := template.ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
@@ -42,8 +44,10 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	}
 
 	s := &Server{
-		templates:  tmpl,
-		backendURL: backendURL,
+		templates:   tmpl,
+		backendURL:  backendURL,
+		holesailURL: holesailURL,
+		guard:       newTunnelGuard(holesailURL),
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -62,6 +66,10 @@ func NewServer(backendURL string, mux *http.ServeMux) (*Server, error) {
 	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
 	mux.HandleFunc("GET /api/settings", s.handleSettingsProxy)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsProxy)
+	mux.HandleFunc("GET /api/share/status", s.handleShareProxy)
+	mux.HandleFunc("POST /api/share/start", s.handleShareProxy)
+	mux.HandleFunc("POST /api/share/stop", s.handleShareProxy)
+	mux.HandleFunc("POST /api/share/regenerate", s.handleShareProxy)
 
 	// Pure proxy routes.
 	mux.HandleFunc("GET /events", s.handleSSEProxy)
@@ -392,6 +400,19 @@ func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
 // handleSettingsProxy proxies GET/PUT /api/settings (JSON) to the backend.
 func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
 	httpProxy(w, r, s.backendURL)
+}
+
+// handleShareProxy proxies /api/share/* (JSON) to the holesail sidecar, which
+// serves the same paths. Requests arriving through the tunnel itself are
+// rejected so tunnel visitors cannot operate the share controls.
+func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
+	if s.guard.isTunnelRequest(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"error":"share controls are unavailable over the tunnel"}`)
+		return
+	}
+	httpProxy(w, r, s.holesailURL)
 }
 
 // --- Helpers ---

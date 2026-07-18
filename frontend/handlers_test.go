@@ -12,9 +12,12 @@ import (
 
 // newTestServer builds a Server pointed at backendURL, wired for handler tests.
 // The client has a short timeout so the unreachable-backend case fails fast.
+// The guard's resolver never succeeds, so share routes stay permissive here;
+// guard behavior is covered in shareguard_test.go.
 func newTestServer(backendURL string) *Server {
 	return &Server{
 		backendURL: backendURL,
+		guard:      newFailingGuard(),
 		client:     &http.Client{Timeout: 2 * time.Second},
 	}
 }

@@ -13,14 +13,14 @@
 
 ## 2. Frontend Go: routes + tunnel guard
 
-- [ ] 2.1 `frontend/shareguard.go`: `tunnelGuard` per design Decision 5 — fields `host`, `resolve func(string)([]net.IP,error)`, `ttl` (10s), mutex, `ips map[string]bool`, `expires`; constructor parses hostname from the holesail URL; `isTunnelRequest(r)` with RemoteAddr SplitHostPort + `net.ParseIP` normalization, TTL cache, stale-cache-on-resolve-failure, never-resolved fail-open with `slog.Warn`, and the ~1s mismatch double-check re-resolve.
-- [ ] 2.2 `frontend/handlers.go`: `Server` gains `holesailURL string` + `guard *tunnelGuard`; `NewServer` takes `holesailURL`, constructs the guard; register `GET /api/share/status`, `POST /api/share/start`, `POST /api/share/stop`, `POST /api/share/regenerate` → `s.handleShareProxy` next to the settings routes; `handleShareProxy` = guard check → 403 `{"error":"share controls are unavailable over the tunnel"}`, else `httpProxy(w, r, s.holesailURL)`.
-- [ ] 2.3 `frontend/main.go`: read `HOLESAIL_URL` (default `http://holesail:9000`, TrimRight `/`), pass to `NewServer`.
-- [ ] 2.4 `frontend/handlers_test.go`: update `newTestServer` to populate `holesailURL` and a permissive guard (resolver returning no IPs) so existing tests behave unchanged.
-- [ ] 2.5 `frontend/share_proxy_test.go`: verbatim forward (method+path+body reach a httptest upstream; status/body/Content-Type pass back); upstream 502 JSON passthrough; unreachable upstream → 502.
-- [ ] 2.6 `frontend/shareguard_test.go` (injected resolver): blocks matching IP via handler (403, upstream never called); allows non-matching; TTL caching (resolver call counts); sidecar-restart re-resolve (cache `.5`, request `.9`, resolver now `.9` → blocked); fail-open when never resolved; stale cache still blocks on resolver failure.
-- [ ] 2.7 `docker-compose.yml`: frontend `HOLESAIL_URL=http://holesail:9000` env + `depends_on: holesail: condition: service_healthy`.
-- [ ] 2.8 Verify: `go test ./...` green; with stack up, host `curl -s localhost:8080/api/share/status` → wrapper JSON.
+- [x] 2.1 `frontend/shareguard.go`: `tunnelGuard` per design Decision 5 — fields `host`, `resolve func(string)([]net.IP,error)`, `ttl` (10s), mutex, `ips map[string]bool`, `expires`; constructor parses hostname from the holesail URL; `isTunnelRequest(r)` with RemoteAddr SplitHostPort + `net.ParseIP` normalization, TTL cache, stale-cache-on-resolve-failure, never-resolved fail-open with `slog.Warn`, and the ~1s mismatch double-check re-resolve.
+- [x] 2.2 `frontend/handlers.go`: `Server` gains `holesailURL string` + `guard *tunnelGuard`; `NewServer` takes `holesailURL`, constructs the guard; register `GET /api/share/status`, `POST /api/share/start`, `POST /api/share/stop`, `POST /api/share/regenerate` → `s.handleShareProxy` next to the settings routes; `handleShareProxy` = guard check → 403 `{"error":"share controls are unavailable over the tunnel"}`, else `httpProxy(w, r, s.holesailURL)`.
+- [x] 2.3 `frontend/main.go`: read `HOLESAIL_URL` (default `http://holesail:9000`, TrimRight `/`), pass to `NewServer`.
+- [x] 2.4 `frontend/handlers_test.go`: update `newTestServer` to populate `holesailURL` and a permissive guard (resolver returning no IPs) so existing tests behave unchanged.
+- [x] 2.5 `frontend/share_proxy_test.go`: verbatim forward (method+path+body reach a httptest upstream; status/body/Content-Type pass back); upstream 502 JSON passthrough; unreachable upstream → 502.
+- [x] 2.6 `frontend/shareguard_test.go` (injected resolver): blocks matching IP via handler (403, upstream never called); allows non-matching; TTL caching (resolver call counts); sidecar-restart re-resolve (cache `.5`, request `.9`, resolver now `.9` → blocked); fail-open when never resolved; stale cache still blocks on resolver failure.
+- [x] 2.7 `docker-compose.yml`: frontend `HOLESAIL_URL=http://holesail:9000` env + `depends_on: holesail: condition: service_healthy`.
+- [x] 2.8 Verify: `go test ./...` green; with stack up, host `curl -s localhost:8080/api/share/status` → wrapper JSON.
 
 ## 3. UI markup + CSS + vendored QR
 
