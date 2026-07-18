@@ -53,7 +53,7 @@ services:
 
     environment:
       - HOME=/home/claude
-      - BACKEND_PORT=8081
+      - BACKEND_PORT=${BACKEND_PORT:-8081}
 
     # No exposed ports — only reachable via internal network
     networks:
@@ -61,7 +61,7 @@ services:
 
     healthcheck:
       <<: *healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8081}/healthz"]
       start_period: 15s
 
     deploy:
@@ -87,8 +87,8 @@ services:
 
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
-      - BACKEND_URL=http://backend:8081
-      - HOLESAIL_URL=http://holesail:9000
+      - BACKEND_URL=http://backend:${BACKEND_PORT:-8081}
+      - HOLESAIL_URL=http://holesail:${SHARE_CONTROL_PORT:-9000}
       - ALLOWED_WS_ORIGINS=${ALLOWED_WS_ORIGINS:-}
 
     ports:
@@ -124,7 +124,7 @@ services:
     environment:
       - SHARE_TARGET_HOST=frontend
       - SHARE_TARGET_PORT=${DASHBOARD_PORT:-8080}
-      - SHARE_CONTROL_PORT=9000
+      - SHARE_CONTROL_PORT=${SHARE_CONTROL_PORT:-9000}
 
     volumes:
       # Persistent share key — the connection string is derived from it, so
@@ -137,7 +137,7 @@ services:
 
     healthcheck:
       <<: *healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:9000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SHARE_CONTROL_PORT:-9000}/healthz"]
       start_period: 5s
 
     logging: *logging
