@@ -99,10 +99,7 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 
 		slog.Info("spawned session", "session", sessionName, "cwd", absPath, "uuid", uuid)
 
-		relay := NewRelay(sessionName)
-		if err := relay.Start(); err != nil {
-			slog.Warn("failed to start relay for new session", "session", sessionName, "error", err)
-		} else {
+		if relay := sm.newRelay(sessionName); relay != nil {
 			sm.relays.set(sessionName, relay)
 		}
 

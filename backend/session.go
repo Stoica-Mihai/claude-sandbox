@@ -102,14 +102,37 @@ func (sm *SessionManager) syncRelays(sessions []api.DisplaySession) {
 	// Relays for gone sessions are stopped and dropped; custom names live in the
 	// persistent index (keyed by conversation uuid) and intentionally survive a
 	// session ending — they drive the resume list.
-	sm.relays.reconcile(alive, func(name string) *Relay {
-		relay := NewRelay(name)
-		if err := relay.Start(); err != nil {
-			slog.Warn("failed to start relay", "session", name, "error", err)
-			return nil
+	sm.relays.reconcile(alive, sm.newRelay)
+}
+
+// newRelay creates and starts a relay wired to notify the manager when it
+// exits on its own. Returns nil when the attach fails.
+func (sm *SessionManager) newRelay(name string) *Relay {
+	relay := NewRelay(name)
+	relay.onExit = func() { sm.relayExited(name, relay) }
+	if err := relay.Start(); err != nil {
+		slog.Warn("failed to start relay", "session", name, "error", err)
+		return nil
+	}
+	return relay
+}
+
+// relayExited handles a relay that stopped on its own (attach reconnect
+// exhausted or session gone). If the session still lives, a fresh relay is
+// attached; otherwise the session's files are cleaned up and clients notified.
+func (sm *SessionManager) relayExited(name string, relay *Relay) {
+	if !sm.relays.dropIf(name, relay) {
+		return // manager already removed/replaced it (e.g. Kill)
+	}
+	if sessionAlive(name) {
+		if fresh := sm.newRelay(name); fresh != nil {
+			sm.relays.set(name, fresh)
 		}
-		return relay
-	})
+		return
+	}
+	removeSessionFiles(name)
+	sm.invalidateCache()
+	sm.broker.Publish()
 }
 
 // ListSessions returns all sessions, using cache if fresh. Display-name
@@ -165,17 +188,11 @@ func (sm *SessionManager) pollLoop() {
 			sessions := discoverSessions()
 			sig := sessionsSignature(sessions)
 
-			// A relay can die on its own (attach reconnect exhausted) while its
-			// session lives — the signature won't change, so check for stopped
-			// relays explicitly or the session stays unreachable until the
-			// session set happens to change.
+			// Relay self-death is event-driven (relayExited); the poll only
+			// reconciles on session-set changes.
 			changed := sig != sm.cache.signature()
-			deadRelay := sm.relays.anyStopped()
-
 			if changed {
 				sm.cache.store(sessions, sig)
-			}
-			if changed || deadRelay {
 				sm.syncRelays(sessions)
 			}
 

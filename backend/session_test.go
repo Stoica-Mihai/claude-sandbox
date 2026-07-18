@@ -52,6 +52,53 @@ func spawnLiveSession(t *testing.T, uuid string) (string, *exec.Cmd) {
 	return name, cmd
 }
 
+// TestRelayExitedCleansUpDeadSession: a relay stopping on its own with no live
+// session behind it must drop out of the registry, clean the session's files,
+// and publish an SSE update.
+func TestRelayExitedCleansUpDeadSession(t *testing.T) {
+	setSessionDirs(t)
+	sm := &SessionManager{
+		relays: newRelayRegistry(),
+		cache:  &sessionCache{},
+		index:  &SessionIndex{entries: map[string]indexEntry{}},
+		broker: NewBroker(),
+	}
+	_, ch := sm.broker.Subscribe()
+
+	name := generateSessionName()
+	if err := os.WriteFile(metaPath(name), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	relaySide, sessionSide := socketpairFiles(t)
+	relay := NewRelay(name)
+	relay.onExit = func() { sm.relayExited(name, relay) }
+	relay.begin(relaySide, nil)
+	sm.relays.set(name, relay)
+
+	sessionSide.Close() // attach EOF → session gone → relay stops → relayExited
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if sm.relays.get(name) == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if sm.relays.get(name) != nil {
+		t.Fatal("relayExited did not drop the relay from the registry")
+	}
+	<-relay.exited
+	if _, err := os.Stat(metaPath(name)); !os.IsNotExist(err) {
+		t.Fatalf("relayExited did not remove session files: %v", err)
+	}
+	select {
+	case <-ch:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relayExited did not publish an SSE update")
+	}
+}
+
 // TestDeleteHistoryKillsLiveSession covers the branch where discoverSessions
 // returns a live session whose SessionID matches the uuid: DeleteHistory must
 // invoke Kill (terminating the process group), then drop the index entry and

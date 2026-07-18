@@ -220,7 +220,7 @@ func TestRelayStopsWhenSessionGone(t *testing.T) {
 	}
 	select {
 	case <-exitCalls:
-	default:
+	case <-time.After(2 * time.Second):
 		t.Fatal("onExit was not called")
 	}
 	select {

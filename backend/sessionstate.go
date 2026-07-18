@@ -42,21 +42,22 @@ func (r *relayRegistry) remove(name string) {
 	}
 }
 
-// anyStopped reports whether any registered relay has stopped on its own.
-func (r *relayRegistry) anyStopped() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	for _, relay := range r.relays {
-		if relay.IsStopped() {
-			return true
-		}
+// dropIf removes the entry for name only when it still maps to relay,
+// reporting whether it did. It does not stop the relay (used for relays that
+// already stopped on their own).
+func (r *relayRegistry) dropIf(name string, relay *Relay) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.relays[name] != relay {
+		return false
 	}
-	return false
+	delete(r.relays, name)
+	return true
 }
 
 // reconcile starts a relay (via start) for every name in alive that lacks one,
-// and stops+drops relays whose name is absent from alive or whose relay has
-// stopped. start returns nil to skip a name whose relay failed to start.
+// and stops+drops relays whose name is absent from alive. start returns nil to
+// skip a name whose relay failed to start.
 func (r *relayRegistry) reconcile(alive map[string]bool, start func(name string) *Relay) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -68,7 +69,7 @@ func (r *relayRegistry) reconcile(alive map[string]bool, start func(name string)
 		}
 	}
 	for name, relay := range r.relays {
-		if !alive[name] || relay.IsStopped() {
+		if !alive[name] {
 			relay.Stop()
 			delete(r.relays, name)
 		}
