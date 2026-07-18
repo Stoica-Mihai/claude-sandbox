@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { FakeDocument, FakeElement } = require('./dom-stub');
+const { makeTimers } = require('./timers');
 
 const VIEWS_PATH = path.join(__dirname, '..', 'views.js');
 
@@ -13,7 +14,7 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     const document = new FakeDocument();
     ids.forEach(id => document.register(id, new FakeElement('div')));
 
-    const pendingTimers = [];
+    const timers = makeTimers();
     let intervalId = 0;
 
     const window = {
@@ -29,8 +30,8 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
         TextEncoder,
         Uint8Array,
         console: { log() {}, error() {}, warn() {} },
-        setTimeout: (fn, ms) => { pendingTimers.push({ fn, ms }); return pendingTimers.length; },
-        clearTimeout: () => {},
+        setTimeout: timers.setTimeout,
+        clearTimeout: timers.clearTimeout,
         setInterval: () => { return ++intervalId; },
         clearInterval: () => {},
         requestAnimationFrame: (fn) => { fn(); return 1; },
@@ -60,12 +61,7 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     // Fire DOMContentLoaded so init paths register (harmless for these tests).
     document.dispatch('DOMContentLoaded', {});
 
-    function flushTimers() {
-        const due = pendingTimers.splice(0);
-        due.forEach(t => t.fn());
-    }
-
-    return { document, window, sandbox, flushTimers, pendingTimers };
+    return { document, window, sandbox, flushTimers: timers.flush, pendingTimers: timers.pending };
 }
 
 module.exports = { loadViews, FakeElement };

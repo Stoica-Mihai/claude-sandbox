@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadViews, FakeElement } = require('./load-views');
+const { clickEvent, clickTrash } = require('./delete-history-helpers');
 
 // These tests pin the "delete-session-history" change. The resume-row delete
 // affordance uses the Futurism kit component (futurism.css): .row-host wraps the
@@ -33,12 +34,6 @@ function sampleEntries() {
 
 function actionRows(env) {
     return env.document.getElementById('session-actions').children;
-}
-
-// arm an idle control by firing its trash button's onclick
-function clickTrash(act) {
-    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
-    btn.onclick({ stopPropagation() {}, preventDefault() {} });
 }
 
 // ---------- dpRenderHistory: .row-host + .row-act scaffold ----------
@@ -124,7 +119,7 @@ test('.confirm-no (cancel) reverts the control to idle — drops .confirming, re
     env.sandbox.dpDelToConfirm(act, '/p', 'u1');
 
     const no = act.children.find(c => c.classList.contains('confirm-no'));
-    no.onclick({ stopPropagation() {}, preventDefault() {} });
+    no.onclick(clickEvent());
 
     assert.equal(act.classList.contains('confirming'), false, '.confirming removed on cancel');
     assert.equal(act.classList.contains('failed'), false, 'no .failed on cancel');

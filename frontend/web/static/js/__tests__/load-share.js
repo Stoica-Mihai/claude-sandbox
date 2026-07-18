@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { FakeDocument, FakeElement } = require('./dom-stub');
+const { makeTimers } = require('./timers');
 
 const SHARE_PATH = path.join(__dirname, '..', 'share.js');
 
@@ -62,13 +63,13 @@ function loadShare({ fetchResponses = [] } = {}) {
     });
 
     const clipboardWrites = [];
-    const pendingTimers = [];
+    const timers = makeTimers();
 
     const sandbox = {
         document,
         console: { log() {}, error() {}, warn() {} },
-        setTimeout: (fn, ms) => { pendingTimers.push({ fn, ms }); return pendingTimers.length; },
-        clearTimeout: () => {},
+        setTimeout: timers.setTimeout,
+        clearTimeout: timers.clearTimeout,
         fetch: fetchImpl,
         qrcode: qrcodeStub,
         navigator: {
@@ -84,17 +85,12 @@ function loadShare({ fetchResponses = [] } = {}) {
     vm.createContext(sandbox);
     vm.runInContext(code, sandbox, { filename: 'share.js' });
 
-    function flushTimers() {
-        const due = pendingTimers.splice(0);
-        due.forEach(t => t.fn());
-    }
-
     // Let queued promise callbacks (fetch chains) settle.
     async function settle() {
         for (let i = 0; i < 10; i++) await Promise.resolve();
     }
 
-    return { document, sandbox, fetchCalls, qrCalls, clipboardWrites, flushTimers, settle };
+    return { document, sandbox, fetchCalls, qrCalls, clipboardWrites, flushTimers: timers.flush, settle };
 }
 
 module.exports = { loadShare };

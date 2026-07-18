@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadViews, FakeElement } = require('./load-views');
+const { clickEvent, clickTrash } = require('./delete-history-helpers');
 
 // Covers the "delete-session-history" UI wiring in views.js — dpRenderHistory
 // (rebuilds the previous-sessions list in place and attaches a per-row delete
@@ -10,16 +11,6 @@ const { loadViews, FakeElement } = require('./load-views');
 // dpDelToConfirm → dpDelConfirmed / dpDelFail). The control uses the Futurism kit
 // component: .row-act is a div CONTAINER; the idle trash is a .row-act-btn child
 // button; confirm swaps in .confirm-yes / .confirm-no buttons.
-
-function clickEvent() {
-    const e = {
-        _stopped: false,
-        _prevented: false,
-        stopPropagation() { this._stopped = true; },
-        preventDefault() { this._prevented = true; },
-    };
-    return e;
-}
 
 function jsonResponse(body, { ok = true, status = 200 } = {}) {
     return { ok, status, json: async () => body };
@@ -44,13 +35,6 @@ function delControls(env) {
 function rowWraps(env) {
     return env.document.getElementById('session-actions').children
         .filter(c => c.classList.contains('row-host'));
-}
-
-// Fire the idle trash button's click (the .row-act-btn child of a .row-act).
-function clickTrash(act, e = clickEvent()) {
-    const btn = act.children.find(c => c.classList.contains('row-act-btn'));
-    btn.onclick(e);
-    return e;
 }
 
 // ---------- dpRenderHistory: rendering + delete-control wiring ----------
