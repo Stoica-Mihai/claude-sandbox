@@ -76,10 +76,7 @@ export function wireClipboard(containerEl, term, terminalId, manager, mobile) {
                         return;
                     }
                     const { path } = await resp.json();
-                    const ws = manager.instances[terminalId]?.ws;
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(new TextEncoder().encode(path));
-                    }
+                    manager.instances[terminalId]?.socket?.send(new TextEncoder().encode(path));
                 })
                 .catch((err) => {
                     term.write(`\r\n${ANSI_RED}[Upload failed: ${err.message}]${ANSI_RESET}`);

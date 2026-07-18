@@ -4,7 +4,8 @@
 
 import { isMobile } from './ui-utils.js';
 import { getTerminalTheme, syncTerminalBgVar, terminalThemes } from './terminal-theme.js';
-import { connectWs } from './terminal-connection.js';
+import { SessionSocket } from './session-socket.js';
+import { ANSI_RED, ANSI_GRAY, ANSI_RESET } from './terminal-ansi.js';
 import { wireClipboard } from './terminal-clipboard.js';
 import { wireTouchScroll } from './terminal-touch.js';
 
@@ -14,7 +15,7 @@ export { terminalThemes, getTerminalTheme, syncTerminalBgVar };
 
 // TerminalManager — manages multiple xterm.js instances and their sockets.
 export const TerminalManager = {
-    instances: {}, // terminalId -> { term, ws, fitAddon, webLinksAddon, webglAddon, containerId, retryTimer, retryCount, needsRefresh, closing }
+    instances: {}, // terminalId -> { term, socket, fitAddon, webLinksAddon, webglAddon, containerId, needsRefresh }
 
     create(terminalId, containerEl) {
         if (this.instances[terminalId]) {
@@ -90,33 +91,66 @@ export const TerminalManager = {
 
         const instance = {
             term,
-            ws: null,
+            socket: null,
             fitAddon,
             webLinksAddon,
             webglAddon,
             containerId: containerEl.id,
-            retryTimer: null,
-            retryCount: 0,
             needsRefresh: false, // set when another viewer resized us; our display is garbled until next input
-            closing: false,      // set by destroy() so onclose doesn't reconnect an intentionally-closed tab
         };
         this.instances[terminalId] = instance;
 
-        connectWs(this, instance, term, terminalId);
-
-        // User input -> WebSocket (binary so Go routes it to the PTY).
-        term.onData((data) => {
-            const ws = instance.ws;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                // If another viewer resized the session, clear our garbled display.
-                // The input triggers ResizeToViewer on the server, which resizes the
-                // PTY back to our dimensions; the redraw arrives via normal broadcast.
-                if (instance.needsRefresh) {
-                    instance.needsRefresh = false;
-                    term.clear();
+        let scrollRafPending = false;
+        const socket = new SessionSocket(terminalId, {
+            onData: (data) => {
+                const buf = term.buffer.active;
+                const atBottom = buf.baseY <= buf.viewportY + 5;
+                term.write(data);
+                if (atBottom && !scrollRafPending) {
+                    scrollRafPending = true;
+                    requestAnimationFrame(() => {
+                        // Skip if the terminal was disposed/replaced before this frame ran.
+                        if (this.instances[terminalId]?.term === term) term.scrollToBottom();
+                        scrollRafPending = false;
+                    });
                 }
-                ws.send(new TextEncoder().encode(data));
+            },
+            onControl: (msg) => {
+                if (msg.type === 'deactivated') instance.needsRefresh = true;
+            },
+            onStatus: (status, info) => {
+                if (status === 'open') {
+                    // The server replays its full ring buffer on every (re)attach.
+                    // On a resume our buffer still holds the pre-disconnect
+                    // scrollback, so reset first or the replay duplicates it.
+                    if (info.resumed) term.reset();
+                    socket.sendResize(term.cols, term.rows);
+                } else if (status === 'reconnecting') {
+                    term.write(`\r\n${ANSI_GRAY}[Reconnecting... (attempt ${info.attempt})]${ANSI_RESET}`);
+                } else if (status === 'ended') {
+                    term.write(`\r\n${ANSI_GRAY}[Session ended]${ANSI_RESET}\r\n`);
+                } else if (status === 'lost') {
+                    term.write(`\r\n${ANSI_RED}[Connection lost — press any key to retry]${ANSI_RESET}\r\n`);
+                }
+            },
+        });
+        instance.socket = socket;
+        socket.connect();
+
+        // User input -> socket (binary so Go routes it to the PTY).
+        term.onData((data) => {
+            if (socket.status === 'lost') {
+                socket.retry();
+                return;
             }
+            // If another viewer resized the session, clear our garbled display.
+            // The input triggers the active-viewer takeover on the server, which
+            // resizes the PTY back to us; the redraw arrives via broadcast.
+            if (socket.status === 'open' && instance.needsRefresh) {
+                instance.needsRefresh = false;
+                term.clear();
+            }
+            socket.send(new TextEncoder().encode(data));
             // On mobile, dismiss the keyboard after Enter so output is visible.
             if (data === '\r' && isMobile()) {
                 const ta = containerEl.querySelector('.xterm-helper-textarea');
@@ -125,10 +159,7 @@ export const TerminalManager = {
         });
 
         term.onResize(({ cols, rows }) => {
-            const ws = instance.ws;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-            }
+            socket.sendResize(cols, rows);
         });
 
         return term;
@@ -138,16 +169,7 @@ export const TerminalManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
 
-        // Mark the close intentional before closing so the socket's onclose does
-        // not treat it as an unexpected drop and reconnect.
-        instance.closing = true;
-        if (instance.retryTimer != null) {
-            clearTimeout(instance.retryTimer);
-            instance.retryTimer = null;
-        }
-        if (instance.ws && instance.ws.readyState !== WebSocket.CLOSED) {
-            instance.ws.close();
-        }
+        instance.socket?.close(); // intentional: no reconnect
         if (instance.webglAddon) {
             instance.webglAddon.dispose();
         }

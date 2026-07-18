@@ -23,8 +23,7 @@ const KEY_BYTES = {
 export function sendToActiveTerminal(bytes) {
     if (!singleTerminalId) return null;
     const inst = TerminalManager.get(singleTerminalId);
-    if (inst?.ws?.readyState === WebSocket.OPEN) {
-        inst.ws.send(bytes);
+    if (inst?.socket?.send(bytes)) {
         inst.term?.scrollToBottom();
         return inst;
     }
