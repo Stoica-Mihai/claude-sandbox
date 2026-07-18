@@ -462,8 +462,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleWebSocket upgrades the HTTP connection to a WebSocket and registers
-// the viewer with the session's relay. Output comes from the relay's ring
-// buffer (replay) and the live attach PTY. Input is sent via the relay's
+// the viewer with the session's relay. Output comes from the relay's terminal
+// snapshot (replay) and the live attach PTY. Input is sent via the relay's
 // attach PTY.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")

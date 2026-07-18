@@ -35,18 +35,6 @@ var (
 	errNotAttached  = errors.New("attach not connected")
 )
 
-// altScreenModes are the DEC private modes whose set/reset switches the
-// alternate screen (DECSET/DECRST ?47, ?1047, ?1049).
-var altScreenModes = map[int]bool{47: true, 1047: true, 1049: true}
-
-// altScreenEnterSeq is the canonical enter sequence replayed to a viewer that
-// attaches while the session is in alternate screen mode.
-var altScreenEnterSeq = []byte("\x1b[?1049h")
-
-// csiMaxLen bounds a buffered partial escape sequence; anything longer is not
-// a mode switch and is passed through as data.
-const csiMaxLen = 32
-
 // viewerSize is a viewer's last reported terminal dimensions.
 type viewerSize struct {
 	cols uint16
@@ -124,8 +112,8 @@ type Relay struct {
 	exited   chan struct{} // closed by the actor: teardown complete
 	stopOnce sync.Once
 
-	// Actor-owned state. Touched only by the actor goroutine (and by
-	// trackAltScreen unit tests, which run without the actor).
+	// Actor-owned state. Touched only by the actor goroutine. term is itself
+	// mutex-guarded, so tests may probe it from outside the actor.
 	viewers     map[*websocket.Conn]*viewerHandle
 	lastResizer *websocket.Conn // active viewer: last to type (or first to resize)
 	ptmx        *os.File        // current attach PTY master; nil while reconnecting
@@ -133,9 +121,7 @@ type Relay struct {
 	gen         int // attach epoch; stale readLoop messages are dropped
 	lastCols    uint16
 	lastRows    uint16
-	inAltScreen bool
-	partial     []byte // partial escape sequence from the previous output chunk
-	ring        *RingBuffer
+	term        *termState
 }
 
 // NewRelay creates a relay for the given session.
@@ -147,7 +133,7 @@ func NewRelay(sessionName string) *Relay {
 		done:        make(chan struct{}),
 		exited:      make(chan struct{}),
 		viewers:     make(map[*websocket.Conn]*viewerHandle),
-		ring:        NewRingBuffer(defaultBufferCapacity),
+		term:        newTermState(defaultCols, defaultRows),
 	}
 }
 
@@ -155,6 +141,7 @@ func NewRelay(sessionName string) *Relay {
 func (r *Relay) Start() error {
 	f, cmd, err := r.startAttach()
 	if err != nil {
+		r.term.Close() // the relay is abandoned; end the drain goroutine
 		return err
 	}
 	r.begin(f, cmd)
@@ -287,6 +274,7 @@ func (r *Relay) teardown() {
 	if r.ptmx != nil {
 		r.ptmx.Close()
 	}
+	r.term.Close()
 	for conn := range r.viewers {
 		r.dropViewer(conn, websocket.CloseNormalClosure)
 	}
@@ -324,20 +312,15 @@ func (r *Relay) reject(c relayCmd) {
 	}
 }
 
-// handleAddViewer starts the viewer's writer, queues reset + scrollback replay
-// (+ alt-screen re-enter), and adds it to the broadcast set. Replay and
-// registration are one actor step, so no broadcast can interleave between them.
+// handleAddViewer starts the viewer's writer, queues the terminal snapshot
+// (reset + scrollback + screen + cursor), and adds it to the broadcast set.
+// Replay and registration are one actor step, so no broadcast can interleave
+// between them.
 func (r *Relay) handleAddViewer(c cmdAddViewer) {
 	v := &viewerHandle{conn: c.conn, out: make(chan viewerMsg, viewerQueueSize)}
 	go r.viewerWriter(v)
 
-	v.out <- viewerMsg{websocket.BinaryMessage, []byte(termReset)}
-	if scrollback := r.ring.Bytes(); len(scrollback) > 0 {
-		v.out <- viewerMsg{websocket.BinaryMessage, scrollback}
-	}
-	if r.inAltScreen {
-		v.out <- viewerMsg{websocket.BinaryMessage, altScreenEnterSeq}
-	}
+	v.out <- viewerMsg{websocket.BinaryMessage, r.term.Snapshot()}
 
 	r.viewers[c.conn] = v
 	c.reply <- nil
@@ -410,6 +393,7 @@ func (r *Relay) handleResize(c cmdResize) {
 // forwards to the inner program as SIGWINCH.
 func (r *Relay) applyResize(cols, rows uint16) {
 	r.lastCols, r.lastRows = cols, rows
+	r.term.Resize(cols, rows)
 	if r.ptmx != nil {
 		if err := pty.Setsize(r.ptmx, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
 			slog.Debug("resize failed", "session", r.SessionName, "error", err)
@@ -418,12 +402,11 @@ func (r *Relay) applyResize(cols, rows uint16) {
 }
 
 // handleOutput routes one PTY output chunk: broadcast to non-suspended
-// viewers, alt-screen tracking, and ring-buffer writes for normal-mode bytes.
+// viewers and feed the terminal-state emulator.
 func (r *Relay) handleOutput(c cmdOutput) {
 	if c.gen != r.gen {
 		return
 	}
-	segments := r.trackAltScreen(c.data)
 
 	for conn, v := range r.viewers {
 		if v.suspended {
@@ -435,9 +418,7 @@ func (r *Relay) handleOutput(c cmdOutput) {
 		}
 	}
 
-	for _, seg := range segments {
-		r.ring.Write(seg)
-	}
+	r.term.Write(c.data)
 }
 
 // handleAttachEOF reacts to the attach PTY dropping: it invalidates the old
@@ -470,7 +451,6 @@ func (r *Relay) handleAttachResult(c cmdAttachResult) {
 	}
 	r.ptmx = c.f
 	r.attachCmd = c.cmd
-	r.partial = nil // a half-parsed escape sequence never survives a reattach
 	// Only impose a size when a browser viewer is present, so the relay doesn't
 	// clobber a CLI-owned session's dimensions.
 	if len(r.viewers) > 0 {
@@ -561,7 +541,9 @@ func (r *Relay) startAttach() (*os.File, *exec.Cmd, error) {
 	if err := r.waitForSocket(); err != nil {
 		return nil, nil, err
 	}
-	cmd := exec.Command("dtach", "-a", r.sockPath, "-E", "-z", "-r", "none")
+	// -r winch: dtach nudges the program with SIGWINCH on attach, so it repaints
+	// and repopulates the terminal-state emulator after a backend restart.
+	cmd := exec.Command("dtach", "-a", r.sockPath, "-E", "-z", "-r", "winch")
 	f, err := pty.Start(cmd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dtach attach failed: %w", err)
@@ -605,108 +587,3 @@ func (r *Relay) reconnectLoop(gen int) {
 	r.Stop()
 }
 
-// csiScan parses a CSI private-mode sequence at data[0] (which must be ESC).
-// Returns the sequence length, whether it is a DECSET/DECRST touching an
-// alt-screen mode, whether it sets (h) or resets (l), and whether the bytes
-// form a complete sequence. A non-CSI escape or a CSI that is not a private
-// mode switch reports altMode=false with its consumed length.
-func csiScan(data []byte) (length int, altMode, enter, complete bool) {
-	if len(data) < 2 {
-		return 0, false, false, false
-	}
-	if data[1] != '[' {
-		return 1, false, false, true // not CSI: pass the ESC through as data
-	}
-	i := 2
-	private := i < len(data) && data[i] == '?'
-	if private {
-		i++
-	}
-	param := 0
-	hasAltParam := false
-	for ; i < len(data); i++ {
-		switch b := data[i]; {
-		case b >= '0' && b <= '9':
-			param = param*10 + int(b-'0')
-		case b == ';':
-			hasAltParam = hasAltParam || altScreenModes[param]
-			param = 0
-		case b >= 0x40 && b <= 0x7e: // final byte
-			hasAltParam = hasAltParam || altScreenModes[param]
-			isSwitch := private && (b == 'h' || b == 'l') && hasAltParam
-			return i + 1, isSwitch, b == 'h', true
-		default:
-			// Intermediate/other byte: not a mode switch; consume through it
-			// conservatively as data from the ESC on.
-			return 1, false, false, true
-		}
-	}
-	return 0, false, false, false // ran out of bytes mid-sequence
-}
-
-// trackAltScreen scans data for alternate-screen mode switches (any CSI
-// DECSET/DECRST carrying mode 47/1047/1049), toggles the inAltScreen flag,
-// and returns the normal-mode segments (for the ring buffer). Viewers receive
-// the raw stream directly, so no cleaned copy is built here.
-func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
-	if len(r.partial) > 0 {
-		data = append(r.partial, data...)
-		r.partial = nil
-	}
-
-	var currentNormal []byte
-	if !r.inAltScreen {
-		currentNormal = make([]byte, 0, len(data))
-	}
-	flush := func() {
-		if !r.inAltScreen && len(currentNormal) > 0 {
-			normalSegments = append(normalSegments, currentNormal)
-		}
-	}
-
-	i := 0
-	for i < len(data) {
-		if data[i] != '\x1b' {
-			if !r.inAltScreen {
-				currentNormal = append(currentNormal, data[i])
-			}
-			i++
-			continue
-		}
-
-		length, altMode, enter, complete := csiScan(data[i:])
-		if !complete {
-			if len(data)-i <= csiMaxLen {
-				// Possible mode switch split across chunks: stash and finish.
-				r.partial = append([]byte(nil), data[i:]...)
-				flush()
-				return normalSegments
-			}
-			// Too long to be a mode switch: treat the ESC as plain data.
-			length, altMode = 1, false
-		}
-
-		if !altMode {
-			if !r.inAltScreen {
-				currentNormal = append(currentNormal, data[i:i+length]...)
-			}
-			i += length
-			continue
-		}
-
-		// Alt-screen switch. The sequence itself is not written to the ring:
-		// replay re-enters via altScreenEnterSeq when needed.
-		if enter {
-			flush()
-			currentNormal = nil
-			r.inAltScreen = true
-		} else {
-			r.inAltScreen = false
-			currentNormal = make([]byte, 0, len(data)-i)
-		}
-		i += length
-	}
-
-	flush()
-	return normalSegments
-}

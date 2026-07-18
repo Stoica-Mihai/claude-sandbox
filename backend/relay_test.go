@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,120 +15,122 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestTrackAltScreenRoutesSegments(t *testing.T) {
-	r := NewRelay("claude-test")
-	segments := r.trackAltScreen([]byte("conv\x1b[?1049hTUI\x1b[?1049lmore"))
+// TestSnapshotPlainText: written text shows up in the snapshot, which starts
+// with a terminal reset.
+func TestSnapshotPlainText(t *testing.T) {
+	ts := newTermState(20, 5)
+	defer ts.Close()
+	ts.Write([]byte("hello"))
 
-	if r.inAltScreen {
-		t.Fatal("inAltScreen should be false after exit sequence")
+	snap := ts.Snapshot()
+	if !bytes.HasPrefix(snap, []byte(termReset)) {
+		t.Fatalf("snapshot must start with a reset, got %q", snap)
 	}
-
-	var ring bytes.Buffer
-	for _, s := range segments {
-		ring.Write(s)
-	}
-	// Normal-mode content goes to the ring buffer; TUI chrome does not.
-	if !bytes.Contains(ring.Bytes(), []byte("conv")) || !bytes.Contains(ring.Bytes(), []byte("more")) {
-		t.Fatalf("normal segments missing conversation content: %q", ring.Bytes())
-	}
-	if bytes.Contains(ring.Bytes(), []byte("TUI")) {
-		t.Fatalf("alt-screen content leaked into ring segments: %q", ring.Bytes())
+	if !bytes.Contains(snap, []byte("hello")) {
+		t.Fatalf("snapshot missing written text: %q", snap)
 	}
 }
 
-func TestTrackAltScreenSplitSequence(t *testing.T) {
-	r := NewRelay("claude-test")
-	// Enter sequence split across two chunks.
-	r.trackAltScreen([]byte("ab\x1b[?10"))
-	if r.inAltScreen {
-		t.Fatal("should not toggle on partial sequence")
+// TestSnapshotAltScreen: while the alt screen is active the snapshot re-enters
+// it and paints alt content; after exit it paints main content again.
+func TestSnapshotAltScreen(t *testing.T) {
+	ts := newTermState(20, 5)
+	defer ts.Close()
+	ts.Write([]byte("conv\x1b[?1049hTUI"))
+
+	snap := ts.Snapshot()
+	if !bytes.Contains(snap, []byte(altScreenEnterSeq)) {
+		t.Fatalf("snapshot must re-enter the alt screen: %q", snap)
 	}
-	r.trackAltScreen([]byte("49hTUI"))
-	if !r.inAltScreen {
-		t.Fatal("should be in alt screen after completing split sequence")
+	if !bytes.Contains(snap, []byte("TUI")) {
+		t.Fatalf("snapshot missing alt-screen content: %q", snap)
+	}
+	if bytes.Contains(snap, []byte("conv")) {
+		t.Fatalf("main-screen content painted while in alt screen: %q", snap)
+	}
+
+	ts.Write([]byte("\x1b[?1049lmore"))
+	snap = ts.Snapshot()
+	if bytes.Contains(snap, []byte(altScreenEnterSeq)) || bytes.Contains(snap, []byte("TUI")) {
+		t.Fatalf("alt screen leaked into a main-screen snapshot: %q", snap)
+	}
+	if !bytes.Contains(snap, []byte("conv")) || !bytes.Contains(snap, []byte("more")) {
+		t.Fatalf("snapshot missing main-screen content: %q", snap)
 	}
 }
 
-// TestTrackAltScreenModeVariants covers the CSI grammar: every DECSET spelling
-// of the alt screen toggles, including ?1047 and multi-param forms the old
-// exact-string matcher missed.
-func TestTrackAltScreenModeVariants(t *testing.T) {
-	cases := []struct {
-		name  string
-		enter string
-		exit  string
-	}{
-		{"1049", "\x1b[?1049h", "\x1b[?1049l"},
-		{"47", "\x1b[?47h", "\x1b[?47l"},
-		{"1047", "\x1b[?1047h", "\x1b[?1047l"},
-		{"multi-param", "\x1b[?2004;1049h", "\x1b[?1049;2004l"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r := NewRelay("claude-test")
-			segments := r.trackAltScreen([]byte("pre" + c.enter + "TUI" + c.exit + "post"))
-			var ring bytes.Buffer
-			for _, s := range segments {
-				ring.Write(s)
-			}
-			if got := ring.String(); got != "prepost" {
-				t.Fatalf("ring = %q, want prepost", got)
-			}
-			if r.inAltScreen {
-				t.Fatal("inAltScreen should be false after exit")
-			}
-		})
+// TestSnapshotSplitSequence: an escape sequence split across writes is parsed
+// incrementally (the parser keeps state between chunks).
+func TestSnapshotSplitSequence(t *testing.T) {
+	ts := newTermState(20, 5)
+	defer ts.Close()
+	ts.Write([]byte("ab\x1b[?10"))
+	ts.Write([]byte("49hTUI"))
+
+	if !bytes.Contains(ts.Snapshot(), []byte(altScreenEnterSeq)) {
+		t.Fatal("split alt-screen enter sequence not recognized")
 	}
 }
 
-// TestTrackAltScreenPassesThroughOtherEscapes: non-alt-screen sequences (SGR
-// colors, other private modes, non-CSI escapes) stay in the ring verbatim and
-// do not toggle the flag.
-func TestTrackAltScreenPassesThroughOtherEscapes(t *testing.T) {
-	r := NewRelay("claude-test")
-	in := "a\x1b[31mred\x1b[0m\x1b[?2004hb\x1b(Bc\x1b[4hd"
-	segments := r.trackAltScreen([]byte(in))
-	var ring bytes.Buffer
-	for _, s := range segments {
-		ring.Write(s)
+// TestSnapshotScrollback: lines scrolled off the screen come back in the
+// snapshot, before the screen paint.
+func TestSnapshotScrollback(t *testing.T) {
+	ts := newTermState(20, 3)
+	defer ts.Close()
+	for i := 1; i <= 6; i++ {
+		ts.Write([]byte(fmt.Sprintf("line%d\r\n", i)))
 	}
-	if got := ring.String(); got != in {
-		t.Fatalf("ring = %q, want input verbatim %q", got, in)
+
+	snap := ts.Snapshot()
+	for i := 1; i <= 6; i++ {
+		if !bytes.Contains(snap, []byte(fmt.Sprintf("line%d", i))) {
+			t.Fatalf("snapshot missing line%d: %q", i, snap)
+		}
 	}
-	if r.inAltScreen {
-		t.Fatal("no alt-screen switch present; flag must stay false")
+	if bytes.Index(snap, []byte("line1")) > bytes.Index(snap, []byte("line6")) {
+		t.Fatalf("scrollback must precede screen content: %q", snap)
 	}
 }
 
-// TestTrackAltScreenLoneEscAtChunkEnd: a bare ESC at the end of a chunk is
-// stashed and stitched with the next chunk.
-func TestTrackAltScreenLoneEscAtChunkEnd(t *testing.T) {
-	r := NewRelay("claude-test")
-	r.trackAltScreen([]byte("x\x1b"))
-	if r.inAltScreen {
-		t.Fatal("no toggle on a bare ESC")
+// TestSnapshotStyledOutput: SGR styling survives the render round-trip.
+func TestSnapshotStyledOutput(t *testing.T) {
+	ts := newTermState(20, 5)
+	defer ts.Close()
+	ts.Write([]byte("\x1b[31mred\x1b[0m plain"))
+
+	snap := ts.Snapshot()
+	if !bytes.Contains(snap, []byte("red")) || !bytes.Contains(snap, []byte("plain")) {
+		t.Fatalf("snapshot missing text: %q", snap)
 	}
-	r.trackAltScreen([]byte("[?1049h"))
-	if !r.inAltScreen {
-		t.Fatal("stitched sequence should enter alt screen")
+	if !bytes.Contains(snap, []byte("31")) {
+		t.Fatalf("snapshot lost the color attribute: %q", snap)
 	}
 }
 
-// TestTrackAltScreenLongGarbageEscape: an over-long unterminated escape is not
-// stashed forever — the ESC passes through as data.
-func TestTrackAltScreenLongGarbageEscape(t *testing.T) {
-	r := NewRelay("claude-test")
-	garbage := "\x1b[" + strings.Repeat("1;", 40) // > csiMaxLen, no final byte
-	segments := r.trackAltScreen([]byte(garbage + "tail"))
-	var ring bytes.Buffer
-	for _, s := range segments {
-		ring.Write(s)
+// TestSnapshotCursorHidden: DECTCEM hide is restored by the snapshot.
+func TestSnapshotCursorHidden(t *testing.T) {
+	ts := newTermState(20, 5)
+	defer ts.Close()
+
+	if bytes.Contains(ts.Snapshot(), []byte("\x1b[?25l")) {
+		t.Fatal("cursor hidden in a fresh snapshot")
 	}
-	if !bytes.Contains(ring.Bytes(), []byte("tail")) {
-		t.Fatalf("data after a garbage escape lost: %q", ring.String())
+	ts.Write([]byte("\x1b[?25l"))
+	if !bytes.Contains(ts.Snapshot(), []byte("\x1b[?25l")) {
+		t.Fatal("snapshot must restore the hidden cursor")
 	}
-	if len(r.partial) != 0 {
-		t.Fatalf("garbage escape must not be stashed as partial, got %q", r.partial)
+}
+
+// TestSnapshotResize: the emulator follows resizes; content written after a
+// resize lands on the wider screen.
+func TestSnapshotResize(t *testing.T) {
+	ts := newTermState(10, 3)
+	defer ts.Close()
+	ts.Resize(40, 10)
+	ts.Write([]byte("a line wider than ten"))
+
+	if !bytes.Contains(ts.Snapshot(), []byte("a line wider than ten")) {
+		t.Fatalf("content lost after resize: %q", ts.Snapshot())
 	}
 }
 
@@ -238,7 +241,8 @@ func TestRelayBroadcastAndInput(t *testing.T) {
 	}
 }
 
-// TestRelayScrollbackReplay verifies a late viewer receives ring-buffer history.
+// TestRelayScrollbackReplay verifies a late viewer receives earlier output via
+// the terminal snapshot.
 func TestRelayScrollbackReplay(t *testing.T) {
 	r, sessionSide := startTestRelay(t, "claude-test")
 
@@ -248,7 +252,7 @@ func TestRelayScrollbackReplay(t *testing.T) {
 	// Wait for the actor to ingest the output before attaching the viewer.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if bytes.Contains(r.ring.Bytes(), []byte("early output")) {
+		if bytes.Contains(r.term.Snapshot(), []byte("early output")) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
