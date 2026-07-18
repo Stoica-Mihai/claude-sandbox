@@ -1,23 +1,32 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
+// Loads the real ES-module view sources (via require(), which Node resolves
+// synchronously for ESM graphs without top-level await), installs fake browser
+// globals, and calls each module's init() so listeners wire onto a fresh
+// FakeDocument and module state resets. Tests reach exports through env.sandbox
+// (which is globalThis, so global reads like fetch/openSession see overrides).
+
 const { FakeDocument, FakeElement } = require('./dom-stub');
 const { makeTimers } = require('./timers');
 
-const VIEWS_FILES = [
-    'ui-utils.js',
-    'sidebar.js',
-    'tabs.js',
-    'mobile-bar.js',
-    'picker.js',
-    'history-del.js',
-    'rename.js',
-    'app-init.js',
-];
+const uiUtils = require('../ui-utils.js');
+const terminal = require('../terminal.js');
+const actions = require('../actions.js');
+const sidebar = require('../sidebar.js');
+const tabs = require('../tabs.js');
+const mobileBar = require('../mobile-bar.js');
+const picker = require('../picker.js');
+const historyDel = require('../history-del.js');
+const rename = require('../rename.js');
+const appInit = require('../app-init.js');
 
-// Load views.js into a fresh sandbox with controllable globals/timers.
+// Namespaces whose exports the tests reach for via env.sandbox.
+const NAMESPACES = [uiUtils, actions, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit];
+// history-del has no init; terminal.init wires browser-only listeners the view
+// tests don't exercise. TerminalManager is stubbed instead.
+const INIT_ORDER = [sidebar, tabs, mobileBar, picker, rename, appInit];
+
+// Load views into a fresh fake environment with controllable globals/timers.
 // Returns the live document plus a flushTimers() to fire pending setTimeout cbs.
 function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     const document = new FakeDocument();
@@ -32,45 +41,41 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
         htmx: null,
     };
 
-    const sandbox = {
-        window,
-        document,
-        WebSocket: { OPEN: 1 },
-        TextEncoder,
-        Uint8Array,
-        console: { log() {}, error() {}, warn() {} },
-        setTimeout: timers.setTimeout,
-        clearTimeout: timers.clearTimeout,
-        setInterval: () => { return ++intervalId; },
-        clearInterval: () => {},
-        requestAnimationFrame: (fn) => { fn(); return 1; },
-        getComputedStyle: () => ({ getPropertyValue: () => (mobile ? '1' : '0') }),
-        localStorage: {
-            getItem: (k) => (k in localStorage ? localStorage[k] : null),
-            setItem: (k, v) => { localStorage[k] = String(v); },
-            removeItem: (k) => { delete localStorage[k]; },
-        },
-        Date,
-        Math,
-        parseInt,
-        parseFloat,
-        location: { reload() {} },
-        fetch: () => Promise.resolve({ ok: true, status: 200, json: async () => [] }),
-        TerminalManager: {
-            create() {}, destroy() {}, resize() {}, resizeAll() {},
-            get() { return null; },
-        },
+    globalThis.window = window;
+    globalThis.document = document;
+    globalThis.WebSocket = { OPEN: 1 };
+    globalThis.setTimeout = timers.setTimeout;
+    globalThis.clearTimeout = timers.clearTimeout;
+    globalThis.setInterval = () => ++intervalId;
+    globalThis.clearInterval = () => {};
+    globalThis.requestAnimationFrame = (fn) => { fn(); return 1; };
+    globalThis.getComputedStyle = () => ({ getPropertyValue: () => (mobile ? '1' : '0') });
+    globalThis.localStorage = {
+        getItem: (k) => (k in localStorage ? localStorage[k] : null),
+        setItem: (k, v) => { localStorage[k] = String(v); },
+        removeItem: (k) => { delete localStorage[k]; },
     };
-    sandbox.globalThis = sandbox;
+    globalThis.location = { reload() {} };
+    globalThis.fetch = () => Promise.resolve({ ok: true, status: 200, json: async () => [] });
 
-    const code = VIEWS_FILES
-        .map(f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8'))
-        .join('\n');
-    vm.createContext(sandbox);
-    vm.runInContext(code, sandbox, { filename: 'views.js' });
+    // Stub TerminalManager so tests never hit the real xterm create path.
+    terminal.TerminalManager.instances = {};
+    Object.assign(terminal.TerminalManager, {
+        create() {}, destroy() {}, resize() {}, resizeAll() {}, get() { return null; },
+    });
 
-    // Fire DOMContentLoaded so init paths register (harmless for these tests).
-    document.dispatch('DOMContentLoaded', {});
+    // Reset module state + wire listeners onto the fresh document.
+    INIT_ORDER.forEach(m => m.init());
+
+    // sandbox === globalThis so module global reads (fetch, openSession) see test
+    // overrides; copy the exports the tests call onto it as well.
+    const sandbox = globalThis;
+    NAMESPACES.forEach(ns => {
+        for (const k of Object.keys(ns)) {
+            if (k !== 'init' && k !== 'default') sandbox[k] = ns[k];
+        }
+    });
+    sandbox.TerminalManager = terminal.TerminalManager;
 
     return { document, window, sandbox, flushTimers: timers.flush, pendingTimers: timers.pending };
 }

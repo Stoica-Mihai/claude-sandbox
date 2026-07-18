@@ -1,21 +1,14 @@
 // Tests for syncTerminalBgVar / theme plumbing in terminal.js.
-// terminal.js is a non-module browser script: it runs top-level code against
-// browser globals and defines functions in global scope. We load its source
-// into a node:vm context populated with minimal DOM/browser stubs, then assert
-// on the globals it defines.
+// terminal.js is now an ES module: import it once, then drive each test against
+// a fresh fake document installed on globalThis so its documentElement style /
+// attribute writes are captured for assertions.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SRC = readFileSync(join(__dirname, 'terminal.js'), 'utf8');
+const { syncTerminalBgVar, getTerminalTheme, terminalThemes, TerminalManager } = await import('./terminal.js');
 
-// Build a fresh stub environment and evaluate terminal.js into it.
-// Returns the vm context, which holds every global the script defines
-// (syncTerminalBgVar, getTerminalTheme, terminalThemes, TerminalManager, ...).
+// Install a fresh capturing document on globalThis and return the exports under
+// test plus the capture maps (documentElement.style.setProperty / attributes).
 function loadTerminal() {
     const setProps = {};   // captured documentElement.style.setProperty calls
     const attrs = {};      // captured documentElement attributes
@@ -29,9 +22,7 @@ function loadTerminal() {
         scrollTop: 0,
     };
 
-    const noopListenerTarget = { addEventListener() {}, removeEventListener() {} };
-
-    const document = {
+    globalThis.document = {
         documentElement,
         body: { style: {}, appendChild() {}, removeChild() {} },
         activeElement: null,
@@ -41,49 +32,9 @@ function loadTerminal() {
         createElement: () => ({ style: {}, select() {}, value: '' }),
         execCommand() {},
     };
+    globalThis.window = { addEventListener() {}, removeEventListener() {} };
 
-    // MutationObserver is referenced at top level (new MutationObserver(...)).
-    class MutationObserver {
-        constructor(cb) { this.cb = cb; }
-        observe() {}
-        disconnect() {}
-    }
-
-    const sandbox = {
-        document,
-        window: noopListenerTarget,
-        navigator: {},
-        location: { protocol: 'http:', host: 'localhost' },
-        MutationObserver,
-        WebSocket: function WebSocket() {},
-        // Used inside create() but never reached by these tests; define so the
-        // top-level script body parses/runs without ReferenceError if touched.
-        Terminal: function Terminal() {},
-        FitAddon: { FitAddon: function () {} },
-        WebLinksAddon: { WebLinksAddon: function () {} },
-        TextEncoder,
-        performance: { now: () => 0 },
-        requestAnimationFrame: () => 0,
-        cancelAnimationFrame: () => {},
-        setTimeout: () => 0,
-        clearTimeout: () => {},
-        isMobile: () => false,   // defined in views.js in the browser
-        console,
-    };
-    sandbox.globalThis = sandbox;
-
-    const context = vm.createContext(sandbox);
-    // const/function-declared top-level bindings are lexically scoped in a vm
-    // script and do not become globalThis properties. Append a shim that lifts
-    // the symbols under test onto globalThis so the test can reach them.
-    const shim = '\n;globalThis.__exports = { syncTerminalBgVar, getTerminalTheme, terminalThemes, TerminalManager };\n';
-    vm.runInContext(SRC + shim, context, { filename: 'terminal.js' });
-    Object.assign(context, context.__exports);
-
-    // Expose the capture maps for assertions.
-    context.__setProps = setProps;
-    context.__attrs = attrs;
-    return context;
+    return { syncTerminalBgVar, getTerminalTheme, terminalThemes, TerminalManager, __setProps: setProps, __attrs: attrs };
 }
 
 let ctx;

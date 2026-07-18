@@ -1,15 +1,14 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
+// Loads the real share.js ES module (via require()), installs the share modal's
+// fake DOM, a scripted fetch, a recording qrcode stub, and a clipboard spy, then
+// calls share.init() (which fetches status once, like the browser boot does).
+
 const { FakeDocument, FakeElement } = require('./dom-stub');
 const { makeTimers } = require('./timers');
 
-const SHARE_PATH = path.join(__dirname, '..', 'share.js');
+const share = require('../share.js');
 
-// Load share.js into a fresh sandbox with the share modal's DOM registered,
-// a scripted fetch, a recording qrcode stub, and a clipboard spy.
 function loadShare({ fetchResponses = [] } = {}) {
     const document = new FakeDocument();
 
@@ -65,25 +64,30 @@ function loadShare({ fetchResponses = [] } = {}) {
     const clipboardWrites = [];
     const timers = makeTimers();
 
-    const sandbox = {
-        document,
-        console: { log() {}, error() {}, warn() {} },
-        setTimeout: timers.setTimeout,
-        clearTimeout: timers.clearTimeout,
-        fetch: fetchImpl,
-        qrcode: qrcodeStub,
-        navigator: {
+    globalThis.document = document;
+    globalThis.setTimeout = timers.setTimeout;
+    globalThis.clearTimeout = timers.clearTimeout;
+    globalThis.fetch = fetchImpl;
+    globalThis.qrcode = qrcodeStub;
+    // navigator is a read-only accessor on globalThis, so redefine it.
+    Object.defineProperty(globalThis, 'navigator', {
+        value: {
             clipboard: {
                 writeText: (t) => { clipboardWrites.push(t); return Promise.resolve(); },
             },
         },
-        Math,
-    };
-    sandbox.globalThis = sandbox;
+        configurable: true,
+        writable: true,
+    });
 
-    const code = fs.readFileSync(SHARE_PATH, 'utf8');
-    vm.createContext(sandbox);
-    vm.runInContext(code, sandbox, { filename: 'share.js' });
+    share.init();
+
+    // sandbox === globalThis so module global reads (fetch, qrcode, navigator)
+    // see the stubs; expose share's exports as well.
+    const sandbox = globalThis;
+    for (const k of Object.keys(share)) {
+        if (k !== 'init' && k !== 'default') sandbox[k] = share[k];
+    }
 
     // Let queued promise callbacks (fetch chains) settle.
     async function settle() {
