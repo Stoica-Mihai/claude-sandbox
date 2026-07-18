@@ -26,6 +26,8 @@ services:
       watch:
         - action: rebuild
           path: ./backend/
+        - action: rebuild
+          path: ./shared/
     security_opt:
       # seccomp must stay unconfined: Claude Code's bubblewrap sandbox needs
       # unprivileged user namespaces, which Docker's default seccomp profile
@@ -84,6 +86,8 @@ services:
       watch:
         - action: rebuild
           path: ./frontend/
+        - action: rebuild
+          path: ./shared/
 
     environment:
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}

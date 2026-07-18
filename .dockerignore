@@ -15,3 +15,7 @@ openspec
 node_modules
 package.json
 package-lock.json
+# Host build artifacts: shipping them busts the COPY layer cache every build
+# and can smuggle a stale binary into the image.
+backend/claude-sandbox-backend
+**/node_modules
