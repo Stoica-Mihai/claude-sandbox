@@ -88,6 +88,16 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// writeWorkspaceDirErr maps a resolveWorkspaceDir sentinel to the 400 the
+// directory-picker handlers return.
+func writeWorkspaceDirErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, errNotDir) {
+		writeErr(w, http.StatusBadRequest, "directory not found")
+		return
+	}
+	writeErr(w, http.StatusBadRequest, "invalid path")
+}
+
 // handleHealthz returns a simple JSON health check response.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -219,16 +229,9 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	subpath := r.URL.Query().Get("path")
 
 	// Resolve and validate the target path.
-	target := filepath.Join(workspaceRoot, subpath)
-	absTarget, err := filepath.Abs(target)
-	if err != nil || !underWorkspace(absTarget) {
-		writeErr(w, http.StatusBadRequest, "invalid path")
-		return
-	}
-
-	info, err := os.Stat(absTarget)
-	if err != nil || !info.IsDir() {
-		writeErr(w, http.StatusBadRequest, "directory not found")
+	absTarget, err := resolveWorkspaceDir(filepath.Join(workspaceRoot, subpath))
+	if err != nil {
+		writeWorkspaceDirErr(w, err)
 		return
 	}
 
@@ -291,17 +294,10 @@ func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve and validate the parent path (mirrors handleDirectories).
-	parent := filepath.Join(workspaceRoot, req.Path)
-	absParent, err := filepath.Abs(parent)
-	if err != nil || !underWorkspace(absParent) {
-		writeErr(w, http.StatusBadRequest, "invalid path")
-		return
-	}
-
-	info, err := os.Stat(absParent)
-	if err != nil || !info.IsDir() {
-		writeErr(w, http.StatusBadRequest, "directory not found")
+	// Resolve and validate the parent path.
+	absParent, err := resolveWorkspaceDir(filepath.Join(workspaceRoot, req.Path))
+	if err != nil {
+		writeWorkspaceDirErr(w, err)
 		return
 	}
 
