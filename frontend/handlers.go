@@ -33,7 +33,7 @@ type Server struct {
 // NewServer creates a Server by parsing embedded templates and registering
 // all routes on the provided mux.
 func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, error) {
-	tmpl, err := template.ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
+	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
 	}
@@ -91,6 +91,27 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	mux.Handle("GET /static/", cacheMiddleware(etags, fileServer))
 
 	return s, nil
+}
+
+// templateFuncs exposes the shared dashboard enums to templates so the settings
+// modal and accent picker render from the same source the backend validates.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"models":   func() []api.Option { return api.Models },
+		"efforts":  func() []api.Option { return api.EffortLevels },
+		"advisors": func() []api.Option { return api.AdvisorModels },
+		"accentsJSON": func() (template.JS, error) {
+			b, err := json.Marshal(api.Accents)
+			return template.JS(b), err
+		},
+		"newProjectPattern": func() string { return api.NewProjectNamePattern },
+	}
+}
+
+// parseTemplates parses the embedded templates with the shared FuncMap. Shared
+// by NewServer and the template tests so both parse identically.
+func parseTemplates() (*template.Template, error) {
+	return template.New("").Funcs(templateFuncs()).ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
 }
 
 // computeETags hashes every file in the static FS into a path → ETag map.

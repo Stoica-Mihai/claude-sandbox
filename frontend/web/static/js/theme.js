@@ -1,14 +1,8 @@
 // Theme: light/dark toggle + accent picker, persisted to localStorage.
 
-var ACCENTS = [
-    { name: 'Red',    dark: '#ff4d33', light: '#d22f1a' },
-    { name: 'Amber',  dark: '#ffb02e', light: '#c97a00' },
-    { name: 'Lime',   dark: '#9ae600', light: '#5d8a00' },
-    { name: 'Cyan',   dark: '#2ee6d6', light: '#0a8f86' },
-    { name: 'Blue',   dark: '#4d8bff', light: '#1f5fd6' },
-    { name: 'Violet', dark: '#b06bff', light: '#7a3fd6' },
-    { name: 'Pink',   dark: '#ff5fae', light: '#d62f86' },
-];
+// Accent palette injected by layout.html from shared/enums.go (single source
+// with the backend's name validation).
+var ACCENTS = (typeof window !== 'undefined' && window.ACCENTS) || [];
 
 function currentBaseIsDark() {
     return document.documentElement.getAttribute('data-theme') !== 'light';
@@ -62,6 +56,7 @@ function renderAccents() {
 }
 
 function applyAccent() {
+    if (!curAccent) return;
     var dark = currentBaseIsDark();
     var col = dark ? curAccent.dark : curAccent.light;
     var r = document.documentElement.style;

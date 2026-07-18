@@ -2,12 +2,10 @@ package main
 
 import (
 	"bytes"
-	"html/template"
 	"regexp"
 	"strings"
 	"testing"
 
-	"claude-frontend/web"
 	api "claude-sandbox-api"
 )
 
@@ -15,7 +13,7 @@ import (
 // renders layout.html with the given sessions.
 func renderLayout(t *testing.T, sessions []api.DisplaySession) string {
 	t.Helper()
-	tmpl, err := template.ParseFS(web.Templates, "templates/*.html", "templates/fragments/*.html")
+	tmpl, err := parseTemplates()
 	if err != nil {
 		t.Fatalf("parsing templates: %v", err)
 	}

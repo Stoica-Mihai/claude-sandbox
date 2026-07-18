@@ -522,7 +522,12 @@ function closeEditor() {
     dpEditorClearError(els);
 }
 
-const dpNameRe = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+// Pattern injected by layout.html from shared/enums.go (single source with the
+// backend validator). Without the injection the pre-check accepts anything and
+// defers to the server — the pattern is never duplicated here.
+const dpNameRe = new RegExp(
+    (typeof window !== 'undefined' && window.NEW_PROJECT_NAME_PATTERN) || '.*'
+);
 
 // Read + validate the name (UX only; server is authoritative), then POST. The
 // browse path comes off the newrow's data-dp-* (Decision 10), not breadcrumbs.

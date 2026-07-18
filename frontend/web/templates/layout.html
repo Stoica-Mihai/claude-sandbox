@@ -205,10 +205,8 @@
                             <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
                                  aria-controls="selListModel" aria-labelledby="lblModel"><span class="sel-cur">—</span><i class="caret">›</i></div>
                             <div class="sel-list" id="selListModel" role="listbox">
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus[1m]</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">opus</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">sonnet</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">haiku</div>
+                                {{range models}}<div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">{{.Value}}</div>
+                                {{end}}
                             </div>
                         </div>
                     </div>
@@ -219,10 +217,8 @@
                             <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
                                  aria-controls="selListAdvisor" aria-labelledby="lblAdvisor"><span class="sel-cur">—</span><i class="caret">›</i></div>
                             <div class="sel-list" id="selListAdvisor" role="listbox">
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="" onclick="settingsPick(this)">(none)</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-fable-5" onclick="settingsPick(this)">Fable 5</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-opus-4-8" onclick="settingsPick(this)">Opus 4.8</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="claude-sonnet-5" onclick="settingsPick(this)">Sonnet 5</div>
+                                {{range advisors}}<div class="sel-opt" role="option" tabindex="-1" aria-selected="false" data-value="{{.Value}}" onclick="settingsPick(this)">{{.Label}}</div>
+                                {{end}}
                             </div>
                         </div>
                     </div>
@@ -233,11 +229,8 @@
                             <div class="sel-val" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false"
                                  aria-controls="selListEffort" aria-labelledby="lblEffort"><span class="sel-cur">—</span><i class="caret">›</i></div>
                             <div class="sel-list" id="selListEffort" role="listbox">
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">low</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">medium</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">high</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">xhigh</div>
-                                <div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">max</div>
+                                {{range efforts}}<div class="sel-opt" role="option" tabindex="-1" aria-selected="false" onclick="settingsPick(this)">{{.Value}}</div>
+                                {{end}}
                             </div>
                         </div>
                     </div>
@@ -322,6 +315,9 @@ const KEY_ESCAPE = 27;
 const KEY_CTRL_C = 3;
 const KEY_CTRL_D = 4;
 const KEY_BACKSPACE = 127;
+// Dashboard enums injected from shared/enums.go (single source with backend validation).
+window.ACCENTS = {{accentsJSON}};
+window.NEW_PROJECT_NAME_PATTERN = "{{newProjectPattern}}";
 </script>
 <script src="/static/js/terminal.js"></script>
 <script src="/static/js/views.js"></script>
