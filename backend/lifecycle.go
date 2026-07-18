@@ -103,9 +103,7 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 		if err := relay.Start(); err != nil {
 			slog.Warn("failed to start relay for new session", "session", sessionName, "error", err)
 		} else {
-			sm.mu.Lock()
-			sm.relays[sessionName] = relay
-			sm.mu.Unlock()
+			sm.relays.set(sessionName, relay)
 		}
 
 		// Wait for the inner bash to write the PID sidecar (it does so before
@@ -151,12 +149,7 @@ func (sm *SessionManager) Kill(sessionName string) error {
 
 	slog.Info("killed session", "session", sessionName)
 
-	sm.mu.Lock()
-	if relay, ok := sm.relays[sessionName]; ok {
-		relay.Stop()
-		delete(sm.relays, sessionName)
-	}
-	sm.mu.Unlock()
+	sm.relays.remove(sessionName)
 
 	removeSessionFiles(sessionName)
 	sm.invalidateCache()

@@ -65,7 +65,7 @@ func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	sm := &SessionManager{index: idx, relays: map[string]*Relay{}, broker: NewBroker()}
+	sm := &SessionManager{index: idx, relays: newRelayRegistry(), cache: &sessionCache{}, broker: NewBroker()}
 
 	// Precondition: discovery sees the live session by its uuid.
 	found := false

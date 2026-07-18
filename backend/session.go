@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"log/slog"
-	"sync"
 	"time"
 
 	api "claude-sandbox-api"
@@ -34,24 +33,22 @@ const (
 	pidWaitTimeout = 1 * time.Second
 )
 
-// SessionManager discovers dtach sessions, manages relays, and provides
-// spawn/kill operations.
+// SessionManager coordinates session discovery, the relay registry, the
+// session-list cache, and the persistent index; it provides spawn/kill/resume.
 type SessionManager struct {
-	mu        sync.RWMutex
-	cached    []api.DisplaySession
-	cachedAt  time.Time
-	cachedSig string // discovery signature for change detection
-	relays    map[string]*Relay
-	index     *SessionIndex // persisted uuid → {cwd,created,name}
-	broker    *Broker
-	stopPoll  chan struct{}
+	relays   *relayRegistry
+	cache    *sessionCache
+	index    *SessionIndex // persisted uuid → {cwd,created,name}
+	broker   *Broker
+	stopPoll chan struct{}
 }
 
 // NewSessionManager creates a SessionManager wired to the given SSE broker and
 // starts the background polling goroutine.
 func NewSessionManager(broker *Broker) *SessionManager {
 	sm := &SessionManager{
-		relays:   make(map[string]*Relay),
+		relays:   newRelayRegistry(),
+		cache:    &sessionCache{},
 		index:    loadSessionIndex(),
 		broker:   broker,
 		stopPoll: make(chan struct{}),
@@ -63,9 +60,7 @@ func NewSessionManager(broker *Broker) *SessionManager {
 
 // GetRelay returns the relay for a session, or nil if not found.
 func (sm *SessionManager) GetRelay(sessionName string) *Relay {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.relays[sessionName]
+	return sm.relays.get(sessionName)
 }
 
 // SetSessionName stores a custom name on the live session's conversation (keyed
@@ -100,56 +95,35 @@ func (sm *SessionManager) History(cwd string) []SessionHistoryEntry {
 // sessions are stopped. The caller supplies the discovered session list to avoid
 // a redundant directory scan.
 func (sm *SessionManager) syncRelays(sessions []api.DisplaySession) {
-	currentNames := make(map[string]bool, len(sessions))
+	alive := make(map[string]bool, len(sessions))
 	for _, s := range sessions {
-		currentNames[s.Name] = true
+		alive[s.Name] = true
 	}
-
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	for name := range currentNames {
-		if _, exists := sm.relays[name]; !exists {
-			relay := NewRelay(name)
-			if err := relay.Start(); err != nil {
-				slog.Warn("failed to start relay", "session", name, "error", err)
-				continue
-			}
-			sm.relays[name] = relay
+	// Relays for gone sessions are stopped and dropped; custom names live in the
+	// persistent index (keyed by conversation uuid) and intentionally survive a
+	// session ending — they drive the resume list.
+	sm.relays.reconcile(alive, func(name string) *Relay {
+		relay := NewRelay(name)
+		if err := relay.Start(); err != nil {
+			slog.Warn("failed to start relay", "session", name, "error", err)
+			return nil
 		}
-	}
-
-	for name, relay := range sm.relays {
-		if !currentNames[name] || relay.IsStopped() {
-			relay.Stop()
-			delete(sm.relays, name)
-			// Custom names live in the persistent index (keyed by conversation
-			// uuid) and intentionally survive a session ending — they drive the
-			// resume list.
-		}
-	}
+		return relay
+	})
 }
 
 // ListSessions returns all sessions, using cache if fresh. Display-name
 // enrichment is applied on every call.
 func (sm *SessionManager) ListSessions() []api.DisplaySession {
-	sm.mu.RLock()
-	if time.Since(sm.cachedAt) < cacheTTL {
-		result := make([]api.DisplaySession, len(sm.cached))
-		copy(result, sm.cached)
-		sm.mu.RUnlock()
-		return sm.enrichSessions(result)
+	if cached, ok := sm.cache.fresh(cacheTTL); ok {
+		return sm.enrichSessions(cached)
 	}
-	sm.mu.RUnlock()
-
 	return sm.enrichSessions(sm.refreshSessions())
 }
 
 // enrichSessions sets each session's display name (custom name from the index,
-// else the directory basename).
+// else the directory basename). The index is internally synchronized.
 func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.DisplaySession {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
 	for i := range sessions {
 		if customName := sm.index.name(sessions[i].SessionID); customName != "" {
 			sessions[i].DisplayName = customName
@@ -160,28 +134,17 @@ func (sm *SessionManager) enrichSessions(sessions []api.DisplaySession) []api.Di
 	return sessions
 }
 
-// refreshSessions queries discovery and updates the cache. Returns a copy of the
-// new list.
+// refreshSessions queries discovery, updates the cache, and returns the fresh
+// list (the cache holds its own copy, so the caller may enrich this one).
 func (sm *SessionManager) refreshSessions() []api.DisplaySession {
 	sessions := discoverSessions()
-	sig := sessionsSignature(sessions)
-
-	sm.mu.Lock()
-	sm.cached = sessions
-	sm.cachedAt = time.Now()
-	sm.cachedSig = sig
-	sm.mu.Unlock()
-
-	result := make([]api.DisplaySession, len(sessions))
-	copy(result, sessions)
-	return result
+	sm.cache.store(sessions, sessionsSignature(sessions))
+	return sessions
 }
 
 // invalidateCache forces the next ListSessions call to re-discover.
 func (sm *SessionManager) invalidateCache() {
-	sm.mu.Lock()
-	sm.cachedAt = time.Time{}
-	sm.mu.Unlock()
+	sm.cache.invalidate()
 }
 
 // Shutdown stops the polling goroutine. Sessions are NOT killed — they persist
@@ -206,23 +169,11 @@ func (sm *SessionManager) pollLoop() {
 			// session lives — the signature won't change, so check for stopped
 			// relays explicitly or the session stays unreachable until the
 			// session set happens to change.
-			sm.mu.RLock()
-			changed := sig != sm.cachedSig
-			deadRelay := false
-			for _, relay := range sm.relays {
-				if relay.IsStopped() {
-					deadRelay = true
-					break
-				}
-			}
-			sm.mu.RUnlock()
+			changed := sig != sm.cache.signature()
+			deadRelay := sm.relays.anyStopped()
 
 			if changed {
-				sm.mu.Lock()
-				sm.cached = sessions
-				sm.cachedAt = time.Now()
-				sm.cachedSig = sig
-				sm.mu.Unlock()
+				sm.cache.store(sessions, sig)
 			}
 			if changed || deadRelay {
 				sm.syncRelays(sessions)

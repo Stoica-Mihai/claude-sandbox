@@ -18,7 +18,7 @@ import (
 // backed by the given index, with no polling goroutine.
 func newTestServer(idx *SessionIndex) *Server {
 	return &Server{
-		sm:     &SessionManager{index: idx, relays: map[string]*Relay{}},
+		sm:     &SessionManager{index: idx, relays: newRelayRegistry(), cache: &sessionCache{}},
 		broker: NewBroker(),
 	}
 }
