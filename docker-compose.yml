@@ -4,6 +4,11 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
+x-healthcheck: &healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 3
+
 services:
   backend:
     build:
@@ -55,10 +60,8 @@ services:
       - claude-net
 
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
       start_period: 15s
 
     deploy:
@@ -101,10 +104,8 @@ services:
         condition: service_healthy
 
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:${DASHBOARD_PORT:-8080}/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
       start_period: 5s
 
     logging: *logging
@@ -135,10 +136,8 @@ services:
       - claude-net
 
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:9000/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
       start_period: 5s
 
     logging: *logging
