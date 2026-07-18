@@ -83,6 +83,10 @@
    its .erow/.grp/.hintline/.errline sub-elements use only kit tokens with no
    kit-rule override (no divergence); the git-init checkbox's own styling is a
    markup concern (kit .check), not part of this CSS. */
+/* D16: .qr-frame — the QR block paints literal ink-on-paper hexes (#1a1714 on
+   #efe9dc) in BOTH themes instead of tokens: a machine-readable artifact never
+   themes (scanners want dark-on-light on carbon too), per the kit's
+   machine-readable-artifacts rule. The 2px frame border stays tokenized. */
 
 /* ===== App shell ===== */
 html,body{height:100dvh;margin:0;overflow:hidden}
@@ -282,8 +286,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* Size the accent trigger and settings button from one rule so they stay
    identical (the kit sizes .acctrig on its own; pinning both here prevents the
    two from drifting and misaligning). 30px desktop, 40px touch. */
-.acctrig,.settings-btn{width:30px;height:30px;flex:none}
-@media (max-width:640px){.acctrig,.settings-btn{width:40px;height:40px}}
+.acctrig,.settings-btn,.share-btn{width:30px;height:30px;flex:none}
+@media (max-width:640px){.acctrig,.settings-btn,.share-btn{width:40px;height:40px}}
 .note{font-size:11px;color:var(--muted);font-family:var(--mono);border-left:6px solid var(--accent);padding:6px 10px;background:var(--tint)}
 
 /* ===== Grain overlay ===== */
@@ -408,4 +412,49 @@ input.err-flash{outline:3px solid var(--accent)}
   .xterm .xterm-scrollable-element > .scrollbar{display:none !important}
   /* Larger accent swatches for touch */
   .acc{width:34px;height:34px}
+}
+
+/* ===== Share tunnel (globe + SHARE modal) ===== */
+
+/* Globe when the tunnel is live: accent + blinking corner dot. */
+.iconbtn.share-on{color:var(--accent)}
+.share-wrap{position:relative;display:inline-flex}
+.share-wrap .live-dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;
+  background:var(--accent);border:2px solid var(--surf);
+  animation:fd-blink 1.2s steps(1) infinite}
+@media (prefers-reduced-motion:reduce){
+  .share-wrap .live-dot{animation:none;outline:2px solid var(--accent);outline-offset:1px}
+}
+
+.share-status{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.share-status b{color:var(--ink);font-style:italic}
+.share-status.is-public b{color:var(--accent)}
+
+/* Publishing: kit .skel barber-pole + status line. */
+.pub-wait{display:flex;flex-direction:column;gap:12px}
+.pub-wait .skel{height:12px;width:100%}
+.pub-wait .msg{font-size:12px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+
+.share-center{display:flex;flex-direction:column;align-items:center;text-align:center}
+
+/* QR block: literal ink-on-paper, never themes (ledger D16). */
+.qr-frame{display:inline-block;border:2px solid var(--ink);background:#efe9dc;padding:12px;line-height:0}
+.qr-frame canvas{display:block;max-width:100%;image-rendering:pixelated}
+.qr-caption{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);margin-top:10px}
+
+/* Connection string row: [field+COPY welded] gap [regen ghost]. */
+.str-row{display:flex;align-items:stretch;gap:8px;margin-top:14px;min-width:0}
+.str-row .weld{display:flex;flex:1;min-width:0}
+.str-row code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:var(--mono);font-size:12px;
+  background:var(--field);border:2px solid var(--ink);border-right:0;
+  padding:0 10px;display:flex;align-items:center;color:var(--ink)}
+.str-row .btn-square{white-space:nowrap}
+.str-row .btn-square svg{width:14px;height:14px;display:block}
+
+/* Narrow screens: the footer hint yields to the buttons. */
+@media (max-width:640px){
+  #shareModal .mfoot{flex-wrap:wrap}
+  #shareModal .mfoot .hint{display:none}
 }

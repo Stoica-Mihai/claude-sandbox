@@ -24,12 +24,12 @@
 
 ## 3. UI markup + CSS + vendored QR
 
-- [ ] 3.1 Vendor `qrcode-generator` v1.4.4 `qrcode.js` from the npm tarball → `frontend/web/static/vendor/qrcode-generator.min.js` with MIT license header (Decision 7). No CDN.
-- [ ] 3.2 `layout.html` header: `span.share-wrap` with globe `button#shareBtn.iconbtn` (`onclick="openShareModal()"`, stroke SVG, square caps) + `i#shareDot.live-dot.hidden`, placed between the accent picker and the settings button.
-- [ ] 3.3 `layout.html`: `<dialog id="shareModal">` after the settings modal — `{{template "modalBackdrop"}}`; mhead kick "Remote Access" / `SHARE.`; mbody: `#shareStatus` status line, `#statePrivate` (`.note` security warning), `#statePublishing` (`.pub-wait` + kit `.skel` + `role="status"` message), `#statePublic` (`.share-center` → `.qr-frame` + `canvas#qrCanvas` + `.qr-caption` "Scan with the Holesail Go app"; `.str-row` → welded `code#connStr` + `#copyBtn` `.btn.btn-square.btn-ink` + separate `#regenBtn` `.btn.btn-square.btn-ghost` with regen SVG); mfoot: `#shareHint` + CLOSE (`<form method="dialog">` ghost, autofocus) + `#goPublicBtn` `.btn-primary` + `#goPrivateBtn` `.btn-ink.hidden`.
-- [ ] 3.4 Script tags: qrcode vendor with the other vendors; `share.js` after `settings.js`.
-- [ ] 3.5 `app.css`: append share rules from the approved mockup — `.iconbtn.share-on`, `.share-wrap`/`.live-dot` (+ reduced-motion static fallback), `.share-status`, `.pub-wait`, `.share-center`, `.qr-frame`/`.qr-caption` (literal QR hexes + ledger entry), `.str-row` family (welded field+copy, ghost regen), `@media (max-width:640px)` mfoot wrap + hint hide. Do NOT re-add `.hidden` or `html,body` (exist). Tokens only elsewhere; never touch `futurism.css`.
-- [ ] 3.6 Layout/style test tripwires hold: no bare `<kbd>`, still exactly 8 `keycap--mobile`, no `--ok`/`#3fb950`/`.kbd`/`.mobile-key`. `go test ./...` green.
+- [x] 3.1 Vendor `qrcode-generator` v1.4.4 `qrcode.js` from the npm tarball → `frontend/web/static/vendor/qrcode-generator.min.js` with MIT license header (Decision 7). No CDN.
+- [x] 3.2 `layout.html` header: `span.share-wrap` with globe `button#shareBtn.iconbtn` (`onclick="openShareModal()"`, stroke SVG, square caps) + `i#shareDot.live-dot.hidden`, placed between the accent picker and the settings button.
+- [x] 3.3 `layout.html`: `<dialog id="shareModal">` after the settings modal — `{{template "modalBackdrop"}}`; mhead kick "Remote Access" / `SHARE.`; mbody: `#shareStatus` status line, `#statePrivate` (`.note` security warning), `#statePublishing` (`.pub-wait` + kit `.skel` + `role="status"` message), `#statePublic` (`.share-center` → `.qr-frame` + `canvas#qrCanvas` + `.qr-caption` "Scan with the Holesail Go app"; `.str-row` → welded `code#connStr` + `#copyBtn` `.btn.btn-square.btn-ink` + separate `#regenBtn` `.btn.btn-square.btn-ghost` with regen SVG); mfoot: `#shareHint` + CLOSE (`<form method="dialog">` ghost, autofocus) + `#goPublicBtn` `.btn-primary` + `#goPrivateBtn` `.btn-ink.hidden`.
+- [x] 3.4 Script tags: qrcode vendor with the other vendors; `share.js` after `settings.js`.
+- [x] 3.5 `app.css`: append share rules from the approved mockup — `.iconbtn.share-on`, `.share-wrap`/`.live-dot` (+ reduced-motion static fallback), `.share-status`, `.pub-wait`, `.share-center`, `.qr-frame`/`.qr-caption` (literal QR hexes + ledger entry), `.str-row` family (welded field+copy, ghost regen), `@media (max-width:640px)` mfoot wrap + hint hide. Do NOT re-add `.hidden` or `html,body` (exist). Tokens only elsewhere; never touch `futurism.css`.
+- [x] 3.6 Layout/style test tripwires hold: no bare `<kbd>`, still exactly 8 `keycap--mobile`, no `--ok`/`#3fb950`/`.kbd`/`.mobile-key`. `go test ./...` green.
 
 ## 4. share.js + JS tests
 
