@@ -11,7 +11,10 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -23,11 +26,29 @@ import (
 // It renders HTML templates with data fetched from the backend API,
 // and proxies WebSocket, SSE, and healthz requests to the backend.
 type Server struct {
-	templates   *template.Template
-	backendURL  string
-	holesailURL string
-	guard       *tunnelGuard
-	client      *http.Client
+	templates    *template.Template
+	backendURL   string
+	holesailURL  string
+	guard        *tunnelGuard
+	client       *http.Client
+	backendProxy http.Handler // verbatim reverse proxy for passthrough /api routes
+}
+
+// newBackendProxy builds a reverse proxy that forwards verbatim to the backend,
+// with bounded dial + response-header timeouts so a hung backend can't wedge a
+// request goroutine.
+func newBackendProxy(backendURL string) (http.Handler, error) {
+	target, err := url.Parse(backendURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing backend URL: %w", err)
+	}
+	rp := httputil.NewSingleHostReverseProxy(target)
+	rp.Transport = &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
+	return rp, nil
 }
 
 // NewServer creates a Server by parsing embedded templates and registering
@@ -43,6 +64,11 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		return nil, fmt.Errorf("creating static sub-FS: %w", err)
 	}
 
+	backendProxy, err := newBackendProxy(backendURL)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
 		templates:   tmpl,
 		backendURL:  backendURL,
@@ -51,9 +77,12 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		backendProxy: backendProxy,
 	}
 
-	// Template-rendering routes (fetch JSON from backend, render HTML).
+	// Transform routes: translate the request or render HTML — not verbatim
+	// proxies. Registered with specific patterns, so ServeMux precedence gives
+	// them priority over the /api/ catch-all below.
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
 	mux.HandleFunc("POST "+api.RouteSessions, s.handleSpawn)
@@ -61,17 +90,6 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	mux.HandleFunc("DELETE "+api.RouteHistoryItem, s.handleDeleteHistoryProxy)
 	mux.HandleFunc("PUT "+api.RouteSessionName, s.handleSetSessionName)
 	mux.HandleFunc("GET "+api.RouteDirectories, s.handleDirectories)
-
-	// Passthrough routes proxied verbatim to the backend (consumed as JSON by
-	// the client or a health probe, never re-rendered here).
-	mux.HandleFunc("POST "+api.RouteSessionUpload, s.proxyBackend)
-	mux.HandleFunc("POST "+api.RouteDirectories, s.proxyBackend)
-	mux.HandleFunc("GET "+api.RouteSessionsHistory, s.proxyBackend)
-	mux.HandleFunc("GET "+api.RouteSettings, s.proxyBackend)
-	mux.HandleFunc("PUT "+api.RouteSettings, s.proxyBackend)
-	mux.HandleFunc("GET "+api.RouteUIPrefs, s.proxyBackend)
-	mux.HandleFunc("PUT "+api.RouteUIPrefs, s.proxyBackend)
-	mux.HandleFunc("GET "+api.RouteHealthz, s.proxyBackend)
 
 	// Share-tunnel routes proxied to the holesail sidecar (guarded).
 	mux.HandleFunc("GET /api/share/status", s.handleShareProxy)
@@ -82,6 +100,13 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	// Streaming proxy routes.
 	mux.HandleFunc("GET "+api.RouteEvents, s.handleSSEProxy)
 	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocketProxy)
+
+	// Catch-all: every other /api/ path (settings, ui-prefs, session history,
+	// upload, create-directory POST) and healthz is forwarded verbatim to the
+	// backend. The specific routes above win by precedence, so only genuine
+	// passthrough requests reach the proxy.
+	mux.Handle("/api/", s.backendProxy)
+	mux.Handle("GET /healthz", s.backendProxy)
 
 	// Static files. embed.FS files carry no modtime, so http.FileServer alone
 	// sends no ETag/Last-Modified and browsers re-download every asset on every
@@ -381,14 +406,6 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, "directory-picker", dirData)
-}
-
-// proxyBackend forwards a request verbatim to the backend. Registered on the
-// passthrough routes (history, create-directory, upload, settings, ui-prefs,
-// healthz) whose response the client consumes as JSON or as a health probe,
-// rather than re-decoding like the GET template-render routes.
-func (s *Server) proxyBackend(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
 }
 
 // --- Streaming and share proxy routes ---
