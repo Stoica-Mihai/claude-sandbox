@@ -57,6 +57,10 @@ type viewerHandle struct {
 	size      viewerSize
 	suspended bool
 	closeCode int // close frame the writer sends on queue close; 0 = none (abnormal, client reconnects)
+	// awaitingSnapshot defers the replay until the viewer's first resize, so
+	// the snapshot is rendered at the viewer's dimensions, not a previous
+	// viewer's (a wider snapshot wraps on a narrower terminal).
+	awaitingSnapshot bool
 }
 
 // relayCmd is a message to the relay actor.
@@ -330,16 +334,13 @@ func (r *Relay) reject(c relayCmd) {
 	}
 }
 
-// handleAddViewer starts the viewer's writer, queues the terminal snapshot
-// (reset + scrollback + screen + cursor), and adds it to the broadcast set.
-// Replay and registration are one actor step, so no broadcast can interleave
-// between them.
+// handleAddViewer starts the viewer's writer and adds it to the broadcast set.
+// The snapshot replay is deferred to the viewer's first resize (see
+// handleResize), because rendering it at another viewer's width would wrap on
+// this one's terminal.
 func (r *Relay) handleAddViewer(c cmdAddViewer) {
-	v := &viewerHandle{conn: c.conn, out: make(chan viewerMsg, viewerQueueSize)}
+	v := &viewerHandle{conn: c.conn, out: make(chan viewerMsg, viewerQueueSize), awaitingSnapshot: true}
 	go r.viewerWriter(v)
-
-	v.out <- viewerMsg{websocket.BinaryMessage, r.term.Snapshot()}
-
 	r.viewers[c.conn] = v
 	c.reply <- nil
 }
@@ -394,10 +395,22 @@ func (r *Relay) activateViewer(conn *websocket.Conn, v *viewerHandle) {
 }
 
 // handleResize stores a viewer's dimensions and resizes the PTY only when that
-// viewer is the active one (the first viewer to resize becomes active).
+// viewer is the active one. A viewer's first resize activates it (tmux
+// "window-size latest": the most recently joined device owns the size) and
+// delivers its deferred snapshot, rendered at the now-matching dimensions.
 func (r *Relay) handleResize(c cmdResize) {
-	if v, ok := r.viewers[c.conn]; ok {
+	v, ok := r.viewers[c.conn]
+	if ok {
 		v.size = viewerSize{c.cols, c.rows}
+		if v.awaitingSnapshot {
+			v.awaitingSnapshot = false
+			v.suspended = false
+			r.activateViewer(c.conn, v)
+			if !r.enqueue(v, viewerMsg{websocket.BinaryMessage, r.term.Snapshot()}) {
+				r.dropViewer(c.conn, 0)
+			}
+			return
+		}
 	}
 	if r.lastResizer == nil {
 		r.lastResizer = c.conn

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -162,9 +163,14 @@ func startTestRelay(t *testing.T, name string) (*Relay, *os.File) {
 	return r, sessionSide
 }
 
-// dialTestViewer upgrades a real WebSocket pair and registers the server side
-// with the relay. Returns the client side.
+// dialTestViewer upgrades a real WebSocket pair, registers the server side
+// with the relay, and reports the viewer's size (which delivers the deferred
+// snapshot, as the ws handler flow does). Returns the client side.
 func dialTestViewer(t *testing.T, r *Relay) *websocket.Conn {
+	return dialTestViewerSize(t, r, 100, 30)
+}
+
+func dialTestViewerSize(t *testing.T, r *Relay, cols, rows uint16) *websocket.Conn {
 	t.Helper()
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -176,6 +182,7 @@ func dialTestViewer(t *testing.T, r *Relay) *websocket.Conn {
 		if err := r.AddViewer(conn); err != nil {
 			t.Errorf("AddViewer: %v", err)
 		}
+		r.Resize(conn, cols, rows)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -260,6 +267,50 @@ func TestRelayScrollbackReplay(t *testing.T) {
 
 	client := dialTestViewer(t, r)
 	readUntil(t, client, "early output")
+}
+
+// TestSnapshotRenderedAtJoiningViewerWidth: a narrower viewer joining a
+// session sized for a wider one gets a snapshot at its own width — no painted
+// row may exceed it, or the client terminal wraps every row.
+func TestSnapshotRenderedAtJoiningViewerWidth(t *testing.T) {
+	r, sessionSide := startTestRelay(t, "claude-test")
+	_ = dialTestViewer(t, r) // wide viewer, 100x30
+
+	wide := strings.Repeat("X", 80)
+	if _, err := sessionSide.Write([]byte(wide)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !bytes.Contains(r.term.Snapshot(), []byte("XXX")) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	narrow := dialTestViewerSize(t, r, 44, 48)
+	_ = narrow.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var snap []byte
+	for snap == nil {
+		msgType, data, err := narrow.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if msgType == websocket.BinaryMessage {
+			snap = data
+		}
+	}
+
+	if !bytes.HasPrefix(snap, []byte(termReset)) {
+		t.Fatalf("first binary message must be the snapshot, got %q", snap[:min(len(snap), 40)])
+	}
+	// Strip escapes (each becomes a row delimiter); every painted row must fit
+	// the narrow width.
+	stripped := regexp.MustCompile(`\x1b(\[[0-9;:?]*[a-zA-Z]|.)`).ReplaceAllString(string(snap), "\x00")
+	for _, row := range strings.Split(stripped, "\x00") {
+		for _, line := range strings.Split(row, "\r\n") {
+			if len([]rune(line)) > 44 {
+				t.Fatalf("snapshot row wider than viewer (%d > 44): %q", len([]rune(line)), line)
+			}
+		}
+	}
 }
 
 // TestRelayStopClosesViewers verifies Stop sends a normal close to viewers.

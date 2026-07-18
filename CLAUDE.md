@@ -51,7 +51,7 @@ One relay per session connects the dtach session to WebSocket viewers.
 ## Key implementation details
 
 - Terminal input is sent as WebSocket BinaryMessage (TextMessage is reserved for JSON control like resize and deactivation).
-- Multi-viewer resize: each viewer's dimensions are tracked independently; the active typist's size wins (`ResizeToViewer`). Non-active viewers are suspended (broadcast skips them via `atomic.Bool`) so they freeze rather than garble; a `{"type":"deactivated"}` message tells the client to `term.clear()` on next input. Per-connection `writeMu` serializes WebSocket writes.
+- Multi-viewer resize: each viewer's dimensions are tracked independently; the most recent viewer to join or type is the active one and its size wins. A viewer's snapshot replay is deferred to its first resize and rendered at those dimensions (a wider snapshot would wrap on a narrower terminal), which also activates it. Non-active viewers are suspended (broadcast skips them) so they freeze rather than garble; a `{"type":"deactivated"}` message tells the client to `term.clear()` on next input. A per-viewer writer goroutine serializes WebSocket writes.
 - WebSocket auto-reconnect: on abnormal close (code != 1000) the client retries with exponential backoff (1s→…→30s cap, 10 max); normal close (1000) shows "[Session ended]".
 - Copy-on-select: xterm has no built-in `copyOnSelect`, so `terminal.js` copies the selection on `mouseup` via the async Clipboard API (with an `execCommand` fallback).
 - `GET /healthz` returns `{"status":"ok"}`; Docker healthchecks probe it.
