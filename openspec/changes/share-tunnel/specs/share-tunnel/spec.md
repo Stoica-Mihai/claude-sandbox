@@ -39,35 +39,43 @@ The wrapper SHALL always boot in the private state; public state MUST NOT be res
 - **THEN** the wrapper SHALL persist a new key, restart the tunnel with it, and respond with the new `url`; clients holding the old string SHALL no longer be able to connect
 
 ### Requirement: Frontend share routes with tunnel-origin guard
-The frontend SHALL mirror `GET /api/share/status` and `POST /api/share/start|stop|regenerate` as per-route proxies to the sidecar (`HOLESAIL_URL`, default `http://holesail:9000`). Requests that arrived through the tunnel itself — identified by `RemoteAddr` matching an IP that the sidecar's hostname resolves to via Docker DNS — SHALL be rejected with 403 before proxying. The guard SHALL cache resolutions briefly (~10s), re-resolve once on a cache miss against a stale cache (covering a sidecar restart with a new IP), keep serving from a stale cache when resolution fails, and fail open (with a logged warning) only when the hostname has never resolved — in which case no tunnel can exist. All routes other than `/api/share/*` SHALL remain fully functional over the tunnel.
+The frontend SHALL mirror `GET /api/share/status` and `POST /api/share/start|stop|regenerate` as per-route proxies to the sidecar (`HOLESAIL_URL`, default `http://holesail:9000`). The **mutating actions** (`POST /api/share/start|stop|regenerate`) that arrived through the tunnel itself — identified by `RemoteAddr` matching an IP that the sidecar's hostname resolves to via Docker DNS — SHALL be rejected with 403 before proxying, so a tunnel visitor cannot rotate or kill the tunnel. The read-only `GET /api/share/status` SHALL always be proxied, so a client browsing over the tunnel can still see the (necessarily public) sharing state and its ambient cue. The 403 body SHALL use the sidecar's `{state,url,error}` shape so the client renders the message. The guard SHALL cache resolutions briefly (~10s), re-resolve once on a cache miss against a stale cache (covering a sidecar restart with a new IP), keep serving from a stale cache when resolution fails, and fail open (with a logged warning) only when the hostname has never resolved — in which case no tunnel can exist. All routes other than the mutating share actions SHALL remain fully functional over the tunnel.
 
-#### Scenario: Tunnel visitor cannot operate share controls
-- **WHEN** a request to any `/api/share/*` route arrives with a source IP belonging to the holesail container
-- **THEN** the frontend SHALL respond 403 without contacting the sidecar
+#### Scenario: Tunnel visitor cannot mutate the tunnel
+- **WHEN** a `POST /api/share/start|stop|regenerate` arrives with a source IP belonging to the holesail container
+- **THEN** the frontend SHALL respond 403 (with a `{state,url,error}` body) without contacting the sidecar
+
+#### Scenario: Status is readable over the tunnel
+- **WHEN** a `GET /api/share/status` arrives from a source IP belonging to the holesail container
+- **THEN** the frontend SHALL proxy it to the sidecar so the tunnel client sees the live state
 
 #### Scenario: LAN user operates share controls
-- **WHEN** a request to `/api/share/status` arrives from any other source
+- **WHEN** a `POST /api/share/*` arrives from any non-tunnel source
 - **THEN** the frontend SHALL proxy it verbatim to the sidecar and return the sidecar's response unchanged
 
 #### Scenario: Dashboard works over the tunnel
 - **WHEN** a tunnel client browses the dashboard and opens a session terminal
 - **THEN** pages, fragments, SSE, and WebSocket terminals SHALL work (the WS origin check passes because Origin equals Host end-to-end)
 
-### Requirement: Share UI — globe, modal, QR
-The header SHALL contain a globe icon button (stroke SVG, `iconbtn`) that opens a share `<dialog>`. While the tunnel is public, the globe SHALL render in the accent color with a small blinking live-dot (static ring under `prefers-reduced-motion`); the indicator SHALL reflect the true state on page load via a status fetch.
+### Requirement: Share UI — Sharing settings category, ambient glow, QR
+The share controls SHALL live in the settings modal's **Sharing** category (there is no dedicated header control). While the tunnel is public, the dashboard SHALL show an ambient cue — an accent glow on the header logo mark (a soft pulse; a static glow under `prefers-reduced-motion`) — in place of a dedicated glyph. The cue SHALL reflect the true state on page load via a status fetch and update after each action. The Sharing category SHALL be disabled on mobile so a tunnel client (usually a phone) cannot disconnect itself by mis-tapping.
 
-The modal SHALL present three states driven by `/api/share/status` responses: **private** (a security note stating that the connection string grants full dashboard access — terminals included — and must be treated like a password, plus a GO PUBLIC primary CTA), **publishing** (kit barber-pole skeleton with a `role="status"` announcement), and **public** (a QR code of the connection string, the string in a welded field+COPY row with a separate outlined regenerate button, and a GO PRIVATE ink CTA). Copy SHALL flash "COPIED ✓" and revert. Regenerate SHALL redraw the string and QR in place. Action buttons SHALL be busy-guarded against double submission, and a start failure SHALL surface the wrapper's error message in the modal hint line.
+The Sharing panel SHALL present three states driven by `/api/share/status` responses: **private** (a security note stating that the connection string grants full dashboard access — terminals included — and must be treated like a password, plus a GO PUBLIC primary CTA), **publishing** (kit barber-pole skeleton with a `role="status"` announcement), and **public** (a QR code of the connection string, the string in a welded field+COPY row with a separate outlined regenerate button, and a GO PRIVATE ink CTA). Copy SHALL flash "COPIED ✓" and revert. Regenerate SHALL redraw the string and QR in place. Action buttons SHALL be busy-guarded against double submission, and a start failure SHALL surface the wrapper's error message in the panel's hint line.
 
 The QR SHALL be rendered on a canvas by a vendored, dependency-free QR encoder (no CDN), painting literal dark-on-paper module colors in both themes (a machine-readable artifact never themes), framed per the design-system's QR exception recorded in the `app.css` override ledger. The caption SHALL reference scanning with the Holesail Go app.
 
 #### Scenario: Toggle to public
-- **WHEN** the user clicks GO PUBLIC in the private state
-- **THEN** the modal SHALL show the publishing state, then on success the public state with the QR and connection string, and the header globe SHALL switch to its live appearance
+- **WHEN** the user clicks GO PUBLIC in the Sharing panel's private state
+- **THEN** the panel SHALL show the publishing state, then on success the public state with the QR and connection string, and the header logo mark SHALL start glowing
 
-#### Scenario: Failure surfaces in the modal
+#### Scenario: Failure surfaces in the panel
 - **WHEN** the start request returns `state:"error"`
-- **THEN** the modal SHALL return to an actionable state showing the error message in the hint line, with GO PUBLIC re-enabled
+- **THEN** the panel SHALL return to an actionable state showing the error message in the hint line, with GO PUBLIC re-enabled
 
 #### Scenario: Reload reflects reality
 - **WHEN** the page is reloaded while the tunnel is public
-- **THEN** the initial status fetch SHALL restore the globe's live appearance without opening the modal
+- **THEN** the initial status fetch SHALL restore the logo-mark glow without opening the settings modal
+
+#### Scenario: Sharing is off-limits on mobile
+- **WHEN** the settings modal is opened on a mobile viewport
+- **THEN** the Sharing category SHALL be disabled (not selectable), leaving Session and Appearance usable

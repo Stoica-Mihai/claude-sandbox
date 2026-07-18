@@ -44,4 +44,15 @@
 - [x] 5.1 `CLAUDE.md`: third service, `/api/share/*` route map, guard + security model.
 - [x] 5.2 `README.md`: share feature section — what the string grants, private-on-boot (host reboot un-shares), Holesail Go scan flow, desktop `npx holesail <string>` alternative.
 - [x] 5.3 `.env.example`: comment block documenting the share feature (no new required vars).
-- [x] 5.4 E2E: `make up` (3 healthy); toggle public; phone (Holesail Go) scan → dashboard + working terminal over tunnel; tunnel lockout (`/api/share/status` from tunneled browser → 403, LAN → 200); regenerate drops connected client, new string works; GO PRIVATE kills tunnel; sidecar restart + full down/up → private with stable key; both test suites green.
+- [x] 5.4 E2E: `make up` (3 healthy); toggle public; phone (Holesail Go) scan → dashboard + working terminal over tunnel; tunnel lockout (`POST /api/share/start` from tunneled browser → 403, `GET /api/share/status` → 200, LAN mutation → 200); regenerate drops connected client, new string works; GO PRIVATE kills tunnel; sidecar restart + full down/up → private with stable key; both test suites green.
+
+## 6. UI revision — Sharing settings category + ambient glow
+
+The initial UI (§3–§4) shipped as a header globe opening a dedicated `#shareModal`. It was then revised so the header stays uncluttered and the tunnel can't be mis-toggled; the spec's "Share UI" requirement reflects this final shape.
+
+- [x] 6.1 Remove the header globe (`#shareBtn` / `#shareDot` / `.share-wrap`) and the separate `<dialog id="shareModal">`.
+- [x] 6.2 Categorize the settings modal: left nav Session / Appearance / Sharing (`.settings-nav` / `.snav` / `.settings-panel`, `settingsSelectCategory`); footer SAVE + hint shown for Session only (Appearance and Sharing act instantly). Move the share states into the Sharing panel with an in-panel action row (`#goPublicBtn` / `#goPrivateBtn`).
+- [x] 6.3 Ambient public cue: `share.js` toggles a `sharing-public` body class; app.css glows the header logo mark (`body.sharing-public .hdr .mark`, soft pulse + reduced-motion static — ledger D17) instead of the globe.
+- [x] 6.4 Disable the Sharing category on mobile (`settings.js`: `snav[data-cat="sharing"].disabled = isMobile()` on open + a guard in `settingsSelectCategory`; `.snav:disabled` muted styling), so a tunnel client can't mis-tap GO PRIVATE.
+- [x] 6.5 Guard scope narrowed to mutations: `handleShareProxy` only 403s non-GET tunnel requests, so `GET /api/share/status` is proxied over the tunnel; the 403 body uses the `{state,url,error}` shape. Tests updated (`TestHandleShareProxyBlocksTunnelMutation`, `TestHandleShareProxyAllowsTunnelStatus`).
+- [x] 6.6 Update `share.js` tests (`load-share.js` / `share.test.js`) to the panel + body-glow reality (drop `#shareModal` / `#shareBtn` / `#shareDot`; assert `body.sharing-public`).
