@@ -49,7 +49,7 @@ func TestHandleCreateDirectoryProxyForwardsRequest(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	s.handleCreateDirectoryProxy(rec, req)
+	s.proxyBackend(rec, req)
 
 	res := rec.Result()
 	defer res.Body.Close()
@@ -98,7 +98,7 @@ func TestHandleCreateDirectoryProxyPassesBackendError(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/directories", strings.NewReader(`{"name":"dup"}`))
 	rec := httptest.NewRecorder()
 
-	s.handleCreateDirectoryProxy(rec, req)
+	s.proxyBackend(rec, req)
 
 	res := rec.Result()
 	defer res.Body.Close()
@@ -128,7 +128,7 @@ func TestHandleCreateDirectoryProxyBackendUnreachable(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/directories", strings.NewReader(`{"name":"x"}`))
 	rec := httptest.NewRecorder()
 
-	s.handleCreateDirectoryProxy(rec, req)
+	s.proxyBackend(rec, req)
 
 	res := rec.Result()
 	defer res.Body.Close()

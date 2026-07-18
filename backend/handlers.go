@@ -55,22 +55,22 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 		},
 	}
 
-	mux.HandleFunc("GET /api/sessions", s.handleListSessions)
-	mux.HandleFunc("GET /api/sessions/history", s.handleHistory)
-	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
-	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
-	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistory)
-	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
-	mux.HandleFunc("GET /api/directories", s.handleDirectories)
-	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
-	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
-	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
-	mux.HandleFunc("GET /api/ui-prefs", s.handleGetUIPrefs)
-	mux.HandleFunc("PUT /api/ui-prefs", s.handlePutUIPrefs)
-	mux.HandleFunc("GET /events", s.handleSSE)
-	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocket)
-	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET "+api.RouteSessions, s.handleListSessions)
+	mux.HandleFunc("GET "+api.RouteSessionsHistory, s.handleHistory)
+	mux.HandleFunc("POST "+api.RouteSessions, s.handleSpawn)
+	mux.HandleFunc("DELETE "+api.RouteSession, s.handleKill)
+	mux.HandleFunc("DELETE "+api.RouteHistoryItem, s.handleDeleteHistory)
+	mux.HandleFunc("PUT "+api.RouteSessionName, s.handleSetSessionName)
+	mux.HandleFunc("GET "+api.RouteDirectories, s.handleDirectories)
+	mux.HandleFunc("POST "+api.RouteDirectories, s.handleCreateDirectory)
+	mux.HandleFunc("GET "+api.RouteSettings, s.handleGetSettings)
+	mux.HandleFunc("PUT "+api.RouteSettings, s.handlePutSettings)
+	mux.HandleFunc("GET "+api.RouteUIPrefs, s.handleGetUIPrefs)
+	mux.HandleFunc("PUT "+api.RouteUIPrefs, s.handlePutUIPrefs)
+	mux.HandleFunc("GET "+api.RouteEvents, s.handleSSE)
+	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocket)
+	mux.HandleFunc("POST "+api.RouteSessionUpload, s.handleUpload)
+	mux.HandleFunc("GET "+api.RouteHealthz, s.handleHealthz)
 
 	return s
 }

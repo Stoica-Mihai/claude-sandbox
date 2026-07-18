@@ -56,27 +56,32 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	// Template-rendering routes (fetch JSON from backend, render HTML).
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
-	mux.HandleFunc("POST /api/sessions", s.handleSpawn)
-	mux.HandleFunc("DELETE /api/sessions/{terminalId}", s.handleKill)
-	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistoryProxy)
-	mux.HandleFunc("PUT /api/sessions/{terminalId}/name", s.handleSetSessionName)
-	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUploadProxy)
-	mux.HandleFunc("GET /api/directories", s.handleDirectories)
-	mux.HandleFunc("POST /api/directories", s.handleCreateDirectoryProxy)
-	mux.HandleFunc("GET /api/sessions/history", s.handleHistoryProxy)
-	mux.HandleFunc("GET /api/settings", s.handleSettingsProxy)
-	mux.HandleFunc("PUT /api/settings", s.handleSettingsProxy)
-	mux.HandleFunc("GET /api/ui-prefs", s.handleUIPrefsProxy)
-	mux.HandleFunc("PUT /api/ui-prefs", s.handleUIPrefsProxy)
+	mux.HandleFunc("POST "+api.RouteSessions, s.handleSpawn)
+	mux.HandleFunc("DELETE "+api.RouteSession, s.handleKill)
+	mux.HandleFunc("DELETE "+api.RouteHistoryItem, s.handleDeleteHistoryProxy)
+	mux.HandleFunc("PUT "+api.RouteSessionName, s.handleSetSessionName)
+	mux.HandleFunc("GET "+api.RouteDirectories, s.handleDirectories)
+
+	// Passthrough routes proxied verbatim to the backend (consumed as JSON by
+	// the client or a health probe, never re-rendered here).
+	mux.HandleFunc("POST "+api.RouteSessionUpload, s.proxyBackend)
+	mux.HandleFunc("POST "+api.RouteDirectories, s.proxyBackend)
+	mux.HandleFunc("GET "+api.RouteSessionsHistory, s.proxyBackend)
+	mux.HandleFunc("GET "+api.RouteSettings, s.proxyBackend)
+	mux.HandleFunc("PUT "+api.RouteSettings, s.proxyBackend)
+	mux.HandleFunc("GET "+api.RouteUIPrefs, s.proxyBackend)
+	mux.HandleFunc("PUT "+api.RouteUIPrefs, s.proxyBackend)
+	mux.HandleFunc("GET "+api.RouteHealthz, s.proxyBackend)
+
+	// Share-tunnel routes proxied to the holesail sidecar (guarded).
 	mux.HandleFunc("GET /api/share/status", s.handleShareProxy)
 	mux.HandleFunc("POST /api/share/start", s.handleShareProxy)
 	mux.HandleFunc("POST /api/share/stop", s.handleShareProxy)
 	mux.HandleFunc("POST /api/share/regenerate", s.handleShareProxy)
 
-	// Pure proxy routes.
-	mux.HandleFunc("GET /events", s.handleSSEProxy)
-	mux.HandleFunc("GET /ws/terminal/{terminalId}", s.handleWebSocketProxy)
-	mux.HandleFunc("GET /healthz", s.handleHealthzProxy)
+	// Streaming proxy routes.
+	mux.HandleFunc("GET "+api.RouteEvents, s.handleSSEProxy)
+	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocketProxy)
 
 	// Static files. embed.FS files carry no modtime, so http.FileServer alone
 	// sends no ETag/Last-Modified and browsers re-download every asset on every
@@ -245,7 +250,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 
 	// Forward as JSON to backend.
 	payload, _ := json.Marshal(map[string]string{"cwd": cwd, "resume": resume})
-	resp, err := s.backendRequest(r.Context(), "POST", "/api/sessions", bytes.NewReader(payload))
+	resp, err := s.backendRequest(r.Context(), "POST", api.RouteSessions, bytes.NewReader(payload))
 	if err != nil {
 		badGateway(w, "failed to spawn session via backend", err)
 		return
@@ -275,6 +280,24 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	s.handleSessionsFragment(w, r)
 }
 
+// proxyThenRenderSessions forwards a mutating request to the backend and, on
+// success, renders the updated sessions fragment. Shared by kill and rename,
+// which differ only in method, path, body, and failure log message.
+func (s *Server) proxyThenRenderSessions(w http.ResponseWriter, r *http.Request, method, path string, body io.Reader, failMsg string) {
+	resp, err := s.backendRequest(r.Context(), method, path, body)
+	if err != nil {
+		badGateway(w, failMsg, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if forwardIfError(w, resp) {
+		return
+	}
+
+	s.handleSessionsFragment(w, r)
+}
+
 // handleKill forwards the kill request to the backend, then renders the
 // updated sessions fragment.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
@@ -284,19 +307,7 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/"+terminalId, nil)
-	if err != nil {
-		badGateway(w, "failed to kill session via backend", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if forwardIfError(w, resp) {
-		return
-	}
-
-	// Render updated sessions fragment.
-	s.handleSessionsFragment(w, r)
+	s.proxyThenRenderSessions(w, r, "DELETE", api.RouteSessions+"/"+terminalId, nil, "failed to kill session via backend")
 }
 
 // handleDeleteHistoryProxy forwards a history-delete to the backend and passes
@@ -310,7 +321,7 @@ func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := s.backendRequest(r.Context(), "DELETE", "/api/sessions/history/"+uuid, nil)
+	resp, err := s.backendRequest(r.Context(), "DELETE", api.RouteSessionsHistory+"/"+uuid, nil)
 	if err != nil {
 		badGateway(w, "failed to delete history via backend", err)
 		return
@@ -340,25 +351,13 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.backendRequest(r.Context(), "PUT", "/api/sessions/"+terminalId+"/name", bytes.NewReader(body))
-	if err != nil {
-		badGateway(w, "failed to rename session via backend", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if forwardIfError(w, resp) {
-		return
-	}
-
-	// Render updated sessions fragment.
-	s.handleSessionsFragment(w, r)
+	s.proxyThenRenderSessions(w, r, "PUT", api.RouteSessions+"/"+terminalId+"/name", bytes.NewReader(body), "failed to rename session via backend")
 }
 
 // handleDirectories fetches directory data from the backend and renders the
 // directory-picker template.
 func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
-	path := "/api/directories"
+	path := api.RouteDirectories
 	if q := r.URL.RawQuery; q != "" {
 		path += "?" + q
 	}
@@ -384,21 +383,15 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "directory-picker", dirData)
 }
 
-// handleHistoryProxy proxies GET /api/sessions/history (JSON) to the backend.
-// Pure passthrough, so it uses the generic httpProxy like settings/upload/healthz.
-func (s *Server) handleHistoryProxy(w http.ResponseWriter, r *http.Request) {
+// proxyBackend forwards a request verbatim to the backend. Registered on the
+// passthrough routes (history, create-directory, upload, settings, ui-prefs,
+// healthz) whose response the client consumes as JSON or as a health probe,
+// rather than re-decoding like the GET template-render routes.
+func (s *Server) proxyBackend(w http.ResponseWriter, r *http.Request) {
 	httpProxy(w, r, s.backendURL)
 }
 
-// handleCreateDirectoryProxy proxies POST /api/directories (JSON) to the
-// backend. The response is consumed as JSON by views.js, never rendered, so it
-// passes the backend's status and body through verbatim via the generic
-// httpProxy rather than re-decoding like the GET template-render route.
-func (s *Server) handleCreateDirectoryProxy(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
-}
-
-// --- Pure proxy routes ---
+// --- Streaming and share proxy routes ---
 
 // handleSSEProxy proxies the SSE event stream from the backend.
 func (s *Server) handleSSEProxy(w http.ResponseWriter, r *http.Request) {
@@ -408,26 +401,6 @@ func (s *Server) handleSSEProxy(w http.ResponseWriter, r *http.Request) {
 // handleWebSocketProxy proxies a WebSocket connection to the backend.
 func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 	wsProxy(w, r, s.backendURL)
-}
-
-// handleUploadProxy proxies image uploads to the backend.
-func (s *Server) handleUploadProxy(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
-}
-
-// handleHealthzProxy proxies the health check to the backend.
-func (s *Server) handleHealthzProxy(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
-}
-
-// handleSettingsProxy proxies GET/PUT /api/settings (JSON) to the backend.
-func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
-}
-
-// handleUIPrefsProxy proxies GET/PUT /api/ui-prefs (JSON) to the backend.
-func (s *Server) handleUIPrefsProxy(w http.ResponseWriter, r *http.Request) {
-	httpProxy(w, r, s.backendURL)
 }
 
 // handleShareProxy proxies /api/share/* (JSON) to the holesail sidecar, which
@@ -451,7 +424,7 @@ func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 
 // fetchSessions calls the backend's GET /api/sessions and returns the parsed list.
 func (s *Server) fetchSessions(r *http.Request) ([]api.DisplaySession, error) {
-	resp, err := s.backendRequest(r.Context(), "GET", "/api/sessions", nil)
+	resp, err := s.backendRequest(r.Context(), "GET", api.RouteSessions, nil)
 	if err != nil {
 		return nil, fmt.Errorf("backend request: %w", err)
 	}
