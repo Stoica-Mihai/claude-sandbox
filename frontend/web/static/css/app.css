@@ -359,6 +359,14 @@ input.err-flash{outline:3px solid var(--accent)}
 .set-row label{margin-bottom:0}
 .faint{opacity:.7}
 
+/* D18: disabled .btn reads as inert — muted fill, no hover lift, no shadow. The
+   kit only styles .pager:disabled, so a disabled .btn (e.g. LAUNCH with no
+   folder picked) otherwise keeps its full enabled look and reads as clickable.
+   :disabled (0,2,0) outranks .btn-primary (0,1,0), so the accent fill drops. */
+.btn:disabled,.btn[disabled]{background:var(--field);color:var(--muted);cursor:default;box-shadow:none}
+.btn:disabled:hover{transform:skewX(-8deg);box-shadow:none}
+.btn-square:disabled:hover{transform:none}
+
 /* ===== Forced colors (Windows High Contrast) — app classes (kit ships its own for kit classes) ===== */
 @media (forced-colors:active){
   .ttab.on,.tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}

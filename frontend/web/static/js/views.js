@@ -446,10 +446,17 @@ function tickDurations() {
     });
 }
 
+// Set a .btn's visible label without dropping its <span> (the kit counter-skews
+// the span to keep the text upright; writing textContent would delete it).
+function setBtnLabel(btn, label) {
+    const span = btn.querySelector('span');
+    if (span) span.textContent = label; else btn.textContent = label;
+}
+
 function dpFooter(label, enabled) {
     const b = document.getElementById('dir-picker-submit');
     if (!b) return;
-    b.textContent = label;
+    setBtnLabel(b, label);
     b.disabled = !enabled;
 }
 
@@ -832,10 +839,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
         const submitBtn = document.getElementById('dir-picker-submit');
         if (submitBtn) {
             submitBtn.classList.add('btn-spawn-fail');
-            submitBtn.textContent = 'Failed — try again';
+            setBtnLabel(submitBtn, 'Failed — try again');
             setTimeout(() => {
                 submitBtn.classList.remove('btn-spawn-fail');
-                submitBtn.textContent = dirPickerSel.kind === 'resume' ? 'Resume' : 'Launch';
+                setBtnLabel(submitBtn, dirPickerSel.kind === 'resume' ? 'Resume' : 'Launch');
             }, 2000);
         }
         return;
