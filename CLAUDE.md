@@ -8,21 +8,23 @@ This repository is a Docker-based sandbox for running Claude Code inside a conta
 
 ## Architecture
 
-Two Go services, each its own container:
+Three services, each its own container:
 
-- **`backend/`** — API + session manager. Owns session lifecycle (spawn/kill/discover), the per-session relay, SSE, and the WebSocket terminal endpoint. Listens on `:8081` (`BACKEND_PORT`), no exposed host ports — reachable only on the internal compose network.
-- **`frontend/`** — Dashboard UI (HTMX templates + a self-contained Futurism stylesheet, no CSS-framework CDN) and a reverse proxy to the backend for `/api`, `/events` (SSE), and `/ws` (WebSocket). Listens on `DASHBOARD_PORT` (default 8080), the only published port. `BACKEND_URL=http://backend:8081`.
+- **`backend/`** — API + session manager (Go). Owns session lifecycle (spawn/kill/discover), the per-session relay, SSE, and the WebSocket terminal endpoint. Listens on `:8081` (`BACKEND_PORT`), no exposed host ports — reachable only on the internal compose network.
+- **`frontend/`** — Dashboard UI (Go; HTMX templates + a self-contained Futurism stylesheet, no CSS-framework CDN) and a reverse proxy to the backend for `/api`, `/events` (SSE), and `/ws` (WebSocket), plus `/api/share/*` to the holesail sidecar. Listens on `DASHBOARD_PORT` (default 8080), the only published port. `BACKEND_URL=http://backend:8081`, `HOLESAIL_URL=http://holesail:9000`.
+- **`holesail/`** — Share-tunnel sidecar (Node wrapper around the `holesail` npm package). Owns at most one secure Holesail P2P tunnel targeting `frontend:8080`; control API on `:9000`, internal network only. Key persisted in the `holesail-share-key` volume (the secure connection string is `hs://s000<key>`, so it survives restarts); boots private always.
 
 Supporting files:
 
 - **Dockerfile.backend** — Multi-stage. Builder compiles the backend binary; runtime is Debian-based with bash, git, curl, dtach, bubblewrap, qrencode, npm, Go, gcc, uv, OpenSpec, and Claude Code + plugins. Non-root user `claude`.
 - **Dockerfile.frontend** — Multi-stage; minimal runtime (no tmux/socat/claude), just the frontend binary.
+- **Dockerfile.holesail** — Multi-stage Node; builder runs `npm ci` against the committed lockfile (the supply-chain boundary), runtime is `node:22-bookworm-slim` + curl, non-root `node` user.
 - **docker-compose.yml** — Defines `backend` and `frontend` services. Mounts the workspace at `/workspace` and a scoped, host-isolated Claude config dir (`~/.claude-sandbox`) into the backend; injects `container-settings.json` **read-write** (the in-dashboard settings editor persists edits to it). Does NOT mount the host's real `~/.claude` / `~/.claude.json`. Disables IPv6 in the backend (`sysctls: net.ipv6.conf.*.disable_ipv6=1`) so claude's dual-stack startup fetches don't stall on an unroutable IPv6 address. Has healthchecks, log rotation, resource limits.
 - **container-settings.json** — Claude Code settings for the container (plugins, MCP servers, permissions). Gitignored; seeded from `container-settings.example.json` by `generate-env.sh` (the `setup` target) on first run. Mounted read-write and copied by the entrypoint into the scoped config dir's `settings.json`. Editable locally or via the dashboard **Settings editor** (gear icon → `GET`/`PUT /api/settings`, prefs subset only).
 - **entrypoint.sh** — Backend entrypoint; on first run seeds the scoped config dir (`$CLAUDE_CONFIG_DIR`) with the image's baked plugins + registration, and refreshes `settings.json` from `container-settings.json`.
 - **mcp-config.json** — User-provided MCP server definitions (gitignored). See `mcp-config.example.json`.
 - **.env** — Host UID/GID for Docker build args (file permission compatibility).
-- **Makefile** — Convenience targets (`up`, `down`, `shell`, `watch`, `build`, `rebuild`, `restart-backend`, `restart-frontend`).
+- **Makefile** — Convenience targets (`up`, `down`, `shell`, `watch`, `build`, `rebuild`, `restart-backend`, `restart-frontend`, `restart-holesail`).
 - **generate-env.sh** — Creates `.env` from `.env.example` with auto-detected UID/GID, and seeds `container-settings.json` from `container-settings.example.json` if missing.
 
 ## Sessions (dtach)
@@ -58,11 +60,12 @@ One relay per session connects the dtach session to WebSocket viewers.
 - **Settings editor** (`settings.js` + `backend/settings.go`): a header gear opens a Futurism modal editing a whitelisted prefs subset of `container-settings.json` — `model`, `effortLevel` (low/medium/high/xhigh/max), `alwaysThinkingEnabled`, `language`, `advisorModel`. `GET/PUT /api/settings` validates + merges (preserving plugins/hooks/env), writes the source file, and refreshes `settings.json`; changes apply to **new** sessions. `advisorModel` takes a canonical id (e.g. `claude-opus-4-8`); the advisor itself only runs when `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL=1` is set (in `container-settings.json`'s `env`), since the `/advisor` feature is gated off on this install.
 - **New project from the picker**: the NEW SESSION modal's directory picker has a "+ NEW PROJECT…" row (every browse depth) that swaps in place for an inline editor — name input, `git init` checkbox (default on). `POST /api/directories {path, name, gitInit}` validates the name (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, single segment), prefix-checks the parent under `/workspace` like the GET handler, `os.Mkdir` 0755, then optional `git init`; 400/409/500 render inline in the editor, git-init failure keeps the folder (201 + warning → kit toast). On 201 the client sets the spawn form's `cwd` to the new folder and submits it — session spawns and the terminal tab opens directly (nothing to resume in a fresh folder). Route mirrored in the frontend proxy; wire types in `shared/`.
 - Session cards show a `DisplayName` (custom name or dir basename), CWD, and a live-ticking duration. Rename via `PUT /api/sessions/{terminalId}/name` (custom names persisted to a 0600 file in the metadata dir).
+- **Share tunnel** (`share.js` + `holesail/server.js` + `frontend/shareguard.go`): a header globe opens a SHARE modal that toggles a secure Holesail P2P tunnel to the dashboard. Routes: `GET /api/share/status`, `POST /api/share/start|stop|regenerate` — the frontend proxies them verbatim to the sidecar (which serves the same paths). The **tunnel-origin guard** 403s these routes when `RemoteAddr` is the holesail container (resolved via Docker DNS, 10s cache, one forced re-resolve on a miss, fail-open only before the first successful resolution) so tunnel visitors can't operate the share controls; every other route works over the tunnel (the WS origin check passes — Origin == Host end-to-end). The QR (vendored `qrcode-generator`, no CDN) paints fixed ink-on-paper hexes in both themes (ledger D16). No SSE for share state: status is fetched on page load and after each action. **The connection string grants full dashboard access** — the modal says so; regenerate is the kill switch. A host reboot boots the sidecar private (intended).
 
 ### Frontend assets (`frontend/web/`, `go:embed`)
 - `templates/layout.html`, `templates/fragments/{sessions,directory-picker}.html`
-- `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `views.js`, `theme.js`
-- `static/css/futurism.css` (vendored kit — verbatim) + `static/css/app.css` (app components + override ledger + responsive), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons)
+- `static/js/terminal.js` (xterm.js 6.0 manager: WebSocket relay, WebGL addon, clipboard image paste, copy-on-select), `views.js`, `theme.js`, `settings.js`, `share.js`
+- `static/css/futurism.css` (vendored kit — verbatim) + `static/css/app.css` (app components + override ledger + responsive), `static/vendor/` (htmx, htmx-ext-sse, xterm.js 6.0 + fit/web-links/webgl addons, qrcode-generator)
 
 ## Common Commands
 
@@ -73,6 +76,7 @@ make shell            # Open a bash shell in the backend container
 make down             # Stop the containers
 make restart-backend  # Rebuild + restart just the backend
 make restart-frontend # Rebuild + restart just the frontend
+make restart-holesail # Rebuild + restart just the share-tunnel sidecar
 ```
 
 The dashboard is at `http://localhost:8080` after `make up` (or the port set by `DASHBOARD_PORT`). Create sessions from the dashboard — direct CLI `claude` is disabled.

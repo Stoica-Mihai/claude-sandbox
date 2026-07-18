@@ -41,7 +41,7 @@
 
 ## 5. Docs + end-to-end
 
-- [ ] 5.1 `CLAUDE.md`: third service, `/api/share/*` route map, guard + security model.
-- [ ] 5.2 `README.md`: share feature section — what the string grants, private-on-boot (host reboot un-shares), Holesail Go scan flow, desktop `npx holesail <string>` alternative.
-- [ ] 5.3 `.env.example`: comment block documenting the share feature (no new required vars).
-- [ ] 5.4 E2E: `make up` (3 healthy); toggle public; phone (Holesail Go) scan → dashboard + working terminal over tunnel; tunnel lockout (`/api/share/status` from tunneled browser → 403, LAN → 200); regenerate drops connected client, new string works; GO PRIVATE kills tunnel; sidecar restart + full down/up → private with stable key; both test suites green.
+- [x] 5.1 `CLAUDE.md`: third service, `/api/share/*` route map, guard + security model.
+- [x] 5.2 `README.md`: share feature section — what the string grants, private-on-boot (host reboot un-shares), Holesail Go scan flow, desktop `npx holesail <string>` alternative.
+- [x] 5.3 `.env.example`: comment block documenting the share feature (no new required vars).
+- [x] 5.4 E2E: `make up` (3 healthy); toggle public; phone (Holesail Go) scan → dashboard + working terminal over tunnel; tunnel lockout (`/api/share/status` from tunneled browser → 403, LAN → 200); regenerate drops connected client, new string works; GO PRIVATE kills tunnel; sidecar restart + full down/up → private with stable key; both test suites green.

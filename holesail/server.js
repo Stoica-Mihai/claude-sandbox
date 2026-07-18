@@ -12,6 +12,7 @@
 // Boot state is always private — public is never restored across restarts.
 
 const http = require('http')
+const net = require('net')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -20,6 +21,12 @@ const Holesail = require('holesail')
 const TARGET_HOST = process.env.SHARE_TARGET_HOST || 'frontend'
 const TARGET_PORT = Number(process.env.SHARE_TARGET_PORT || 8080)
 const CONTROL_PORT = Number(process.env.SHARE_CONTROL_PORT || 9000)
+// Holesail publishes its target host/port to the DHT, and the CLIENT uses that
+// host as its own LOCAL bind address (holesail-client reads dhtData.host). So
+// the target host must be a loopback every client can bind — 127.0.0.1 — not
+// "frontend". We point Holesail at a loopback relay here and forward that to
+// the real frontend, so the published host stays 127.0.0.1.
+const RELAY_PORT = Number(process.env.SHARE_RELAY_PORT || 8080)
 const KEY_FILE = process.env.SHARE_KEY_FILE || '/data/share.key'
 // Must stay under the frontend proxy's 30s client timeout so failures
 // surface as this wrapper's JSON body, not a bare proxy 502.
@@ -37,6 +44,17 @@ function loadOrCreateKey(file) {
   fs.writeFileSync(file, key + '\n', { mode: 0o600 })
   return key
 }
+
+// Loopback relay: Holesail forwards tunnel streams to 127.0.0.1:RELAY_PORT,
+// which we pipe to the real dashboard at frontend:8080.
+const relay = net.createServer((client) => {
+  const upstream = net.connect(TARGET_PORT, TARGET_HOST)
+  client.on('error', () => upstream.destroy())
+  upstream.on('error', () => client.destroy())
+  client.pipe(upstream)
+  upstream.pipe(client)
+})
+relay.listen(RELAY_PORT, '127.0.0.1')
 
 let key = loadOrCreateKey(KEY_FILE)
 let hs = null
@@ -77,8 +95,8 @@ async function startTunnel() {
     hs = new Holesail({
       server: true,
       secure: true,
-      host: TARGET_HOST,
-      port: TARGET_PORT,
+      host: '127.0.0.1',
+      port: RELAY_PORT,
       key
     })
     await withTimeout(hs.ready(), READY_TIMEOUT_MS, 'tunnel did not become ready in time')

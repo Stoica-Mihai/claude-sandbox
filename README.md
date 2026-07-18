@@ -82,6 +82,20 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 
 The dashboard has no built-in authentication — it's designed to sit behind an auth proxy.
 
+## Share tunnel (remote access)
+
+The globe icon in the header toggles a secure [Holesail](https://holesail.io) peer-to-peer tunnel to the dashboard — no port forwarding, no static IP:
+
+1. Click the globe → **GO PUBLIC**. After a few seconds the modal shows a QR code and an `hs://` connection string.
+2. On a phone, scan the QR with the **Holesail Go** app (iOS/Android) — the dashboard opens over the tunnel, terminals included.
+3. On another machine: `npx holesail <connection-string>`, then browse the local port it prints.
+
+Security model:
+
+- **The connection string is the only credential.** Anyone who has it gets full dashboard access — treat it like a password. **REGENERATE** (↻ in the modal) rotates the key; the old string stops working immediately.
+- The string is stable across restarts (the key lives in the `holesail-share-key` volume), but the tunnel always **boots private** — a host reboot or container restart un-shares until you toggle again.
+- Share controls are rejected over the tunnel itself, so a remote visitor can't rotate or kill your tunnel.
+
 ## Configuration
 
 | File | Purpose |
@@ -94,6 +108,7 @@ The dashboard has no built-in authentication — it's designed to sit behind an 
 | `mcp-config.example.json` | Example MCP server config template |
 | `backend/` | Go API + session manager (dtach sessions, relay, WebSocket) |
 | `frontend/` | Go dashboard UI + reverse proxy to the backend |
+| `holesail/` | Node share-tunnel sidecar (P2P remote access, control API) |
 
 ## License
 

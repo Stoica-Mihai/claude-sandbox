@@ -19,6 +19,9 @@ The dashboard publishes only `frontend:8080`. Holesail (Node-only, holepunch/hyp
 ### Decision 1: Sidecar owns the tunnel; wrapper serves the frontend's exact paths
 The wrapper (plain `node:http`, no framework) serves `GET /api/share/status`, `POST /api/share/start|stop|regenerate` directly, so the frontend reuses its verbatim-path `httpProxy` (`frontend/proxy.go`) with zero new proxy code — same pattern as every other `/api/*` per-route proxy. Toggling creates/destroys the Holesail instance inside the long-lived wrapper process; no docker.sock anywhere.
 
+### Decision 1a: Loopback relay so the published host is bindable everywhere
+`holesail-server` publishes its target `host`/`port` to the DHT, and `holesail-client` uses that **host as its own local bind address** (`holesail-client/index.js` reads `dhtData.host`). One field serves both the server's forward-target and the client's local bind. If the wrapper pointed Holesail straight at `frontend:8080`, every client — including the Holesail Go app, which can't override it — would try to bind `frontend` locally and fail (`ENOTFOUND`). So the wrapper points Holesail at `127.0.0.1:<RELAY_PORT>` (a loopback every client can bind) and runs a tiny `net` relay forwarding that loopback port to `frontend:8080`. The published host stays `127.0.0.1`; the sidecar remains a separate service (so the tunnel-origin guard's Docker-DNS resolution still works, unlike `network_mode: service:frontend`).
+
 ### Decision 2: Synchronous start with a 25s ready-timeout
 `POST /api/share/start` awaits `hs.ready()` and returns the final state. The wrapper's timeout (25s) must stay under the frontend `proxyClient` timeout (30s, `proxy.go`) so a slow/failed announce surfaces as the wrapper's JSON error body (502 + `{state:"error",error}`), never as a bare proxy 502. `hs.ready()` ≈ listening; first client connect can lag a few seconds more — modal hint copy covers this.
 
