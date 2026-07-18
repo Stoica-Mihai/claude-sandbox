@@ -519,11 +519,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Check if relay has been stopped (session exited).
-		if relay.IsStopped() {
-			return
-		}
-
 		switch msgType {
 		case websocket.TextMessage:
 			// JSON control message (resize, refresh).
@@ -536,13 +531,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				relay.Resize(conn, msg.Cols, msg.Rows)
 			}
 		case websocket.BinaryMessage:
-			// Resume broadcast delivery if this viewer was suspended.
-			relay.UnsuspendViewer(conn)
-			// Resize to this viewer's dimensions if it wasn't the last to
-			// resize (mimics tmux's "window-size latest" behavior).
-			relay.ResizeToViewer(conn)
-			// Terminal input — send to the session via relay.
-			if err := relay.SendInput(data); err != nil {
+			// Terminal input: unsuspends this viewer, makes it the active one
+			// (tmux "window-size latest"), and writes to the session.
+			if err := relay.Input(conn, data); err != nil {
 				slog.Debug("relay input failed", "session", sessionName, "error", err)
 				return
 			}

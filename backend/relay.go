@@ -2,13 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/creack/pty"
@@ -20,22 +20,24 @@ const (
 	termReset = "\x1bc"
 	// attachWaitTimeout bounds how long Start waits for the dtach socket to appear.
 	attachWaitTimeout = 5 * time.Second
-	// resizeActivityWindow suppresses activity stamping after resize redraws.
-	resizeActivityWindow = 2 * time.Second
-	// inputActivityWindow suppresses activity stamping for keystroke echoes.
-	inputActivityWindow = 500 * time.Millisecond
 	// maxReconnectAttempts is the number of attach reconnect attempts before giving up.
 	maxReconnectAttempts = 3
-	// viewerWriteTimeout bounds every WebSocket write. Without it a stalled
-	// client (full TCP buffer) blocks the broadcast loop — and with it the read
-	// loop — freezing output for every other viewer.
+	// viewerWriteTimeout bounds every WebSocket write in the viewer writer.
 	viewerWriteTimeout = 10 * time.Second
+	// viewerQueueSize is the per-viewer outbound message buffer; a viewer that
+	// falls this far behind is evicted instead of blocking the actor.
+	viewerQueueSize = 256
 	// defaultCols/defaultRows seed the PTY before a viewer reports real dimensions.
 	defaultCols = 80
 	defaultRows = 24
 )
 
-// Alternate screen sequences to detect and strip.
+var (
+	errRelayStopped = errors.New("relay stopped")
+	errNotAttached  = errors.New("attach not connected")
+)
+
+// Alternate screen sequences to detect.
 var altScreenEnter = [][]byte{
 	[]byte("\x1b[?1049h"),
 	[]byte("\x1b[?47h"),
@@ -46,7 +48,7 @@ var altScreenExit = [][]byte{
 	[]byte("\x1b[?47l"),
 }
 
-// allAltScreenSeqs is the combined list for stripping.
+// allAltScreenSeqs is the combined list for scanning.
 var allAltScreenSeqs [][]byte
 
 func init() {
@@ -54,47 +56,95 @@ func init() {
 	allAltScreenSeqs = append(allAltScreenSeqs, altScreenExit...)
 }
 
-// viewerSize tracks a viewer's last reported terminal dimensions.
+// viewerSize is a viewer's last reported terminal dimensions.
 type viewerSize struct {
 	cols uint16
 	rows uint16
 }
 
-// viewer holds per-connection state for a WebSocket viewer.
-type viewer struct {
-	writeMu   sync.Mutex // serializes all WebSocket writes to this connection
-	size      viewerSize
-	suspended atomic.Bool // when true, broadcast skips this viewer
+// viewerMsg is one outbound WebSocket message for a viewer's writer goroutine.
+type viewerMsg struct {
+	msgType int
+	data    []byte
 }
 
-// Relay manages bidirectional I/O between WebSocket viewers and a session via a
-// directly-owned `dtach -a` attach PTY.
+// viewerHandle is the actor-owned state for one WebSocket viewer.
+type viewerHandle struct {
+	conn      *websocket.Conn
+	out       chan viewerMsg // closed by the actor to end the writer
+	size      viewerSize
+	suspended bool
+	closeCode int // close frame the writer sends on queue close; 0 = none (abnormal, client reconnects)
+}
+
+// relayCmd is a message to the relay actor.
+type relayCmd interface{ isRelayCmd() }
+
+type cmdAddViewer struct {
+	conn  *websocket.Conn
+	reply chan error
+}
+type cmdRemoveViewer struct{ conn *websocket.Conn }
+type cmdInput struct {
+	conn  *websocket.Conn
+	data  []byte
+	reply chan error
+}
+type cmdResize struct {
+	conn       *websocket.Conn
+	cols, rows uint16
+}
+type cmdOutput struct {
+	gen  int
+	data []byte
+}
+type cmdAttachEOF struct{ gen int }
+type cmdAttachResult struct {
+	gen int
+	f   *os.File
+	cmd *exec.Cmd
+}
+
+func (cmdAddViewer) isRelayCmd()    {}
+func (cmdRemoveViewer) isRelayCmd() {}
+func (cmdInput) isRelayCmd()        {}
+func (cmdResize) isRelayCmd()       {}
+func (cmdOutput) isRelayCmd()       {}
+func (cmdAttachEOF) isRelayCmd()    {}
+func (cmdAttachResult) isRelayCmd() {}
+
+// deactivatedMsg tells a non-active viewer its display is frozen and needs a
+// clear on next input.
+var deactivatedMsg = []byte(`{"type":"deactivated"}`)
+
+// Relay connects a dtach session to WebSocket viewers. All mutable state is
+// owned by a single actor goroutine (run); the exported methods are thin
+// message senders, so there is no shared-state locking to reason about.
 type Relay struct {
 	SessionName string
 	sockPath    string
-	ringBuf     *RingBuffer
 
-	mu          sync.RWMutex
-	viewers     map[*websocket.Conn]*viewer
-	lastResizer *websocket.Conn // viewer that last triggered a resize
+	// onExit, when set before Start, is called exactly once from the actor
+	// goroutine after teardown completes.
+	onExit func()
 
-	ptmx       atomic.Pointer[os.File] // current attach PTY master (swapped on reconnect)
-	attachCmd  atomic.Pointer[exec.Cmd]
-	attachMu   sync.Mutex   // serializes reconnect/attach lifecycle
-	generation atomic.Int64 // identifies the live read loop; stale loops exit
-
-	lastActivity   time.Time
-	lastActivityMu sync.RWMutex
-	lastResizeAt   atomic.Int64 // unix-nano; suppress activity stamping after resizes
-	lastInputAt    atomic.Int64 // unix-nano; suppress activity stamping for echoes
-	lastCols       atomic.Uint32
-	lastRows       atomic.Uint32
-
-	inAltScreen atomic.Bool // true when Claude Code is in alternate screen mode
-	partial     []byte      // partial escape sequence from previous read chunk (readLoop only)
-
-	done     chan struct{} // closed when relay is stopped
+	cmds     chan relayCmd
+	done     chan struct{} // closed by Stop: shutdown requested
+	exited   chan struct{} // closed by the actor: teardown complete
 	stopOnce sync.Once
+
+	// Actor-owned state. Touched only by the actor goroutine (and by
+	// trackAltScreen unit tests, which run without the actor).
+	viewers     map[*websocket.Conn]*viewerHandle
+	lastResizer *websocket.Conn // active viewer: last to type (or first to resize)
+	ptmx        *os.File        // current attach PTY master; nil while reconnecting
+	attachCmd   *exec.Cmd
+	gen         int // attach epoch; stale readLoop messages are dropped
+	lastCols    uint16
+	lastRows    uint16
+	inAltScreen bool
+	partial     []byte // partial escape sequence from the previous output chunk
+	ring        *RingBuffer
 }
 
 // NewRelay creates a relay for the given session.
@@ -102,9 +152,407 @@ func NewRelay(sessionName string) *Relay {
 	return &Relay{
 		SessionName: sessionName,
 		sockPath:    sockPath(sessionName),
-		ringBuf:     NewRingBuffer(defaultBufferCapacity),
-		viewers:     make(map[*websocket.Conn]*viewer),
+		cmds:        make(chan relayCmd, 64),
 		done:        make(chan struct{}),
+		exited:      make(chan struct{}),
+		viewers:     make(map[*websocket.Conn]*viewerHandle),
+		ring:        NewRingBuffer(defaultBufferCapacity),
+	}
+}
+
+// Start attaches to the session and starts the actor and read loops.
+func (r *Relay) Start() error {
+	f, cmd, err := r.startAttach()
+	if err != nil {
+		return err
+	}
+	r.begin(f, cmd)
+	slog.Info("relay started", "session", r.SessionName)
+	return nil
+}
+
+// begin wires an already-open attach PTY into the relay and starts the actor
+// and read loops. Split from Start so tests can inject a file pair.
+func (r *Relay) begin(f *os.File, cmd *exec.Cmd) {
+	r.ptmx = f
+	r.attachCmd = cmd
+	go r.run()
+	go r.readLoop(f, r.gen)
+}
+
+// Stop requests shutdown. Teardown happens asynchronously on the actor.
+func (r *Relay) Stop() {
+	r.stopOnce.Do(func() { close(r.done) })
+}
+
+// IsStopped reports whether shutdown has been requested.
+func (r *Relay) IsStopped() bool {
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// AddViewer registers a WebSocket connection: the actor replays the ring
+// buffer into the viewer's queue and adds it to the broadcast set.
+func (r *Relay) AddViewer(conn *websocket.Conn) error {
+	return r.request(cmdAddViewer{conn: conn, reply: make(chan error, 1)})
+}
+
+// RemoveViewer unregisters a WebSocket connection.
+func (r *Relay) RemoveViewer(conn *websocket.Conn) {
+	r.send(cmdRemoveViewer{conn: conn})
+}
+
+// Input delivers terminal input from a viewer: it unsuspends the viewer, makes
+// it the active one (resizing the PTY to its dimensions, tmux "window-size
+// latest" style), and writes the bytes to the session.
+func (r *Relay) Input(conn *websocket.Conn, data []byte) error {
+	return r.request(cmdInput{conn: conn, data: data, reply: make(chan error, 1)})
+}
+
+// Resize records a viewer's dimensions; the PTY follows only if that viewer is
+// the active one. It does not change who the active viewer is — Input does.
+func (r *Relay) Resize(conn *websocket.Conn, cols, rows uint16) {
+	r.send(cmdResize{conn: conn, cols: cols, rows: rows})
+}
+
+// send delivers a fire-and-forget command; false if the relay has exited.
+func (r *Relay) send(c relayCmd) bool {
+	select {
+	case r.cmds <- c:
+		return true
+	case <-r.exited:
+		return false
+	}
+}
+
+// request delivers a command carrying a reply channel and waits for the answer.
+func (r *Relay) request(c relayCmd) error {
+	var reply chan error
+	switch c := c.(type) {
+	case cmdAddViewer:
+		reply = c.reply
+	case cmdInput:
+		reply = c.reply
+	default:
+		panic("request: command has no reply channel")
+	}
+	select {
+	case r.cmds <- c:
+		select {
+		case err := <-reply:
+			return err
+		case <-r.exited:
+			return errRelayStopped
+		}
+	case <-r.exited:
+		return errRelayStopped
+	}
+}
+
+// run is the actor loop: it owns all relay state and serializes every command.
+func (r *Relay) run() {
+	defer r.teardown()
+	for {
+		select {
+		case <-r.done:
+			return
+		case c := <-r.cmds:
+			r.handle(c)
+		}
+	}
+}
+
+// handle dispatches one actor command.
+func (r *Relay) handle(c relayCmd) {
+	switch c := c.(type) {
+	case cmdAddViewer:
+		r.handleAddViewer(c)
+	case cmdRemoveViewer:
+		r.dropViewer(c.conn, 0)
+	case cmdInput:
+		r.handleInput(c)
+	case cmdResize:
+		r.handleResize(c)
+	case cmdOutput:
+		r.handleOutput(c)
+	case cmdAttachEOF:
+		r.handleAttachEOF(c)
+	case cmdAttachResult:
+		r.handleAttachResult(c)
+	}
+}
+
+// teardown kills the attach, closes every viewer, cleans the upload dir,
+// answers any commands that raced with shutdown, and fires onExit.
+func (r *Relay) teardown() {
+	if r.attachCmd != nil && r.attachCmd.Process != nil {
+		_ = r.attachCmd.Process.Kill()
+		go func(cmd *exec.Cmd) { _ = cmd.Wait() }(r.attachCmd)
+	}
+	if r.ptmx != nil {
+		r.ptmx.Close()
+	}
+	for conn := range r.viewers {
+		r.dropViewer(conn, websocket.CloseNormalClosure)
+	}
+
+	uploadPath := filepath.Join(uploadDir, r.SessionName)
+	if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
+	}
+
+	// Reject commands buffered before shutdown; close(exited) unblocks any
+	// sender that enqueues after this drain.
+	for {
+		select {
+		case c := <-r.cmds:
+			r.reject(c)
+		default:
+			close(r.exited)
+			slog.Info("relay stopped", "session", r.SessionName)
+			if r.onExit != nil {
+				r.onExit()
+			}
+			return
+		}
+	}
+}
+
+// reject answers a command that arrived during shutdown.
+func (r *Relay) reject(c relayCmd) {
+	switch c := c.(type) {
+	case cmdAddViewer:
+		c.reply <- errRelayStopped
+	case cmdInput:
+		c.reply <- errRelayStopped
+	case cmdAttachResult:
+		c.f.Close()
+		if c.cmd != nil && c.cmd.Process != nil {
+			_ = c.cmd.Process.Kill()
+			go func(cmd *exec.Cmd) { _ = cmd.Wait() }(c.cmd)
+		}
+	}
+}
+
+// handleAddViewer starts the viewer's writer, queues reset + scrollback replay
+// (+ alt-screen re-enter), and adds it to the broadcast set. Replay and
+// registration are one actor step, so no broadcast can interleave between them.
+func (r *Relay) handleAddViewer(c cmdAddViewer) {
+	v := &viewerHandle{conn: c.conn, out: make(chan viewerMsg, viewerQueueSize)}
+	go r.viewerWriter(v)
+
+	v.out <- viewerMsg{websocket.BinaryMessage, []byte(termReset)}
+	if scrollback := r.ring.Bytes(); len(scrollback) > 0 {
+		v.out <- viewerMsg{websocket.BinaryMessage, scrollback}
+	}
+	if r.inAltScreen {
+		v.out <- viewerMsg{websocket.BinaryMessage, altScreenEnter[0]}
+	}
+
+	r.viewers[c.conn] = v
+	c.reply <- nil
+}
+
+// dropViewer removes a viewer and ends its writer (which sends the close frame).
+func (r *Relay) dropViewer(conn *websocket.Conn, closeCode int) {
+	v, ok := r.viewers[conn]
+	if !ok {
+		return
+	}
+	delete(r.viewers, conn)
+	if r.lastResizer == conn {
+		r.lastResizer = nil
+	}
+	v.closeCode = closeCode
+	close(v.out)
+}
+
+// handleInput unsuspends the sender, makes it the active viewer, and writes
+// the bytes to the attach PTY.
+func (r *Relay) handleInput(c cmdInput) {
+	if v, ok := r.viewers[c.conn]; ok {
+		v.suspended = false
+		r.activateViewer(c.conn, v)
+	}
+	if r.ptmx == nil {
+		c.reply <- errNotAttached
+		return
+	}
+	_, err := r.ptmx.Write(c.data)
+	c.reply <- err
+}
+
+// activateViewer makes conn the active viewer: other viewers are suspended
+// (broadcast skips them) and told to clear on next input, and the PTY resizes
+// to the new active viewer's dimensions.
+func (r *Relay) activateViewer(conn *websocket.Conn, v *viewerHandle) {
+	if r.lastResizer == conn || v.size.cols == 0 || v.size.rows == 0 {
+		return
+	}
+	r.lastResizer = conn
+	for other, ov := range r.viewers {
+		if other == conn {
+			continue
+		}
+		ov.suspended = true
+		if !r.enqueue(ov, viewerMsg{websocket.TextMessage, deactivatedMsg}) {
+			r.dropViewer(other, 0)
+		}
+	}
+	r.applyResize(v.size.cols, v.size.rows)
+}
+
+// handleResize stores a viewer's dimensions and resizes the PTY only when that
+// viewer is the active one (the first viewer to resize becomes active).
+func (r *Relay) handleResize(c cmdResize) {
+	if v, ok := r.viewers[c.conn]; ok {
+		v.size = viewerSize{c.cols, c.rows}
+	}
+	if r.lastResizer == nil {
+		r.lastResizer = c.conn
+	}
+	if r.lastResizer == c.conn {
+		r.applyResize(c.cols, c.rows)
+	}
+}
+
+// applyResize records the dimensions and resizes the attach PTY, which dtach
+// forwards to the inner program as SIGWINCH.
+func (r *Relay) applyResize(cols, rows uint16) {
+	r.lastCols, r.lastRows = cols, rows
+	if r.ptmx != nil {
+		if err := pty.Setsize(r.ptmx, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+			slog.Debug("resize failed", "session", r.SessionName, "error", err)
+		}
+	}
+}
+
+// handleOutput routes one PTY output chunk: broadcast to non-suspended
+// viewers, alt-screen tracking, and ring-buffer writes for normal-mode bytes.
+func (r *Relay) handleOutput(c cmdOutput) {
+	if c.gen != r.gen {
+		return
+	}
+	segments := r.trackAltScreen(c.data)
+
+	for conn, v := range r.viewers {
+		if v.suspended {
+			continue
+		}
+		if !r.enqueue(v, viewerMsg{websocket.BinaryMessage, c.data}) {
+			slog.Debug("viewer queue full, evicting", "session", r.SessionName)
+			r.dropViewer(conn, 0)
+		}
+	}
+
+	for _, seg := range segments {
+		r.ring.Write(seg)
+	}
+}
+
+// handleAttachEOF reacts to the attach PTY dropping: it invalidates the old
+// epoch and starts an async reconnect.
+func (r *Relay) handleAttachEOF(c cmdAttachEOF) {
+	if c.gen != r.gen {
+		return
+	}
+	if r.ptmx != nil {
+		r.ptmx.Close()
+		r.ptmx = nil
+	}
+	if r.attachCmd != nil {
+		if r.attachCmd.Process != nil {
+			_ = r.attachCmd.Process.Kill()
+		}
+		go func(cmd *exec.Cmd) { _ = cmd.Wait() }(r.attachCmd)
+		r.attachCmd = nil
+	}
+	r.gen++
+	go r.reconnectLoop(r.gen)
+}
+
+// handleAttachResult installs a freshly reconnected attach PTY and starts its
+// read loop.
+func (r *Relay) handleAttachResult(c cmdAttachResult) {
+	if c.gen != r.gen || r.ptmx != nil {
+		r.reject(c)
+		return
+	}
+	r.ptmx = c.f
+	r.attachCmd = c.cmd
+	r.partial = nil // a half-parsed escape sequence never survives a reattach
+	// Only impose a size when a browser viewer is present, so the relay doesn't
+	// clobber a CLI-owned session's dimensions.
+	if len(r.viewers) > 0 {
+		cols, rows := r.lastCols, r.lastRows
+		if cols == 0 || rows == 0 {
+			cols, rows = defaultCols, defaultRows
+		}
+		r.applyResize(cols, rows)
+	}
+	slog.Info("relay reconnected", "session", r.SessionName)
+	go r.readLoop(c.f, c.gen)
+}
+
+// enqueue offers a message to a viewer's writer without blocking the actor.
+func (r *Relay) enqueue(v *viewerHandle, m viewerMsg) bool {
+	select {
+	case v.out <- m:
+		return true
+	default:
+		return false
+	}
+}
+
+// viewerWriter drains one viewer's outbound queue onto its WebSocket. On a
+// write failure it asks the actor to evict the viewer, then drains until the
+// actor closes the queue. On queue close it sends the close frame the actor
+// chose (session ended) or none (eviction — the client sees an abnormal close
+// and reconnects).
+func (r *Relay) viewerWriter(v *viewerHandle) {
+	conn := v.conn
+	for m := range v.out {
+		_ = conn.SetWriteDeadline(time.Now().Add(viewerWriteTimeout))
+		if err := conn.WriteMessage(m.msgType, m.data); err != nil {
+			slog.Debug("viewer write error, evicting", "session", r.SessionName, "error", err)
+			r.send(cmdRemoveViewer{conn: conn})
+			for range v.out {
+			}
+			_ = conn.Close()
+			return
+		}
+	}
+	// closeCode is set by the actor before close(out), so this read is ordered.
+	if v.closeCode != 0 {
+		_ = conn.SetWriteDeadline(time.Now().Add(viewerWriteTimeout))
+		closeMsg := websocket.FormatCloseMessage(v.closeCode, "session ended")
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+	}
+	_ = conn.Close()
+}
+
+// readLoop reads the attach PTY and forwards chunks to the actor. It exits on
+// read error (notifying the actor) or when the relay has exited.
+func (r *Relay) readLoop(f *os.File, gen int) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			if !r.send(cmdOutput{gen: gen, data: data}) {
+				return
+			}
+		}
+		if err != nil {
+			slog.Debug("relay read ended", "session", r.SessionName, "error", err)
+			r.send(cmdAttachEOF{gen: gen})
+			return
+		}
 	}
 }
 
@@ -122,8 +570,7 @@ func (r *Relay) waitForSocket() error {
 	}
 }
 
-// startAttach launches `dtach -a` under a new PTY the relay owns and applies the
-// last known window size. Callers hold attachMu (or call before any read loop).
+// startAttach launches `dtach -a` under a fresh PTY.
 func (r *Relay) startAttach() (*os.File, *exec.Cmd, error) {
 	if err := r.waitForSocket(); err != nil {
 		return nil, nil, err
@@ -133,294 +580,43 @@ func (r *Relay) startAttach() (*os.File, *exec.Cmd, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("dtach attach failed: %w", err)
 	}
-	// Only impose a size when a browser viewer is present. Otherwise leave the
-	// PTY at whatever an interactive CLI client set, so the relay doesn't
-	// clobber a CLI-owned session's dimensions.
-	r.mu.RLock()
-	hasViewers := len(r.viewers) > 0
-	r.mu.RUnlock()
-	if hasViewers {
-		r.applySize(f)
-	}
 	return f, cmd, nil
 }
 
-// applySize sets the PTY window size to the last reported dimensions (or the
-// default seed). dtach does not adopt a fresh client's size automatically, so
-// this must run on every attach.
-func (r *Relay) applySize(f *os.File) {
-	cols := uint16(r.lastCols.Load())
-	rows := uint16(r.lastRows.Load())
-	if cols == 0 || rows == 0 {
-		cols, rows = defaultCols, defaultRows
-	}
-	_ = pty.Setsize(f, &pty.Winsize{Rows: rows, Cols: cols})
-}
-
-// Start attaches to the session and begins reading output into the ring buffer.
-func (r *Relay) Start() error {
-	f, cmd, err := r.startAttach()
-	if err != nil {
-		return err
-	}
-	r.ptmx.Store(f)
-	r.attachCmd.Store(cmd)
-
-	slog.Info("relay started", "session", r.SessionName)
-
-	gen := r.generation.Add(1)
-	go r.readLoop(gen)
-	return nil
-}
-
-// Stop tears down the relay's attach and closes all viewers. It does NOT remove
-// the dtach socket — the master owns it and removes it on exit.
-func (r *Relay) Stop() {
-	r.stopOnce.Do(func() {
-		close(r.done)
-
-		if cmd := r.attachCmd.Load(); cmd != nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
+// reconnectLoop tries to re-establish the attach after a drop, posting the new
+// PTY back to the actor. If the session master is gone or attempts are
+// exhausted, it stops the relay.
+func (r *Relay) reconnectLoop(gen int) {
+	for attempt := 1; attempt <= maxReconnectAttempts; attempt++ {
+		if r.IsStopped() {
+			return
 		}
-		if f := r.ptmx.Load(); f != nil {
-			f.Close()
+		if !sessionAlive(r.SessionName) {
+			slog.Info("session gone, stopping relay", "session", r.SessionName)
+			r.Stop()
+			return
 		}
 
-		r.mu.Lock()
-		for conn, v := range r.viewers {
-			v.writeMu.Lock()
-			closeMsg := websocket.FormatCloseMessage(
-				websocket.CloseNormalClosure,
-				"session ended",
-			)
-			_ = writeMessage(conn, websocket.CloseMessage, closeMsg)
-			_ = conn.Close()
-			v.writeMu.Unlock()
-		}
-		r.viewers = make(map[*websocket.Conn]*viewer)
-		r.mu.Unlock()
+		slog.Info("relay reconnecting", "session", r.SessionName, "attempt", attempt)
+		time.Sleep(time.Duration(attempt) * time.Second)
 
-		uploadPath := filepath.Join(uploadDir, r.SessionName)
-		if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
-			slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
-		}
-
-		slog.Info("relay stopped", "session", r.SessionName)
-	})
-}
-
-// writeMessage writes to a viewer connection with a deadline. Caller holds the
-// viewer's writeMu (or the connection is not yet shared).
-func writeMessage(conn *websocket.Conn, msgType int, data []byte) error {
-	_ = conn.SetWriteDeadline(time.Now().Add(viewerWriteTimeout))
-	return conn.WriteMessage(msgType, data)
-}
-
-// writeToViewer writes a message to a viewer under its write lock.
-func writeToViewer(conn *websocket.Conn, v *viewer, msgType int, data []byte) error {
-	v.writeMu.Lock()
-	defer v.writeMu.Unlock()
-	return writeMessage(conn, msgType, data)
-}
-
-// AddViewer registers a WebSocket connection, replays the ring buffer, and adds
-// it to the broadcast list. Replay and registration happen under the write lock
-// so no broadcast can interleave between them — otherwise output produced in
-// that window would be missing from the new viewer's stream.
-func (r *Relay) AddViewer(conn *websocket.Conn) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if err := writeMessage(conn, websocket.BinaryMessage, []byte(termReset)); err != nil {
-		return fmt.Errorf("send reset: %w", err)
-	}
-
-	scrollback := r.ringBuf.Bytes()
-	if len(scrollback) > 0 {
-		if err := writeMessage(conn, websocket.BinaryMessage, scrollback); err != nil {
-			return fmt.Errorf("replay scrollback: %w", err)
-		}
-	}
-
-	if r.inAltScreen.Load() {
-		_ = writeMessage(conn, websocket.BinaryMessage, altScreenEnter[0])
-	}
-
-	r.viewers[conn] = &viewer{}
-	return nil
-}
-
-// RemoveViewer unregisters a WebSocket connection.
-func (r *Relay) RemoveViewer(conn *websocket.Conn) {
-	r.mu.Lock()
-	delete(r.viewers, conn)
-	if r.lastResizer == conn {
-		r.lastResizer = nil
-	}
-	r.mu.Unlock()
-}
-
-// SendInput writes user input bytes to the session via the attach PTY.
-func (r *Relay) SendInput(data []byte) error {
-	f := r.ptmx.Load()
-	if f == nil {
-		return fmt.Errorf("attach not connected")
-	}
-	r.lastInputAt.Store(time.Now().UnixNano())
-	_, err := f.Write(data)
-	return err
-}
-
-// Resize stores a viewer's terminal dimensions and resizes the PTY only if this
-// viewer is the active one (last to type). It does NOT change who the active
-// viewer is — only ResizeToViewer (input-triggered) does that.
-func (r *Relay) Resize(conn *websocket.Conn, cols, rows uint16) {
-	r.mu.Lock()
-	if v, ok := r.viewers[conn]; ok {
-		v.size = viewerSize{cols, rows}
-	}
-	if r.lastResizer == nil {
-		r.lastResizer = conn
-	}
-	isActive := r.lastResizer == conn
-	r.mu.Unlock()
-
-	if isActive {
-		r.applyResize(cols, rows)
-	}
-}
-
-// deactivatedMsg tells a non-active viewer its display is frozen and needs a
-// clear on next input.
-var deactivatedMsg = []byte(`{"type":"deactivated"}`)
-
-// ResizeToViewer resizes the PTY to match the given viewer's dimensions if that
-// viewer is not already the last resizer. Mimics tmux "window-size latest" — the
-// active typist's size wins. Non-active viewers are suspended (broadcast skips
-// them) and receive a "deactivated" message so the client clears on next input.
-func (r *Relay) ResizeToViewer(conn *websocket.Conn) {
-	// Check + takeover + suspension marking happen in ONE critical section:
-	// with the old check-RUnlock-Lock split, two concurrently-first typists
-	// could both pass the check and each suspend the other, freezing both
-	// until their next keystroke unsuspended them.
-	r.mu.Lock()
-	if r.lastResizer == conn {
-		r.mu.Unlock()
-		return
-	}
-	v, ok := r.viewers[conn]
-	if !ok || v.size.cols == 0 || v.size.rows == 0 {
-		r.mu.Unlock()
-		return
-	}
-	r.lastResizer = conn
-	type target struct {
-		conn *websocket.Conn
-		vw   *viewer
-	}
-	var others []target
-	for c, vw := range r.viewers {
-		if c == conn {
+		f, cmd, err := r.startAttach()
+		if err != nil {
+			slog.Warn("reconnect attach failed", "session", r.SessionName, "error", err)
 			continue
 		}
-		vw.suspended.Store(true)
-		others = append(others, target{c, vw})
-	}
-	size := v.size
-	r.mu.Unlock()
-
-	// Network writes happen outside the lock.
-	for _, t := range others {
-		_ = writeToViewer(t.conn, t.vw, websocket.TextMessage, deactivatedMsg)
-	}
-
-	r.applyResize(size.cols, size.rows)
-}
-
-// UnsuspendViewer resumes broadcast delivery for a viewer.
-func (r *Relay) UnsuspendViewer(conn *websocket.Conn) {
-	r.mu.RLock()
-	v, ok := r.viewers[conn]
-	r.mu.RUnlock()
-	if ok {
-		v.suspended.Store(false)
-	}
-}
-
-// applyResize records the dimensions and resizes the attach PTY, which dtach
-// forwards to the inner program as SIGWINCH.
-func (r *Relay) applyResize(cols, rows uint16) {
-	r.lastCols.Store(uint32(cols))
-	r.lastRows.Store(uint32(rows))
-	r.lastResizeAt.Store(time.Now().UnixNano())
-	if f := r.ptmx.Load(); f != nil {
-		if err := pty.Setsize(f, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
-			slog.Debug("resize failed", "session", r.SessionName, "error", err)
-		}
-	}
-}
-
-// IsStopped returns true if the relay has been stopped.
-func (r *Relay) IsStopped() bool {
-	select {
-	case <-r.done:
-		return true
-	default:
-		return false
-	}
-}
-
-// GetLastActivity returns the time of the last broadcast (output activity).
-func (r *Relay) GetLastActivity() time.Time {
-	r.lastActivityMu.RLock()
-	defer r.lastActivityMu.RUnlock()
-	return r.lastActivity
-}
-
-// readLoop reads from the attach PTY, tracks alternate screen state, writes to
-// the ring buffer, and broadcasts to viewers. It exits when the relay stops or a
-// newer generation supersedes it.
-func (r *Relay) readLoop(gen int64) {
-	buf := make([]byte, 4096)
-	for {
-		f := r.ptmx.Load()
-		if f == nil {
-			return
-		}
-		n, err := f.Read(buf)
-		if n > 0 {
-			r.processOutput(buf[:n])
-		}
-		if err != nil {
-			slog.Debug("relay read ended", "session", r.SessionName, "error", err)
-			if r.IsStopped() || gen != r.generation.Load() {
-				return
+		if !r.send(cmdAttachResult{gen: gen, f: f, cmd: cmd}) {
+			f.Close()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
 			}
-			r.reconnect()
-			return
+			go func() { _ = cmd.Wait() }()
 		}
-	}
-}
-
-// processOutput handles alternate screen tracking, ring buffer writes, and
-// viewer broadcast for a chunk of output data.
-func (r *Relay) processOutput(data []byte) {
-	segments := r.trackAltScreen(data)
-
-	r.broadcast(data)
-
-	// Stamp activity only for real content, not resize redraws or input echoes.
-	if len(segments) > 0 &&
-		time.Since(time.Unix(0, r.lastResizeAt.Load())) > resizeActivityWindow &&
-		time.Since(time.Unix(0, r.lastInputAt.Load())) > inputActivityWindow {
-		r.lastActivityMu.Lock()
-		r.lastActivity = time.Now()
-		r.lastActivityMu.Unlock()
+		return
 	}
 
-	for _, seg := range segments {
-		r.ringBuf.Write(seg)
-	}
+	slog.Error(fmt.Sprintf("relay reconnect failed after %d attempts", maxReconnectAttempts), "session", r.SessionName)
+	r.Stop()
 }
 
 // trackAltScreen scans data for alternate screen sequences, toggles the
@@ -433,7 +629,7 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 	}
 
 	var currentNormal []byte
-	if !r.inAltScreen.Load() {
+	if !r.inAltScreen {
 		currentNormal = make([]byte, 0, len(data))
 	}
 
@@ -448,7 +644,7 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 					if bytes.HasPrefix(seq, remaining) {
 						r.partial = make([]byte, len(remaining))
 						copy(r.partial, remaining)
-						if !r.inAltScreen.Load() && len(currentNormal) > 0 {
+						if !r.inAltScreen && len(currentNormal) > 0 {
 							normalSegments = append(normalSegments, currentNormal)
 						}
 						return normalSegments
@@ -466,13 +662,13 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 					}
 
 					if isEnter {
-						if !r.inAltScreen.Load() && len(currentNormal) > 0 {
+						if !r.inAltScreen && len(currentNormal) > 0 {
 							normalSegments = append(normalSegments, currentNormal)
 							currentNormal = nil
 						}
-						r.inAltScreen.Store(true)
+						r.inAltScreen = true
 					} else {
-						r.inAltScreen.Store(false)
+						r.inAltScreen = false
 						currentNormal = make([]byte, 0, len(data)-i)
 					}
 
@@ -487,94 +683,15 @@ func (r *Relay) trackAltScreen(data []byte) (normalSegments [][]byte) {
 			}
 		}
 
-		if !r.inAltScreen.Load() {
+		if !r.inAltScreen {
 			currentNormal = append(currentNormal, data[i])
 		}
 		i++
 	}
 
-	if !r.inAltScreen.Load() && len(currentNormal) > 0 {
+	if !r.inAltScreen && len(currentNormal) > 0 {
 		normalSegments = append(normalSegments, currentNormal)
 	}
 
 	return normalSegments
-}
-
-// broadcast sends data to all connected, non-suspended WebSocket viewers.
-// Writes carry a deadline; a viewer whose write fails (stalled/dead client) is
-// evicted and closed so it can't wedge future broadcasts. Its own read loop in
-// handleWebSocket then errors out and finishes the cleanup.
-func (r *Relay) broadcast(data []byte) {
-	var failed []*websocket.Conn
-
-	r.mu.RLock()
-	for conn, v := range r.viewers {
-		if v.suspended.Load() {
-			continue
-		}
-		err := writeToViewer(conn, v, websocket.BinaryMessage, data)
-		if err != nil {
-			slog.Debug("viewer write error, evicting", "session", r.SessionName, "error", err)
-			failed = append(failed, conn)
-		}
-	}
-	r.mu.RUnlock()
-
-	for _, conn := range failed {
-		r.RemoveViewer(conn)
-		_ = conn.Close()
-	}
-}
-
-// reconnect re-establishes the attach PTY after a drop, swapping it under
-// attachMu and starting a fresh read loop. If the session master is gone, it
-// stops the relay.
-func (r *Relay) reconnect() {
-	r.attachMu.Lock()
-	defer r.attachMu.Unlock()
-
-	for attempt := 1; attempt <= maxReconnectAttempts; attempt++ {
-		select {
-		case <-r.done:
-			return
-		default:
-		}
-
-		if !sessionAlive(r.SessionName) {
-			slog.Info("session gone, stopping relay", "session", r.SessionName)
-			r.Stop()
-			return
-		}
-
-		slog.Info("relay reconnecting", "session", r.SessionName, "attempt", attempt)
-		time.Sleep(time.Duration(attempt) * time.Second)
-
-		f, cmd, err := r.startAttach()
-		if err != nil {
-			slog.Warn("reconnect attach failed", "session", r.SessionName, "error", err)
-			continue
-		}
-
-		if r.IsStopped() {
-			f.Close()
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			return
-		}
-
-		if old := r.ptmx.Swap(f); old != nil {
-			old.Close()
-		}
-		r.attachCmd.Store(cmd)
-
-		slog.Info("relay reconnected", "session", r.SessionName)
-
-		gen := r.generation.Add(1)
-		go r.readLoop(gen)
-		return
-	}
-
-	slog.Error(fmt.Sprintf("relay reconnect failed after %d attempts", maxReconnectAttempts), "session", r.SessionName)
-	r.Stop()
 }
