@@ -381,6 +381,10 @@ input.err-flash{outline:3px solid var(--accent)}
 .hdr .title,.hdr .sub{display:none}
 .ctrlbar{display:none}
 .themewrap span{display:none}
+/* The session count is a status readout, not a control — drop it on mobile so
+   the six header items (mark + accent/share/settings/theme) stop crowding the
+   logo. The sidebar still lists sessions. Restored at the desktop breakpoint. */
+.statpill{display:none}
 .hdr .right{gap:10px}
 .hdr{padding:0 12px}
 /* Touch: rail chips + hamburger ≥40px (mobile-first default is touch). */
@@ -396,6 +400,7 @@ input.err-flash{outline:3px solid var(--accent)}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
   .themewrap span{display:inline}
+  .statpill{display:flex}
   .hdr .right{gap:16px}
   .hdr{padding:0 18px}
   #mobileInputBar{display:none}
