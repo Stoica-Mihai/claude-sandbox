@@ -158,8 +158,13 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 
 /* Monogram: shown only in the collapsed rail. */
 .mono{display:none;font-weight:900;font-style:italic;font-size:14px;color:var(--ink)}
-/* Collapsed: each card becomes a square chip — monogram + live dot only. */
-.side:not(.expanded) .scard{padding:0;width:32px;height:32px;margin:0 auto;
+/* Collapsed: center the chips in the rail. The list content width (rail minus
+   its own padding) can be narrower than the chip on mobile, so centering the
+   flex items + trimming the horizontal padding keeps the chip off the edges. */
+.side:not(.expanded) .list{align-items:center;padding-left:6px;padding-right:6px}
+/* Collapsed: each card becomes a square chip — monogram + live dot only.
+   position:relative so the absolute live dot anchors to the chip, not row-host. */
+.side:not(.expanded) .scard{padding:0;width:32px;height:32px;position:relative;
   display:flex;align-items:center;justify-content:center;box-shadow:3px 3px 0 var(--shadow)}
 .side:not(.expanded) .scard .row1{gap:0}
 .side:not(.expanded) .scard .mono{display:block}
