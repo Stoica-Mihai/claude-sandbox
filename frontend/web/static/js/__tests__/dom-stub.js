@@ -67,6 +67,33 @@ class FakeElement {
     }
     querySelector(sel) { return matchDescendants(this, sel)[0] || null; }
     querySelectorAll(sel) { return matchDescendants(this, sel); }
+    // Match a simple selector: .class, [attr], [attr="val"], or a tag name.
+    matches(sel) {
+        sel = String(sel).trim();
+        if (sel.startsWith('.')) return this.classList.contains(sel.slice(1));
+        if (sel.startsWith('[')) {
+            const m = sel.match(/^\[([^\]=]+)(?:="([^"]*)")?\]$/);
+            if (!m) return false;
+            let val;
+            if (m[1].startsWith('data-')) {
+                const key = m[1].slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+                val = this.dataset[key];
+            } else {
+                val = this.attributes[m[1]];
+            }
+            return m[2] === undefined ? val != null : val === m[2];
+        }
+        return this.tagName === sel.toUpperCase();
+    }
+    // Walk self → ancestors for the first element matching sel.
+    closest(sel) {
+        let el = this;
+        while (el) {
+            if (el.matches && el.matches(sel)) return el;
+            el = el.parentNode;
+        }
+        return null;
+    }
     focus() {}
     select() {}
     setAttribute(k, v) { this.attributes[k] = String(v); }
