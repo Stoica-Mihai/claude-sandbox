@@ -119,7 +119,8 @@ const TerminalManager = {
         const term = new Terminal({
             cursorBlink: true,
             rightClickSelectsWord: !mobile,
-            fontSize: 14,
+            // Smaller on mobile so more columns fit per line on a narrow screen.
+            fontSize: mobile ? 12 : 14,
             fontFamily: "Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
             lineHeight: 1.15,
             theme: getTerminalTheme(),
