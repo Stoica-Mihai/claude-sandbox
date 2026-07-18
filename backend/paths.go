@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -122,6 +123,10 @@ func randBytes(n int) []byte {
 	}
 	return b
 }
+
+// uuidRe validates RFC-4122 lowercase uuids before they are interpolated into
+// the dtach inner script (defense in depth behind index membership).
+var uuidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // newUUID returns a random RFC 4122 v4 UUID string.
 func newUUID() string {

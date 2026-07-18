@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strconv"
@@ -75,7 +76,7 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	relay := NewRelay(name)
 	relay.onExit = func() { sm.relayExited(name, relay) }
 	relay.begin(relaySide, nil)
-	sm.relays.set(name, relay)
+	sm.relays.ensure(name, func(string) *Relay { return relay })
 
 	sessionSide.Close() // attach EOF → session gone → relay stops → relayExited
 
@@ -100,6 +101,46 @@ func TestRelayExitedCleansUpDeadSession(t *testing.T) {
 	case <-ch:
 	case <-time.After(2 * time.Second):
 		t.Fatal("relayExited did not publish an SSE update")
+	}
+}
+
+// TestResumeAlreadyLive: resuming a conversation that already has a live
+// session returns that session instead of spawning a second claude --resume
+// (two writers on one transcript).
+func TestResumeAlreadyLive(t *testing.T) {
+	setSessionDirs(t)
+	sm := &SessionManager{
+		relays: newRelayRegistry(),
+		store:  newSessionStore(),
+		index:  &SessionIndex{entries: map[string]indexEntry{}},
+		broker: NewBroker(),
+	}
+	sm.index.add(testUUID1, "/workspace/a", 100)
+	sm.store.add(sessionRecord{Name: "claude-live1234", CWD: "/workspace/a", SessionID: testUUID1})
+
+	name, err := sm.Resume(testUUID1)
+	if err != nil {
+		t.Fatalf("Resume returned error: %v", err)
+	}
+	if name != "claude-live1234" {
+		t.Fatalf("Resume = %q, want the live session name", name)
+	}
+}
+
+// TestResumeRejectsMalformedUUID: an index entry whose key is not an RFC-4122
+// uuid must never reach the shell-interpolated dtach script.
+func TestResumeRejectsMalformedUUID(t *testing.T) {
+	setSessionDirs(t)
+	bad := `x"; rm -rf /; echo "`
+	sm := &SessionManager{
+		relays: newRelayRegistry(),
+		store:  newSessionStore(),
+		index:  &SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}},
+		broker: NewBroker(),
+	}
+
+	if _, err := sm.Resume(bad); !errors.Is(err, ErrUnknownSession) {
+		t.Fatalf("Resume(malformed) err = %v, want ErrUnknownSession", err)
 	}
 }
 

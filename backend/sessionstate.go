@@ -27,11 +27,28 @@ func (r *relayRegistry) get(name string) *Relay {
 	return r.relays[name]
 }
 
-// set registers (or replaces) a relay.
-func (r *relayRegistry) set(name string, relay *Relay) {
+// ensure starts and registers a relay for name if none exists. The (blocking)
+// start runs outside the lock so a slow attach can't freeze get/remove; if a
+// concurrent ensure won the race, the extra relay is stopped.
+func (r *relayRegistry) ensure(name string, start func(string) *Relay) {
+	r.mu.RLock()
+	_, exists := r.relays[name]
+	r.mu.RUnlock()
+	if exists {
+		return
+	}
+	relay := start(name)
+	if relay == nil {
+		return
+	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	if _, ok := r.relays[name]; ok {
+		r.mu.Unlock()
+		relay.Stop()
+		return
+	}
 	r.relays[name] = relay
+	r.mu.Unlock()
 }
 
 // remove stops and drops a relay if present.
@@ -57,17 +74,15 @@ func (r *relayRegistry) dropIf(name string, relay *Relay) bool {
 	return true
 }
 
-// reconcile starts a relay (via start) for every name in alive that lacks one,
-// and stops+drops relays whose name is absent from alive. start returns nil to
-// skip a name whose relay failed to start.
+// reconcile stops+drops relays whose name is absent from alive, then ensures
+// a relay for every name in alive. Relay starts happen outside the lock (see
+// ensure) so a slow dtach attach can't block the registry.
 func (r *relayRegistry) reconcile(alive map[string]bool, start func(name string) *Relay) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var missing []string
 	for name := range alive {
 		if _, ok := r.relays[name]; !ok {
-			if relay := start(name); relay != nil {
-				r.relays[name] = relay
-			}
+			missing = append(missing, name)
 		}
 	}
 	for name, relay := range r.relays {
@@ -75,6 +90,11 @@ func (r *relayRegistry) reconcile(alive map[string]bool, start func(name string)
 			relay.Stop()
 			delete(r.relays, name)
 		}
+	}
+	r.mu.Unlock()
+
+	for _, name := range missing {
+		r.ensure(name, start)
 	}
 }
 

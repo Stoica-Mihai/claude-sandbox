@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	api "claude-sandbox-api"
@@ -74,12 +76,6 @@ func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
 	sm.index.setName(rec.SessionID, displayName)
 }
 
-// GetSessionName returns the custom name for a live session via its conversation uuid.
-func (sm *SessionManager) GetSessionName(sessionName string) string {
-	rec, _ := sm.store.get(sessionName)
-	return sm.index.name(rec.SessionID)
-}
-
 // History returns the previous RESUMABLE sessions for a folder (newest first).
 // Sessions that were spawned but never messaged have no claude transcript and
 // would exit immediately on resume, so they are filtered out.
@@ -144,19 +140,24 @@ func (sm *SessionManager) relayExited(name string, relay *Relay) {
 		return // manager already removed/replaced it (e.g. Kill)
 	}
 	if sessionAlive(name) {
-		if fresh := sm.newRelay(name); fresh != nil {
-			sm.relays.set(name, fresh)
-		}
+		sm.relays.ensure(name, sm.newRelay)
 		return
 	}
 	sm.dropSession(name)
 	sm.broker.Publish()
 }
 
-// dropSession removes a dead session's record and sidecar files.
+// dropSession removes a dead session's record, sidecar files, and uploads.
+// Uploads are cleaned here (session death), NOT on relay stop — a relay can
+// stop and be replaced while the session lives, and uploaded image paths
+// already handed to claude must survive that.
 func (sm *SessionManager) dropSession(name string) {
 	sm.store.remove(name)
 	removeSessionFiles(name)
+	uploadPath := filepath.Join(uploadDir, name)
+	if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
+	}
 }
 
 // Shutdown stops the polling goroutine. Sessions are NOT killed — they persist

@@ -25,9 +25,18 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	return name, nil
 }
 
-// Resume reopens a previously recorded conversation by uuid (only uuids in the
-// index can be resumed, which gates the shell-interpolated value).
+// Resume reopens a previously recorded conversation by uuid. If the
+// conversation is already running, its live session is returned instead of
+// spawning a second `claude --resume` onto the same transcript.
 func (sm *SessionManager) Resume(uuid string) (string, error) {
+	if rec, ok := sm.store.byUUID(uuid); ok {
+		return rec.Name, nil
+	}
+	// The uuid reaches the dtach inner script; index membership gates it, and
+	// the format check makes shell-metacharacter values impossible outright.
+	if !uuidRe.MatchString(uuid) {
+		return "", fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
+	}
 	cwd, ok := sm.index.cwd(uuid)
 	if !ok {
 		return "", fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
@@ -95,10 +104,6 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 
 		slog.Info("spawned session", "session", sessionName, "cwd", absPath, "uuid", uuid)
 
-		if relay := sm.newRelay(sessionName); relay != nil {
-			sm.relays.set(sessionName, relay)
-		}
-
 		// Wait for the inner bash to write the PID sidecar (it does so before
 		// exec'ing claude) so the record carries a real PID for kill/liveness.
 		deadline := time.Now().Add(pidWaitTimeout)
@@ -109,6 +114,8 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 			time.Sleep(20 * time.Millisecond)
 		}
 
+		// Store BEFORE the relay: the poll's reconcile stops any relay whose
+		// name is not in the store, so registering the relay first races it.
 		sm.store.add(sessionRecord{
 			Name:      sessionName,
 			CWD:       absPath,
@@ -116,6 +123,7 @@ func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, 
 			SessionID: uuid,
 			PID:       sessionPID(sessionName),
 		})
+		sm.relays.ensure(sessionName, sm.newRelay)
 		sm.broker.Publish()
 		return sessionName, nil
 	}

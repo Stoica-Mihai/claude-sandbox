@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -290,11 +289,6 @@ func (r *Relay) teardown() {
 	}
 	for conn := range r.viewers {
 		r.dropViewer(conn, websocket.CloseNormalClosure)
-	}
-
-	uploadPath := filepath.Join(uploadDir, r.SessionName)
-	if err := os.RemoveAll(uploadPath); err != nil && !os.IsNotExist(err) {
-		slog.Warn("failed to clean upload dir", "path", uploadPath, "error", err)
 	}
 
 	// Reject commands buffered before shutdown; close(exited) unblocks any
