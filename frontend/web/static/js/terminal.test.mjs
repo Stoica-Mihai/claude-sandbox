@@ -106,3 +106,47 @@ test('rethemeAll syncs the CSS vars including --terminal-fg', () => {
     assert.equal(ctx.__setProps['--terminal-fg'], ctx.terminalThemes.light.foreground);
     assert.equal(ctx.__setProps['--terminal-bg'], ctx.terminalThemes.light.background);
 });
+
+// Regression: destroying a terminal (closing its tab) must NOT reconnect. A
+// client-initiated close reports code 1005 (not WS_NORMAL_CLOSURE), so without
+// the intentional-close guard the socket's onclose would schedule a reconnect —
+// a zombie viewer that suspends the real one on reopen (blank terminal).
+test('destroy() does not schedule a reconnect for an intentionally closed tab', () => {
+    const c = loadTerminal();
+
+    let wsCount = 0;
+    class FakeWS {
+        static OPEN = 1; static CLOSED = 3; static CONNECTING = 0; static CLOSING = 2;
+        constructor(url) { wsCount++; this.url = url; this.readyState = 1; }
+        send() {}
+        addEventListener() {}
+        close() { this.readyState = 3; if (this.onclose) this.onclose({ code: 1005 }); }
+    }
+    globalThis.WebSocket = FakeWS;
+
+    const fakeTerm = {
+        loadAddon() {}, onData() {}, onResize() {}, reset() {}, write() {},
+        focus() {}, scrollToBottom() {}, dispose() {}, open() {}, attachCustomKeyEventHandler() {},
+        options: {}, cols: 80, rows: 24,
+        buffer: { active: { baseY: 0, viewportY: 0 } },
+    };
+    globalThis.Terminal = function () { return fakeTerm; };
+    globalThis.FitAddon = { FitAddon: function () { return { fit() {}, dispose() {} }; } };
+    globalThis.WebLinksAddon = { WebLinksAddon: function () { return {}; } };
+    globalThis.WebglAddon = undefined; // skip GPU renderer in the stub
+    globalThis.getComputedStyle = () => ({ getPropertyValue: () => '0' }); // not mobile
+    globalThis.requestAnimationFrame = (fn) => fn();
+    globalThis.location = { protocol: 'http:', host: 'localhost' };
+
+    c.TerminalManager.create('t1', { id: 'c1', appendChild() {}, addEventListener() {}, querySelector: () => null });
+    assert.equal(wsCount, 1, 'one socket created');
+
+    let reconnectScheduled = false;
+    globalThis.setTimeout = () => { reconnectScheduled = true; return 0; };
+    globalThis.clearTimeout = () => {};
+
+    c.TerminalManager.destroy('t1');
+
+    assert.equal(reconnectScheduled, false, 'intentional close must not schedule a reconnect');
+    assert.equal(wsCount, 1, 'no zombie socket after destroy');
+});

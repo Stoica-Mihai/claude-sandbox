@@ -318,7 +318,8 @@ export const TerminalManager = {
             webLinksAddon,
             webglAddon,
             containerId: containerEl.id,
-            retryTimer: null
+            retryTimer: null,
+            closing: false // set by destroy() so onclose doesn't reconnect an intentionally-closed tab
         };
         this.instances[terminalId] = instance;
 
@@ -380,6 +381,13 @@ export const TerminalManager = {
             ws.onerror = () => {};
 
             ws.onclose = (event) => {
+                // Tab closed / terminal destroyed — a client-initiated close reports
+                // code 1005 (no status), which is not WS_NORMAL_CLOSURE, so without
+                // this guard the reconnect below would spawn a zombie viewer that
+                // suspends the real one on reopen (blank terminal).
+                if (instance.closing) {
+                    return;
+                }
                 // Normal closure — session ended, no reconnect
                 if (event.code === WS_NORMAL_CLOSURE) {
                     term.write(`\r\n${ANSI_GRAY}[Session ended]${ANSI_RESET}\r\n`);
@@ -447,6 +455,9 @@ export const TerminalManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
 
+        // Mark the close intentional before closing so the socket's onclose
+        // does not treat it as an unexpected drop and reconnect.
+        instance.closing = true;
         if (instance.retryTimer != null) {
             clearTimeout(instance.retryTimer);
             instance.retryTimer = null;
