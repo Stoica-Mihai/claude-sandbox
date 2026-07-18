@@ -33,11 +33,11 @@
 
 ## 4. share.js + JS tests
 
-- [ ] 4.1 `frontend/web/static/js/share.js`: port mockup state machine (`show`, `setStates`, `copyStr`, `resetCopy`); real fetches: `openShareModal()` → `showModal()` + `refreshStatus()`; `render(st)` drives panes/buttons/globe (`share-on` class + `#shareDot`) from `st.state`, sets `#connStr` + `drawQR(st.url)` when public, error → `#shareHint` `.err` text; `goPublic()` (busy-guard `dataset.busy`, optimistic publishing pane, POST start, render response); `goPrivate()`; `regen()`; DOMContentLoaded `refreshStatus()`.
-- [ ] 4.2 `drawQR(url)`: `qrcode(0,'M')`, addData, make; paint on `#qrCanvas` — `#1a1714` modules on `#efe9dc`, integer scale, quiet zone.
-- [ ] 4.3 `__tests__/load-share.js`: vm-sandbox loader cloned from `load-views.js` — registered ids (shareModal with showModal/close stubs, shareBtn, shareDot, shareStatus with `<b>` child, three state panes, connStr, copyBtn with span child, regenBtn, goPublicBtn, goPrivateBtn, shareHint, qrCanvas with recording 2D-context stub), scripted `fetch`, `qrcode` global stub, clipboard spy, flushable timers.
-- [ ] 4.4 `__tests__/share.test.js`: open → GET status, private render; goPublic → POST start, publishing pane in flight, public render (connStr text, qrcode received url, dot visible, share-on set); goPrivate → private render + copy reset; regen → new string + QR redraw; start 502 `{state:"error"}` → hint `.err` + message, busy cleared; copy → clipboard spy + "COPIED ✓" flash + reset after flushTimers; busy-guard → no second POST while in flight.
-- [ ] 4.5 Verify: `node --test frontend/web/static/js/__tests__/` and `go test ./...` green; manual browser toggle works.
+- [x] 4.1 `frontend/web/static/js/share.js`: port mockup state machine (`show`, `setStates`, `copyStr`, `resetCopy`); real fetches: `openShareModal()` → `showModal()` + `refreshStatus()`; `render(st)` drives panes/buttons/globe (`share-on` class + `#shareDot`) from `st.state`, sets `#connStr` + `drawQR(st.url)` when public, error → `#shareHint` `.err` text; `goPublic()` (busy-guard `dataset.busy`, optimistic publishing pane, POST start, render response); `goPrivate()`; `regen()`; DOMContentLoaded `refreshStatus()`.
+- [x] 4.2 `drawQR(url)`: `qrcode(0,'M')`, addData, make; paint on `#qrCanvas` — `#1a1714` modules on `#efe9dc`, integer scale, quiet zone.
+- [x] 4.3 `__tests__/load-share.js`: vm-sandbox loader cloned from `load-views.js` — registered ids (shareModal with showModal/close stubs, shareBtn, shareDot, shareStatus with `<b>` child, three state panes, connStr, copyBtn with span child, regenBtn, goPublicBtn, goPrivateBtn, shareHint, qrCanvas with recording 2D-context stub), scripted `fetch`, `qrcode` global stub, clipboard spy, flushable timers.
+- [x] 4.4 `__tests__/share.test.js`: open → GET status, private render; goPublic → POST start, publishing pane in flight, public render (connStr text, qrcode received url, dot visible, share-on set); goPrivate → private render + copy reset; regen → new string + QR redraw; start 502 `{state:"error"}` → hint `.err` + message, busy cleared; copy → clipboard spy + "COPIED ✓" flash + reset after flushTimers; busy-guard → no second POST while in flight.
+- [x] 4.5 Verify: `node --test frontend/web/static/js/__tests__/` and `go test ./...` green; manual browser toggle works.
 
 ## 5. Docs + end-to-end
 
