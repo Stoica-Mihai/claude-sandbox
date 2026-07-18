@@ -435,6 +435,9 @@ input.err-flash{outline:3px solid var(--accent)}
 /* ink = selected, matching the kit's .seg/.tab/.switch convention. */
 .snav.active{background:var(--ink);color:var(--bg)}
 .snav:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+/* Disabled category (Sharing on mobile) reads as inert. */
+.snav:disabled{color:var(--muted);opacity:.45;cursor:default}
+.snav:disabled:hover{color:var(--muted)}
 .settings-panels{flex:1;min-width:0;padding:16px 18px}
 .settings-panel{display:flex;flex-direction:column;gap:16px}
 .settings-panel[hidden]{display:none}

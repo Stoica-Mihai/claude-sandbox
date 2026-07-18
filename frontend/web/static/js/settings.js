@@ -107,8 +107,11 @@ function getSel(field) {
 
 // Switch the visible settings category. Only Session persists via SAVE; the
 // Appearance (accent) and Sharing (tunnel) panels act instantly, so the footer
-// SAVE button and hint are shown for Session only.
+// SAVE button and hint are shown for Session only. Sharing is off-limits on
+// mobile — a mobile user is usually the tunnel client, and a mis-tap on GO
+// PRIVATE / regenerate would disconnect them.
 function settingsSelectCategory(cat) {
+    if (cat === 'sharing' && typeof isMobile === 'function' && isMobile()) return;
     document.querySelectorAll('#settingsModal .snav').forEach(b => {
         const on = b.dataset.cat === cat;
         b.classList.toggle('active', on);
@@ -128,6 +131,14 @@ async function openSettingsModal() {
     const dlg = document.getElementById('settingsModal');
     const hint = document.getElementById('settings-hint');
     if (hint) { hint.textContent = SETTINGS_HINT; hint.classList.remove('err'); }
+    // Disable the Sharing category on mobile so a tunnel client can't disconnect
+    // itself by mis-tapping GO PRIVATE.
+    const shareNav = document.querySelector('#settingsModal .snav[data-cat="sharing"]');
+    if (shareNav) {
+        const mobile = typeof isMobile === 'function' && isMobile();
+        shareNav.disabled = mobile;
+        shareNav.title = mobile ? 'Manage sharing from a desktop' : '';
+    }
     settingsSelectCategory('session');
     try {
         const res = await fetch('/api/settings');
