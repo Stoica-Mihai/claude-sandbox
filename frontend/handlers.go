@@ -407,9 +407,11 @@ func (s *Server) handleSettingsProxy(w http.ResponseWriter, r *http.Request) {
 // rejected so tunnel visitors cannot operate the share controls.
 func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 	if s.guard.isTunnelRequest(r) {
+		// Same {state,url,error} shape the sidecar returns, so share.js's
+		// renderShare surfaces the message instead of dropping it.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		io.WriteString(w, `{"error":"share controls are unavailable over the tunnel"}`)
+		io.WriteString(w, `{"state":"error","url":null,"error":"Share controls are not available over the tunnel."}`)
 		return
 	}
 	httpProxy(w, r, s.holesailURL)

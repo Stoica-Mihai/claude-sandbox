@@ -18,11 +18,12 @@ function renderShare(st) {
     if (!st || !st.state) return;
     const pub = st.state === 'public';
     const publishing = st.state === 'publishing';
+    const priv = !pub && !publishing;
 
-    showShare('statePrivate', !pub && !publishing);
+    showShare('statePrivate', priv);
     showShare('statePublishing', publishing);
     showShare('statePublic', pub);
-    showShare('goPublicBtn', !pub && !publishing);
+    showShare('goPublicBtn', priv);
     showShare('goPrivateBtn', pub);
 
     const status = shareEl('shareStatus');
@@ -111,6 +112,8 @@ function resetCopyLabel() {
 function drawQR(text) {
     const canvas = shareEl('qrCanvas');
     if (!canvas || typeof qrcode !== 'function') return;
+    if (canvas.dataset.drawn === text) return; // same string — canvas already correct
+    canvas.dataset.drawn = text;
     const qr = qrcode(0, 'M');
     qr.addData(text);
     qr.make();

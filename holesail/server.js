@@ -125,8 +125,7 @@ async function regenerate() {
   if (wasPublic) {
     await startTunnel()
   } else {
-    state = 'private'
-    lastError = null
+    await stopTunnel()
   }
 }
 
