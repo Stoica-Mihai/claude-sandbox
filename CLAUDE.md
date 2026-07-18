@@ -43,10 +43,10 @@ Sessions are persisted with **dtach** (a thin detach layer — no terminal emula
 
 One relay per session connects the dtach session to WebSocket viewers.
 
-- The relay owns a single `dtach -a <sock> -E -z -r none` attach via a directly-owned PTY (`creack/pty`). It reads the PTY and broadcasts to all viewers; one attach, N viewers.
-- Input is written to the attach PTY. Resize calls `pty.Setsize`; the relay imposes a size only when a viewer is present.
-- Alternate-screen tracking: detects `\x1b[?1049h/l` (and `?47h/l`), routes normal-mode output to both viewers and the 1MB ring buffer, routes TUI-mode output to viewers only. On connect the ring buffer is replayed for clean history.
-- Reconnect: if the attach PTY drops while the session is alive, the relay re-execs `dtach -a`, swaps the PTY under a mutex, and restarts the read loop (generation-guarded). Mutable cross-goroutine state (PTY pointer, activity timestamps, alt-screen flag) is synchronized — `go test -race` is clean.
+- The relay owns a single `dtach -a <sock> -E -z -r winch` attach via a directly-owned PTY (`creack/pty`). It reads the PTY and broadcasts to all viewers; one attach, N viewers.
+- Input is written to the attach PTY. Resize calls `pty.Setsize` and resizes the emulator.
+- Terminal state (`backend/termstate.go`): every output chunk also feeds a `charmbracelet/x/vt` emulator (2000-line scrollback). A joining viewer gets a rendered snapshot — reset, scrollback history scrolled out of the viewport, alt-screen re-enter when active, the screen painted row-by-row at absolute positions, cursor position/visibility — instead of a raw byte replay. The emulator's query responses (DA/DSR) drain to a discard goroutine (viewers answer queries); a sentinel through the response pipe ends that goroutine before `Close`, because the library races `Close` with a concurrent `Read`.
+- Reconnect: if the attach PTY drops while the session is alive, the relay re-execs `dtach -a`, swaps the PTY, and restarts the read loop (generation-guarded). The fresh attach PTY is 0x0 and dtach forwards that size to the program at connect, so the relay restores the last known size with a one-row flap (rows−1, then rows after 150ms) — a same-size SIGWINCH is ignored by programs that cache dimensions, and the flap forces the repaint that repopulates the emulator. All relay state is owned by a single actor goroutine — `go test -race` is clean.
 
 ## Key implementation details
 

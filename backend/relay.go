@@ -25,6 +25,9 @@ const (
 	// viewerQueueSize is the per-viewer outbound message buffer; a viewer that
 	// falls this far behind is evicted instead of blocking the actor.
 	viewerQueueSize = 256
+	// resizeFlapDelay separates the two halves of the reattach size flap so
+	// the program sees two distinct SIGWINCHes instead of a coalesced one.
+	resizeFlapDelay = 150 * time.Millisecond
 	// defaultCols/defaultRows seed the PTY before a viewer reports real dimensions.
 	defaultCols = 80
 	defaultRows = 24
@@ -84,6 +87,13 @@ type cmdAttachResult struct {
 	cmd *exec.Cmd
 }
 
+// cmdRestoreSize is the second half of the reattach size flap; it applies only
+// if no other resize happened in between.
+type cmdRestoreSize struct {
+	fromCols, fromRows uint16
+	cols, rows         uint16
+}
+
 func (cmdAddViewer) isRelayCmd()    {}
 func (cmdRemoveViewer) isRelayCmd() {}
 func (cmdInput) isRelayCmd()        {}
@@ -91,6 +101,7 @@ func (cmdResize) isRelayCmd()       {}
 func (cmdOutput) isRelayCmd()       {}
 func (cmdAttachEOF) isRelayCmd()    {}
 func (cmdAttachResult) isRelayCmd() {}
+func (cmdRestoreSize) isRelayCmd()  {}
 
 // deactivatedMsg tells a non-active viewer its display is frozen and needs a
 // clear on next input.
@@ -150,10 +161,13 @@ func (r *Relay) Start() error {
 }
 
 // begin wires an already-open attach PTY into the relay and starts the actor
-// and read loops. Split from Start so tests can inject a file pair.
+// and read loops. Split from Start so tests can inject a file pair. The
+// initial resize gives the session a sane size before any viewer reports one
+// (the attach PTY starts 0x0, which dtach forwards to the program).
 func (r *Relay) begin(f *os.File, cmd *exec.Cmd) {
 	r.ptmx = f
 	r.attachCmd = cmd
+	r.applyResize(defaultCols, defaultRows)
 	go r.run()
 	go r.readLoop(f, r.gen)
 }
@@ -261,6 +275,10 @@ func (r *Relay) handle(c relayCmd) {
 		r.handleAttachEOF(c)
 	case cmdAttachResult:
 		r.handleAttachResult(c)
+	case cmdRestoreSize:
+		if r.lastCols == c.fromCols && r.lastRows == c.fromRows {
+			r.applyResize(c.cols, c.rows)
+		}
 	}
 }
 
@@ -451,13 +469,20 @@ func (r *Relay) handleAttachResult(c cmdAttachResult) {
 	}
 	r.ptmx = c.f
 	r.attachCmd = c.cmd
-	// Only impose a size when a browser viewer is present, so the relay doesn't
-	// clobber a CLI-owned session's dimensions.
-	if len(r.viewers) > 0 {
-		cols, rows := r.lastCols, r.lastRows
-		if cols == 0 || rows == 0 {
-			cols, rows = defaultCols, defaultRows
-		}
+	// Restore the session's size: the fresh attach runs in a brand-new PTY
+	// whose unset (0x0) size dtach forwards to the program at connect. The
+	// one-row flap forces a repaint — programs that cache their dimensions
+	// ignore a same-size SIGWINCH, and the repaint repopulates the emulator.
+	cols, rows := r.lastCols, r.lastRows
+	if cols == 0 || rows == 0 {
+		cols, rows = defaultCols, defaultRows
+	}
+	if rows > 1 {
+		r.applyResize(cols, rows-1)
+		time.AfterFunc(resizeFlapDelay, func() {
+			r.send(cmdRestoreSize{fromCols: cols, fromRows: rows - 1, cols: cols, rows: rows})
+		})
+	} else {
 		r.applyResize(cols, rows)
 	}
 	slog.Info("relay reconnected", "session", r.SessionName)
