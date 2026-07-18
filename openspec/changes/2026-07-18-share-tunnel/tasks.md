@@ -1,15 +1,15 @@
 ## 1. Sidecar service
 
-- [ ] 1.1 `holesail/package.json`: single pinned dependency `holesail`; `npm install` to produce `package-lock.json`; commit both.
-- [ ] 1.2 `holesail/server.js`: plain `node:http` control API. Env (with defaults): `SHARE_TARGET_HOST=frontend`, `SHARE_TARGET_PORT=8080`, `SHARE_CONTROL_PORT=9000`, `SHARE_KEY_FILE=/data/share.key`. Header comment documents the JSON contract.
-- [ ] 1.3 Key handling per design Decision 3: `loadOrCreateKey(file)` as an exported pure-ish function (readable for a later unit test) — read; validate 64 hex; else generate `crypto.randomBytes(32).toString('hex')` and write mode 0600.
-- [ ] 1.4 State machine per Decision 4: `state ∈ private|publishing|public|error`, `lastError`, promise-chain mutex around start/stop/regenerate.
-- [ ] 1.5 Endpoints: `GET /healthz` → `{"ok":true}`; `GET /api/share/status` → `{state,url,error}` (`url` non-null only when public); `POST /api/share/start` idempotent, `hs.ready()` with 25s timeout (Decision 2), failure → 502 + status JSON with `state:"error"`; `POST /api/share/stop` idempotent; `POST /api/share/regenerate` rotates key, restarts instance if running; unknown → 404 JSON.
-- [ ] 1.6 SIGTERM/SIGINT: `hs?.close()` then exit 0.
-- [ ] 1.7 `Dockerfile.holesail`: multi-stage `node:22-bookworm-slim`; builder `npm ci --omit=dev`; runtime installs `curl`, copies app + node_modules, `mkdir -p /data && chown node:node /data`, `USER node`, `CMD ["node","/app/server.js"]`.
-- [ ] 1.8 `docker-compose.yml`: `holesail` service per Decision 9 (claude-net, no ports, healthcheck `:9000/healthz`, `logging: *logging`, `develop.watch ./holesail/`, volume `holesail-share-key:/data`); top-level `volumes:` block.
-- [ ] 1.9 `Makefile`: `restart-holesail` target; add to `.PHONY`.
-- [ ] 1.10 Verify: `docker compose up -d --build holesail` healthy; `docker exec claude_frontend curl -s http://holesail:9000/api/share/status` → `{"state":"private",...}`; start → public with `hs://s000…` url; stop → private; regenerate → different url prefix key; `docker compose restart holesail` → private again, key file unchanged (same url after next start).
+- [x] 1.1 `holesail/package.json`: single pinned dependency `holesail`; `npm install` to produce `package-lock.json`; commit both.
+- [x] 1.2 `holesail/server.js`: plain `node:http` control API. Env (with defaults): `SHARE_TARGET_HOST=frontend`, `SHARE_TARGET_PORT=8080`, `SHARE_CONTROL_PORT=9000`, `SHARE_KEY_FILE=/data/share.key`. Header comment documents the JSON contract.
+- [x] 1.3 Key handling per design Decision 3: `loadOrCreateKey(file)` as an exported pure-ish function (readable for a later unit test) — read; validate 64 hex; else generate `crypto.randomBytes(32).toString('hex')` and write mode 0600.
+- [x] 1.4 State machine per Decision 4: `state ∈ private|publishing|public|error`, `lastError`, promise-chain mutex around start/stop/regenerate.
+- [x] 1.5 Endpoints: `GET /healthz` → `{"ok":true}`; `GET /api/share/status` → `{state,url,error}` (`url` non-null only when public); `POST /api/share/start` idempotent, `hs.ready()` with 25s timeout (Decision 2), failure → 502 + status JSON with `state:"error"`; `POST /api/share/stop` idempotent; `POST /api/share/regenerate` rotates key, restarts instance if running; unknown → 404 JSON.
+- [x] 1.6 SIGTERM/SIGINT: `hs?.close()` then exit 0.
+- [x] 1.7 `Dockerfile.holesail`: multi-stage `node:22-bookworm-slim`; builder `npm ci --omit=dev`; runtime installs `curl`, copies app + node_modules, `mkdir -p /data && chown node:node /data`, `USER node`, `CMD ["node","/app/server.js"]`.
+- [x] 1.8 `docker-compose.yml`: `holesail` service per Decision 9 (claude-net, no ports, healthcheck `:9000/healthz`, `logging: *logging`, `develop.watch ./holesail/`, volume `holesail-share-key:/data`); top-level `volumes:` block.
+- [x] 1.9 `Makefile`: `restart-holesail` target; add to `.PHONY`.
+- [x] 1.10 Verify: `docker compose up -d --build holesail` healthy; `docker exec claude_frontend curl -s http://holesail:9000/api/share/status` → `{"state":"private",...}`; start → public with `hs://s000…` url; stop → private; regenerate → different url prefix key; `docker compose restart holesail` → private again, key file unchanged (same url after next start).
 
 ## 2. Frontend Go: routes + tunnel guard
 

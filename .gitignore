@@ -2,8 +2,8 @@
 mcp-config.json
 container-settings.json
 node_modules/
-package.json
-package-lock.json
+/package.json
+/package-lock.json
 backend/claude-sandbox-backend
 
 .superpowers/

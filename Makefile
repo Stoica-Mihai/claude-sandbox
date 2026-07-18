@@ -1,4 +1,4 @@
-.PHONY: setup build rebuild up down shell claude restart-frontend restart-backend watch
+.PHONY: setup build rebuild up down shell claude restart-frontend restart-backend restart-holesail watch
 
 setup:
 	@./generate-env.sh
@@ -20,6 +20,9 @@ restart-frontend:
 
 restart-backend:
 	docker compose up -d --build backend
+
+restart-holesail:
+	docker compose up -d --build holesail
 
 watch:
 	docker compose watch

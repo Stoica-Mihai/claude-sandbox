@@ -106,6 +106,43 @@ services:
 
     logging: *logging
 
+  holesail:
+    build:
+      context: .
+      dockerfile: Dockerfile.holesail
+    container_name: claude_holesail
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./holesail/
+
+    environment:
+      - SHARE_TARGET_HOST=frontend
+      - SHARE_TARGET_PORT=8080
+      - SHARE_CONTROL_PORT=9000
+
+    volumes:
+      # Persistent share key — the connection string is derived from it, so
+      # the same key means the same string across restarts.
+      - holesail-share-key:/data
+
+    # No exposed ports — control API reachable only via internal network
+    networks:
+      - claude-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    logging: *logging
+
 networks:
   claude-net:
     driver: bridge
+
+volumes:
+  holesail-share-key:
