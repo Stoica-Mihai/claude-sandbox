@@ -30,8 +30,9 @@ const (
 	maxSessionNameLen = 120
 )
 
-// newDirNameRe restricts new project folder names to a single safe path segment.
-var newDirNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+// newDirNameRe restricts new project folder names to a single safe path
+// segment. The pattern is shared with the client-side pre-check via shared/enums.
+var newDirNameRe = regexp.MustCompile(api.NewProjectNamePattern)
 
 type controlMessage struct {
 	Type string `json:"type"`

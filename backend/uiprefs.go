@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"os"
 	"slices"
+
+	api "claude-sandbox-api"
 )
 
-// allowedAccents is the accent-picker palette (names shared with theme.js).
-var allowedAccents = []string{"Red", "Amber", "Lime", "Cyan", "Blue", "Violet", "Pink"}
-
-// allowedThemes is the binary light/dark toggle.
-var allowedThemes = []string{"light", "dark"}
+// allowedAccents / allowedThemes are the accent and theme allowlists, sourced
+// from the shared enums that also drive the frontend picker (single source).
+var allowedAccents = api.AccentNames()
+var allowedThemes = api.Themes
 
 // uiPrefs is the dashboard's cross-device UI preference (accent + theme). These
 // are dashboard chrome, not Claude container config, so they live in their own

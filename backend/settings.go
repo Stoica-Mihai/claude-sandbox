@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	api "claude-sandbox-api"
 )
 
 // modelRank ranks a model family by capability so the advisor can be required
@@ -30,12 +32,11 @@ func modelRank(s string) int {
 	return 0
 }
 
-// allowedModels is the allowlist for the model / advisorModel fields. Extend
-// here as new model ids ship.
-var allowedModels = []string{"opus[1m]", "opus", "sonnet", "haiku"}
-
-// allowedEffort is the allowlist for effortLevel.
-var allowedEffort = []string{"low", "medium", "high", "xhigh", "max"}
+// allowedModels / allowedEffort are the model and effort-level allowlists,
+// sourced from the shared enums so validation and the rendered settings modal
+// stay in sync (add a value in shared/enums.go, both update).
+var allowedModels = api.ModelValues()
+var allowedEffort = api.EffortValues()
 
 // canonicalModelID matches a full Claude model id (e.g. claude-opus-4-8),
 // the shape the advisor accepts — version-agnostic so it survives new releases.
