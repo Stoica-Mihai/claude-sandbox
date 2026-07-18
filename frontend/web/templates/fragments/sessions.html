@@ -26,14 +26,14 @@
      row-host/row-act gotcha; mirrors the same pattern in dpRenderHistory). -->
 <div class="row-act">
     <button type="button" class="row-act-btn" title="Rename" aria-label="Rename session"
-            onclick="openRenameModal('{{.Name}}', '{{.DisplayName}}')">
+            data-action="rename-session" data-terminal-id="{{.Name}}" data-name="{{.DisplayName}}">
         <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
     </button>
     <button type="button" class="row-act-btn" title="Kill" aria-label="Kill session"
             hx-delete="/api/sessions/{{.Name}}"
             hx-target="#session-list"
             hx-swap="innerHTML"
-            onclick="cleanupKilledSession('{{.Name}}')">
+            data-action="kill-cleanup" data-terminal-id="{{.Name}}">
         <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
 </div>

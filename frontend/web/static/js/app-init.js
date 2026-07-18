@@ -1,7 +1,12 @@
-// App init: keyboard shortcuts, pull-to-refresh, and DOMContentLoaded bootstrap.
+// App init: keyboard shortcuts, pull-to-refresh, and load-time bootstrap.
+
+import { applySidebar } from './sidebar.js';
+import { isMobile } from './ui-utils.js';
+import { openNewSessionModal } from './picker.js';
+import { closeSingleTab, switchSingleTab, singleTerminalId, singleTabs, tickDurations } from './tabs.js';
 
 // ===== Keyboard shortcuts (desktop only) =====
-function handleShortcuts(e) {
+export function handleShortcuts(e) {
     // Guard: do not fire when a modal dialog is open
     if (document.querySelector('dialog[open]')) return;
 
@@ -46,7 +51,7 @@ function handleShortcuts(e) {
 }
 
 // ===== Pull to refresh =====
-function initPullToRefresh() {
+export function initPullToRefresh() {
     const body = document.body;
     const indicator = document.getElementById('pullIndicator');
     if (!indicator) return;
@@ -99,8 +104,7 @@ function initPullToRefresh() {
     });
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
+export function init() {
     applySidebar(localStorage.getItem('sidebar') === 'expanded');
     initPullToRefresh();
 
@@ -112,4 +116,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fill durations now, then tick every second (client owns the format).
     tickDurations();
     setInterval(tickDurations, 1000);
-});
+}

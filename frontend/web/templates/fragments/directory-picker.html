@@ -19,7 +19,7 @@
         {{range .Dirs}}
         <div class="frow">
             <button type="button" class="fmain"
-                    onclick="dpSelectFolder('{{$.FullPath}}/{{.}}', '{{.}}')">
+                    data-action="dp-select-folder" data-path="{{$.FullPath}}/{{.}}" data-name="{{.}}">
                 <span class="fico">▸</span>
                 <span class="fnm">{{.}}</span>
             </button>
@@ -35,7 +35,7 @@
 
     <!-- Create a new project in the current browse dir. data-dp-* carry the browse
          path so views.js POSTs the right parent and selects the new folder. -->
-    <button type="button" class="newrow" data-dp-path="{{.Path}}" data-dp-full="{{.FullPath}}" onclick="openEditor(this)">
+    <button type="button" class="newrow" data-dp-path="{{.Path}}" data-dp-full="{{.FullPath}}" data-action="dp-open-editor">
         <span class="plus">+</span> NEW PROJECT&hellip;
     </button>
     <div class="newedit hidden">
@@ -44,8 +44,8 @@
         <div class="erow">
             <label class="gitinit"><input type="checkbox" class="dp-gitinit" checked /> git init</label>
             <div class="grp">
-                <button type="button" class="btn btn-ghost" onclick="closeEditor(this)"><span>CANCEL</span></button>
-                <button type="button" class="btn btn-primary" onclick="createProject(this)"><span>CREATE</span></button>
+                <button type="button" class="btn btn-ghost" data-action="dp-close-editor"><span>CANCEL</span></button>
+                <button type="button" class="btn btn-primary" data-action="dp-create-project"><span>CREATE</span></button>
             </div>
         </div>
         <span class="hintline">Enter to create &middot; Esc to cancel</span>

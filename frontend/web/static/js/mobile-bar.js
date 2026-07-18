@@ -1,9 +1,26 @@
 // Mobile control bar: send keys/bytes to the active terminal, select overlay.
 
-// ===== Mobile control bar =====
+import { singleTerminalId } from './tabs.js';
+import { TerminalManager } from './terminal.js';
+import { register } from './actions.js';
+
+// Control-byte codes for the terminal control buttons.
+export const KEY_ESCAPE = 27;
+export const KEY_CTRL_C = 3;
+export const KEY_CTRL_D = 4;
+export const KEY_BACKSPACE = 127;
+
+// data-key value → control byte, for the delegated send-key action.
+const KEY_BYTES = {
+    'escape': KEY_ESCAPE,
+    'ctrl-c': KEY_CTRL_C,
+    'ctrl-d': KEY_CTRL_D,
+    'backspace': KEY_BACKSPACE,
+};
+
 // Send bytes to the active terminal's socket and scroll it to the bottom.
 // Returns the instance (for callers that also focus) or null if none is ready.
-function sendToActiveTerminal(bytes) {
+export function sendToActiveTerminal(bytes) {
     if (!singleTerminalId) return null;
     const inst = TerminalManager.get(singleTerminalId);
     if (inst?.ws?.readyState === WebSocket.OPEN) {
@@ -15,18 +32,18 @@ function sendToActiveTerminal(bytes) {
 }
 
 // Send a single control byte to the active terminal (and refocus it).
-function sendKeyToTerminal(charCode) {
+export function sendKeyToTerminal(charCode) {
     const inst = sendToActiveTerminal(new Uint8Array([charCode]));
     inst?.term?.focus();
 }
 
 // Send an arrow key escape sequence (\x1b[A, \x1b[B, etc.)
-function mobileInputSendArrow(code) {
+export function mobileInputSendArrow(code) {
     sendToActiveTerminal(new TextEncoder().encode('\x1b[' + code));
 }
 
 // Toggle a selectable text overlay over the terminal (mobile).
-function mobileToggleSelect(btn) {
+export function mobileToggleSelect(btn) {
     const terminal = document.getElementById('singleTerminal');
     if (!terminal) return;
     const existing = document.getElementById('selectOverlay');
@@ -58,4 +75,10 @@ function mobileToggleSelect(btn) {
     overlay.scrollTop = overlay.scrollHeight;
 
     if (btn) btn.classList.add('sel-active');
+}
+
+export function init() {
+    register('send-key', (el) => sendKeyToTerminal(KEY_BYTES[el.dataset.key]));
+    register('arrow', (el) => mobileInputSendArrow(el.dataset.dir));
+    register('toggle-select', (el) => mobileToggleSelect(el));
 }

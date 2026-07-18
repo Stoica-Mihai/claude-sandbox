@@ -1,8 +1,12 @@
 // Theme: light/dark toggle + accent picker, persisted to localStorage.
 
+import { syncTerminalBgVar, TerminalManager } from './terminal.js';
+import { register } from './actions.js';
+
 // Accent palette injected by layout.html from shared/enums.go (single source
 // with the backend's name validation).
-var ACCENTS = (typeof window !== 'undefined' && window.ACCENTS) || [];
+let ACCENTS = (typeof window !== 'undefined' && window.ACCENTS) || [];
+let curAccent = null;
 
 function currentBaseIsDark() {
     return document.documentElement.getAttribute('data-theme') !== 'light';
@@ -10,7 +14,7 @@ function currentBaseIsDark() {
 
 // Relative luminance (WCAG) of a #rgb/#rrggbb color, 0..1. Ported from the kit's
 // futurism.js so the accent picker derives --on-accent the way fdAccent() does.
-function fdLuminance(hex) {
+export function fdLuminance(hex) {
     hex = String(hex).replace('#', '');
     if (hex.length === 3) hex = hex.replace(/./g, '$&$&');
     var v = [0, 2, 4].map(function (i) {
@@ -22,17 +26,14 @@ function fdLuminance(hex) {
 
 // Pick the kit's cream or near-black foreground — whichever contrasts better on
 // col — so text/icons on an accent fill stay legible for any picked accent.
-function fdOnAccent(col) {
+export function fdOnAccent(col) {
     var cream = '#efe9dc', ink = '#16140f', L = fdLuminance(col);
     function ratio(a, b) { return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); }
     return ratio(L, fdLuminance(cream)) >= ratio(L, fdLuminance(ink)) ? cream : ink;
 }
 
-var savedAccent = localStorage.getItem('accent') || 'Red';
-var curAccent = ACCENTS.find(function(a) { return a.name === savedAccent; }) || ACCENTS[0];
-
 // Renders the accent swatches inline into the Appearance settings panel.
-function renderAccents() {
+export function renderAccents() {
     var dark = currentBaseIsDark();
     var row = document.getElementById('accpop');
     if (!row) return;
@@ -55,7 +56,7 @@ function renderAccents() {
     });
 }
 
-function applyAccent() {
+export function applyAccent() {
     if (!curAccent) return;
     var dark = currentBaseIsDark();
     var col = dark ? curAccent.dark : curAccent.light;
@@ -72,18 +73,18 @@ function applyAccent() {
 
 // Sync aria-checked (role=switch) from the .on class — a real <button> handles
 // its own Enter/Space activation, so only the ARIA state needs wiring by hand.
-function fdSyncToggle(el) {
+export function fdSyncToggle(el) {
     if (el) el.setAttribute('aria-checked', el.classList.contains('on') ? 'true' : 'false');
 }
 
-function toggleThinking(el) {
+export function toggleThinking(el) {
     el.classList.toggle('on');
     fdSyncToggle(el);
 }
 
 // Apply a theme value everywhere (attributes, toggle, accent, terminals) and
 // cache it locally. Shared by flipTheme (user action) and loadUIPrefs (sync).
-function setTheme(next) {
+export function setTheme(next) {
     var r = document.documentElement;
     r.setAttribute('data-theme', next);
     r.setAttribute('data-theme-base', next === 'light' ? 'light' : 'dark');
@@ -91,15 +92,11 @@ function setTheme(next) {
     var t = document.getElementById('themeToggle');
     if (t) { t.classList.toggle('on', next === 'dark'); fdSyncToggle(t); }
     applyAccent();
-    if (typeof syncTerminalBgVar === 'function') {
-        syncTerminalBgVar();
-    }
-    if (typeof TerminalManager !== 'undefined') {
-        TerminalManager.rethemeAll();
-    }
+    syncTerminalBgVar();
+    TerminalManager.rethemeAll();
 }
 
-function flipTheme() {
+export function flipTheme() {
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     setTheme(next);
     saveUIPrefs();
@@ -108,7 +105,7 @@ function flipTheme() {
 // Accent + theme sync server-side (dashboard-ui.json) so they carry across
 // devices. localStorage stays the instant-paint cache; the server is the source
 // of truth, reconciled on load. Single-tenant dashboard, so last write wins.
-function saveUIPrefs() {
+export function saveUIPrefs() {
     var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
     fetch('/api/ui-prefs', {
         method: 'PUT',
@@ -117,7 +114,7 @@ function saveUIPrefs() {
     }).catch(function() {});
 }
 
-function loadUIPrefs() {
+export function loadUIPrefs() {
     fetch('/api/ui-prefs').then(function(r) {
         return r.ok ? r.json() : null;
     }).then(function(p) {
@@ -134,19 +131,25 @@ function loadUIPrefs() {
     }).catch(function() {});
 }
 
-// A pressed .btn depresses (kit :active drops translate + shrinks the offset
-// shadow), which slides it out from under a press begun on the hovered top
-// edge. Capture the pointer so the click still retargets to the button even
-// though it moved — ported from futurism.js (not vendored; we drive our own
-// JS), since this is a hard CSS/JS pairing, not progressive enhancement.
-document.addEventListener('pointerdown', function(e) {
-    var b = e.target && e.target.closest && e.target.closest('.btn');
-    if (b && e.pointerId != null && b.setPointerCapture) {
-        try { b.setPointerCapture(e.pointerId); } catch (_) {}
-    }
-});
+export function init() {
+    ACCENTS = (typeof window !== 'undefined' && window.ACCENTS) || [];
+    var savedAccent = localStorage.getItem('accent') || 'Red';
+    curAccent = ACCENTS.find(function(a) { return a.name === savedAccent; }) || ACCENTS[0];
 
-(function() {
+    register('flip-theme', () => flipTheme());
+
+    // A pressed .btn depresses (kit :active drops translate + shrinks the offset
+    // shadow), which slides it out from under a press begun on the hovered top
+    // edge. Capture the pointer so the click still retargets to the button even
+    // though it moved — ported from futurism.js (not vendored; we drive our own
+    // JS), since this is a hard CSS/JS pairing, not progressive enhancement.
+    document.addEventListener('pointerdown', function(e) {
+        var b = e.target && e.target.closest && e.target.closest('.btn');
+        if (b && e.pointerId != null && b.setPointerCapture) {
+            try { b.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+    });
+
     var savedTheme = localStorage.getItem('theme') || 'dark';
     var theme = savedTheme === 'light' ? 'light' : 'dark';
     var root = document.documentElement;
@@ -157,11 +160,8 @@ document.addEventListener('pointerdown', function(e) {
     if (t) { t.classList.toggle('on', theme === 'dark'); fdSyncToggle(t); }
 
     applyAccent();
-
-    if (typeof syncTerminalBgVar === 'function') {
-        syncTerminalBgVar();
-    }
+    syncTerminalBgVar();
 
     // Reconcile from the server (source of truth) after the instant local paint.
     loadUIPrefs();
-})();
+}

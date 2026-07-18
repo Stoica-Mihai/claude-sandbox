@@ -1,7 +1,10 @@
 // Previous-session delete: two-step confirm state machine inside a history row.
 
+import { stopAnd } from './ui-utils.js';
+import { dpRenderHistory } from './picker.js';
+
 // Idle state: a trash button inside the .row-act container; click arms the confirm.
-function dpDelToIdle(act, path, uuid) {
+export function dpDelToIdle(act, path, uuid) {
     act.classList.remove('confirming', 'failed', 'centered');
     act.style.removeProperty('--row-act-h');
     act.textContent = '';
@@ -15,7 +18,7 @@ function dpDelToIdle(act, path, uuid) {
 }
 
 // Armed state: accent confirm + ghost cancel. Cancel reverts to idle; confirm deletes.
-function dpDelToConfirm(act, path, uuid) {
+export function dpDelToConfirm(act, path, uuid) {
     // .centered + --row-act-h: the kit's fixed-height-centered-strip modifier —
     // the confirm/cancel pair doesn't need the row's full (two-line) height.
     act.classList.add('confirming', 'centered');
@@ -40,7 +43,7 @@ function dpDelToConfirm(act, path, uuid) {
 
 // Confirmed delete: DELETE the conversation; on 204 the history re-render is the
 // source of truth (the SSE/broker only refreshes the sidebar, not this modal list).
-async function dpDelConfirmed(act, path, uuid) {
+export async function dpDelConfirmed(act, path, uuid) {
     let res;
     try {
         res = await fetch('/api/sessions/history/' + encodeURIComponent(uuid), { method: 'DELETE' });
@@ -56,7 +59,7 @@ async function dpDelConfirmed(act, path, uuid) {
 }
 
 // Transient on-brand failure flash, then revert to idle.
-function dpDelFail(act, path, uuid) {
+export function dpDelFail(act, path, uuid) {
     act.classList.remove('confirming', 'centered');
     act.classList.add('failed');
     act.textContent = '';

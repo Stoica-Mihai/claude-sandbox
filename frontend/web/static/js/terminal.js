@@ -1,9 +1,6 @@
-// Block <dialog> cancel event when terminal is focused
-document.addEventListener('cancel', (e) => {
-    if (document.activeElement?.classList?.contains('xterm-helper-textarea')) {
-        e.preventDefault();
-    }
-}, true);
+// Terminal manager: xterm.js instances, WebSocket relay, theme plumbing.
+
+import { isMobile } from './ui-utils.js';
 
 // Clipboard fallback for contexts where the async Clipboard API is unavailable.
 function copyFallback(text) {
@@ -38,7 +35,7 @@ const MAX_TOUCH_SAMPLES = 5;
 
 
 // Terminal color themes — one per app theme
-const terminalThemes = {
+export const terminalThemes = {
     dark: {
         background: '#0d1117',
         foreground: '#c9d1d9',
@@ -85,13 +82,13 @@ const terminalThemes = {
     },
 };
 
-function getTerminalTheme() {
+export function getTerminalTheme() {
     const appTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     return terminalThemes[appTheme] || terminalThemes.dark;
 }
 
 // CSS variable for terminal background — keeps style.css in sync with xterm
-function syncTerminalBgVar() {
+export function syncTerminalBgVar() {
     const theme = getTerminalTheme();
     document.documentElement.style.setProperty('--terminal-bg', theme.background);
     document.documentElement.style.setProperty('--terminal-fg', theme.foreground);
@@ -102,7 +99,7 @@ function syncTerminalBgVar() {
 }
 
 // TerminalManager — manages multiple xterm.js instances and WebSocket connections
-const TerminalManager = {
+export const TerminalManager = {
     instances: {}, // terminalId -> {term, ws, fitAddon, webLinksAddon, containerId, retryTimer}
 
     create(terminalId, containerEl) {
@@ -504,57 +501,64 @@ const TerminalManager = {
     }
 };
 
-// Debounced window resize handler
-let resizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        TerminalManager.resizeAll();
-    }, 150);
-});
-
-// Mobile virtual keyboard handling — when the keyboard opens/closes,
-// visualViewport.height changes but window.innerHeight may not.
-if (window.visualViewport) {
-    let vpTimeout;
-    const handleViewportResize = () => {
-        clearTimeout(vpTimeout);
-        vpTimeout = setTimeout(() => {
-            const vh = window.visualViewport.height;
-            // Set body and main content height to visual viewport
-            document.body.style.height = vh + 'px';
-            // Scroll the page so the focused element is visible
-            const focused = document.activeElement;
-            if (focused?.classList?.contains('xterm-helper-textarea')) {
-                window.scrollTo(0, 0);
-                document.documentElement.scrollTop = 0;
-            }
-            TerminalManager.resizeAll();
-        }, 50);
-    };
-    window.visualViewport.addEventListener('resize', handleViewportResize);
-    window.visualViewport.addEventListener('scroll', () => {
-        // Prevent the browser from scrolling the viewport when keyboard opens
+export function init() {
+    // Block <dialog> cancel event when terminal is focused
+    document.addEventListener('cancel', (e) => {
         if (document.activeElement?.classList?.contains('xterm-helper-textarea')) {
-            window.scrollTo(0, 0);
+            e.preventDefault();
+        }
+    }, true);
+
+    // Debounced window resize handler
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            TerminalManager.resizeAll();
+        }, 150);
+    });
+
+    // Mobile virtual keyboard handling — when the keyboard opens/closes,
+    // visualViewport.height changes but window.innerHeight may not.
+    if (window.visualViewport) {
+        let vpTimeout;
+        const handleViewportResize = () => {
+            clearTimeout(vpTimeout);
+            vpTimeout = setTimeout(() => {
+                const vh = window.visualViewport.height;
+                // Set body and main content height to visual viewport
+                document.body.style.height = vh + 'px';
+                // Scroll the page so the focused element is visible
+                const focused = document.activeElement;
+                if (focused?.classList?.contains('xterm-helper-textarea')) {
+                    window.scrollTo(0, 0);
+                    document.documentElement.scrollTop = 0;
+                }
+                TerminalManager.resizeAll();
+            }, 50);
+        };
+        window.visualViewport.addEventListener('resize', handleViewportResize);
+        window.visualViewport.addEventListener('scroll', () => {
+            // Prevent the browser from scrolling the viewport when keyboard opens
+            if (document.activeElement?.classList?.contains('xterm-helper-textarea')) {
+                window.scrollTo(0, 0);
+            }
+        });
+    }
+
+    // Update session badge count when session list updates
+    const observer = new MutationObserver(() => {
+        const countEl = document.getElementById('session-count');
+        const badgeText = document.getElementById('session-badge-text');
+        if (countEl && badgeText) {
+            const count = parseInt(countEl.textContent, 10) || 0;
+            badgeText.textContent = `${count} session${count !== 1 ? 's' : ''}`;
+            badgeText.classList.toggle('alive', count > 0);
         }
     });
-}
 
-// Update session badge count when session list updates
-const observer = new MutationObserver(() => {
-    const countEl = document.getElementById('session-count');
-    const badgeText = document.getElementById('session-badge-text');
-    if (countEl && badgeText) {
-        const count = parseInt(countEl.textContent, 10) || 0;
-        badgeText.textContent = `${count} session${count !== 1 ? 's' : ''}`;
-        badgeText.classList.toggle('alive', count > 0);
-    }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
     const sessionList = document.getElementById('session-list');
     if (sessionList) {
         observer.observe(sessionList, { childList: true, subtree: true });
     }
-});
+}

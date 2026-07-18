@@ -1,7 +1,9 @@
 // Sidebar: collapsible rail (rail ⇄ overlay panel) and its dismissal listeners.
 
-// ===== Sidebar: collapsible rail (rail ⇄ overlay panel) =====
-function applySidebar(expanded) {
+import { TerminalManager } from './terminal.js';
+import { register } from './actions.js';
+
+export function applySidebar(expanded) {
     const side = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebarBackdrop');
     const toggle = document.getElementById('sidebarToggle');
@@ -13,14 +15,17 @@ function applySidebar(expanded) {
     requestAnimationFrame(() => TerminalManager.resizeAll());
 }
 
-function toggleSidebar() {
+export function toggleSidebar() {
     const side = document.getElementById('sidebar');
     applySidebar(!(side && side.classList.contains('expanded')));
 }
 
-function collapseSidebar() { applySidebar(false); }
+export function collapseSidebar() { applySidebar(false); }
 
-document.getElementById('sidebarBackdrop')?.addEventListener('click', collapseSidebar);
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !document.querySelector('dialog[open]')) collapseSidebar();
-});
+export function init() {
+    register('toggle-sidebar', () => toggleSidebar());
+    document.getElementById('sidebarBackdrop')?.addEventListener('click', collapseSidebar);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !document.querySelector('dialog[open]')) collapseSidebar();
+    });
+}

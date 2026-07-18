@@ -1,23 +1,27 @@
 // Single-terminal tab view: tab lifecycle, tab bar, session-card wiring.
 
-// View mode management
-// Single terminal view with tabs
-let singleTerminalId = null;    // currently active tab
-let singleTabs = [];            // array of open tab terminal IDs
+import { isMobile, escapeHtml, fmtDuration } from './ui-utils.js';
+import { collapseSidebar } from './sidebar.js';
+import { TerminalManager } from './terminal.js';
+import { register } from './actions.js';
+
+// Single terminal view with tabs.
+export let singleTerminalId = null;    // currently active tab
+export let singleTabs = [];            // array of open tab terminal IDs
 // Last-known display name per tab. The tab bar reads names off the sidebar
 // cards; when a session dies its card disappears, and without this cache the
 // tab label silently degraded to a truncated dtach id on the next render.
 const tabNames = {};
 
 // Open a session terminal
-function openSession(terminalId) {
+export function openSession(terminalId) {
     if (!terminalId) return;
     if (isMobile()) collapseSidebar();
     openSessionSingle(terminalId);
     updateSessionCardStates();
 }
 
-function openSessionSingle(terminalId) {
+export function openSessionSingle(terminalId) {
     const wrapper = document.getElementById('singleTerminal');
     if (!wrapper) return;
 
@@ -46,7 +50,7 @@ function openSessionSingle(terminalId) {
     switchSingleTab(terminalId);
 }
 
-function switchSingleTab(terminalId) {
+export function switchSingleTab(terminalId) {
     const wrapper = document.getElementById('singleTerminal');
     if (!wrapper) return;
 
@@ -73,7 +77,7 @@ function switchSingleTab(terminalId) {
     });
 }
 
-function closeSingleTab(terminalId) {
+export function closeSingleTab(terminalId) {
     // Destroy the terminal
     TerminalManager.destroy(terminalId);
 
@@ -101,7 +105,7 @@ function closeSingleTab(terminalId) {
     updateSessionCardStates();
 }
 
-function updateSingleWelcome(hasTerminal) {
+export function updateSingleWelcome(hasTerminal) {
     const welcome = document.getElementById('singleWelcome');
     const terminal = document.getElementById('singleTerminal');
     const controls = document.getElementById('singleControls');
@@ -119,7 +123,7 @@ function updateSingleWelcome(hasTerminal) {
     if (mobileInput) mobileInput.classList.toggle('hidden', !hasTerminal);
 }
 
-function updateSingleTabBar(activeTerminalId) {
+export function updateSingleTabBar(activeTerminalId) {
     const tabBar = document.getElementById('singleTabBar');
     if (!tabBar) return;
 
@@ -142,52 +146,15 @@ function updateSingleTabBar(activeTerminalId) {
             <div class="ttab${isActive ? ' on' : ''}" id="ttab-${safeId}" data-terminal-id="${safeId}"
                  ${dead ? 'title="Session ended"' : ''}
                  role="tab" aria-selected="${isActive}" aria-controls="singleTab-${safeId}" tabindex="${isActive ? '0' : '-1'}"
-                 onclick="switchSingleTab('${safeId}')"
-                 onauxclick="if(event.button===1){event.preventDefault();closeSingleTab('${safeId}');}">
+                 data-action="switch-tab">
                 <span class="tdot${dead ? ' dead' : isActive ? ' on' : ''}"></span>
                 <span style="font-family:var(--mono);font-style:normal">${escapeHtml(sessionName)}</span>
-                <button type="button" class="x" tabindex="-1" aria-label="Close tab" onclick="closeSingleTab('${safeId}'); event.stopPropagation();">&times;</button>
+                <button type="button" class="x" tabindex="-1" aria-label="Close tab" data-action="close-tab" data-terminal-id="${safeId}">&times;</button>
             </div>`;
     }).join('');
 }
 
-// Keyboard contract for the tab strip (role=tablist/tab, roving tabindex) —
-// mirrors the kit's .tabs/fdTab pattern (ArrowLeft/Right move+activate,
-// Enter/Space activate) by hand rather than adopting .tabs/fdInit, since this
-// app hand-wires its own interaction logic throughout rather than depending
-// on futurism.js. Delete/Backspace-to-close has no kit precedent (the kit's
-// plain tab has no close affordance) — an app-original extension.
-document.addEventListener('keydown', (e) => {
-    const tab = e.target.closest && e.target.closest('.ttab[role="tab"]');
-    if (!tab) return;
-    const bar = document.getElementById('singleTabBar');
-    if (!bar) return;
-    const tabs = Array.from(bar.querySelectorAll('.ttab[role="tab"]'));
-    const i = tabs.indexOf(tab);
-    const id = tab.dataset.terminalId;
-
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        e.preventDefault();
-        const n = e.key === 'ArrowRight' ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length;
-        const nextId = tabs[n].dataset.terminalId;
-        switchSingleTab(nextId);
-        document.getElementById('ttab-' + nextId)?.focus();
-    } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        switchSingleTab(id);
-        document.getElementById('ttab-' + id)?.focus();
-    } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        closeSingleTab(id);
-        if (singleTerminalId) {
-            document.getElementById('ttab-' + singleTerminalId)?.focus();
-        } else {
-            document.querySelector('.btn-new')?.focus();
-        }
-    }
-});
-
-function updateSessionCardStates() {
+export function updateSessionCardStates() {
     document.querySelectorAll('.session-card').forEach(card => {
         const tid = card.dataset.terminalId;
         const active = singleTabs.includes(tid) && tid === singleTerminalId;
@@ -198,34 +165,8 @@ function updateSessionCardStates() {
     });
 }
 
-// Session card click delegation — handles all clicks on session cards
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.session-card');
-    if (!card) return;
-
-    // Do not intercept button clicks inside card
-    if (e.target.closest('button')) return;
-
-    const terminalId = card.dataset.terminalId;
-    if (!terminalId) return;
-
-    // Regular click: open in single view
-    openSession(terminalId);
-});
-
-// Keyboard activation: the card is role="button" tabindex="0", so Enter/Space
-// open it — but only when the card itself is focused, not a nested action button.
-document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const card = e.target.closest && e.target.closest('.session-card');
-    if (!card || card !== e.target) return;
-    e.preventDefault();
-    const terminalId = card.dataset.terminalId;
-    if (terminalId) openSession(terminalId);
-});
-
 // Clean up terminal tab/view when a session is killed from the sidebar
-function cleanupKilledSession(terminalId) {
+export function cleanupKilledSession(terminalId) {
     // Close from single view tabs
     if (singleTabs.includes(terminalId)) {
         closeSingleTab(terminalId);
@@ -233,7 +174,7 @@ function cleanupKilledSession(terminalId) {
 }
 
 // Refresh every session card's live duration from its data-created stamp.
-function tickDurations() {
+export function tickDurations() {
     const now = Math.floor(Date.now() / 1000);
     document.querySelectorAll('.session-duration[data-created]').forEach(el => {
         const ts = parseInt(el.dataset.created, 10);
@@ -241,17 +182,98 @@ function tickDurations() {
     });
 }
 
-// Re-apply session card active states after HTMX swaps in fresh session list HTML
-document.addEventListener('htmx:afterSwap', (event) => {
-    if (event.target?.id === 'session-list') {
-        updateSessionCardStates();
-        tickDurations(); // fill the freshly-swapped cards' duration immediately
-        // Re-render the tab bar from the fresh cards: renames propagate to tab
-        // labels, and tabs whose session ended get their dead marker. Skip when
-        // focus is inside the strip so an SSE update can't yank keyboard focus.
+export function init() {
+    singleTerminalId = null;
+    singleTabs = [];
+    for (const k in tabNames) delete tabNames[k];
+
+    register('switch-tab', (el) => switchSingleTab(el.dataset.terminalId));
+    register('close-tab', (el, e) => { e.stopPropagation(); closeSingleTab(el.dataset.terminalId); });
+    register('kill-cleanup', (el) => cleanupKilledSession(el.dataset.terminalId));
+
+    // Middle-click a tab to close it (delegated auxclick — no kit precedent).
+    document.addEventListener('auxclick', (e) => {
+        if (e.button !== 1) return;
+        const tab = e.target.closest?.('.ttab[data-terminal-id]');
+        if (!tab) return;
+        e.preventDefault();
+        closeSingleTab(tab.dataset.terminalId);
+    });
+
+    // Keyboard contract for the tab strip (role=tablist/tab, roving tabindex) —
+    // mirrors the kit's .tabs/fdTab pattern (ArrowLeft/Right move+activate,
+    // Enter/Space activate) by hand rather than adopting .tabs/fdInit, since this
+    // app hand-wires its own interaction logic throughout rather than depending
+    // on futurism.js. Delete/Backspace-to-close has no kit precedent (the kit's
+    // plain tab has no close affordance) — an app-original extension.
+    document.addEventListener('keydown', (e) => {
+        const tab = e.target.closest && e.target.closest('.ttab[role="tab"]');
+        if (!tab) return;
         const bar = document.getElementById('singleTabBar');
-        if (singleTabs.length && bar && !bar.contains(document.activeElement)) {
-            updateSingleTabBar(singleTerminalId);
+        if (!bar) return;
+        const tabs = Array.from(bar.querySelectorAll('.ttab[role="tab"]'));
+        const i = tabs.indexOf(tab);
+        const id = tab.dataset.terminalId;
+
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            const n = e.key === 'ArrowRight' ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length;
+            const nextId = tabs[n].dataset.terminalId;
+            switchSingleTab(nextId);
+            document.getElementById('ttab-' + nextId)?.focus();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            switchSingleTab(id);
+            document.getElementById('ttab-' + id)?.focus();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            closeSingleTab(id);
+            if (singleTerminalId) {
+                document.getElementById('ttab-' + singleTerminalId)?.focus();
+            } else {
+                document.querySelector('.btn-new')?.focus();
+            }
         }
-    }
-});
+    });
+
+    // Session card click delegation — handles all clicks on session cards
+    document.addEventListener('click', (e) => {
+        const card = e.target.closest('.session-card');
+        if (!card) return;
+
+        // Do not intercept button clicks inside card
+        if (e.target.closest('button')) return;
+
+        const terminalId = card.dataset.terminalId;
+        if (!terminalId) return;
+
+        // Regular click: open in single view
+        openSession(terminalId);
+    });
+
+    // Keyboard activation: the card is role="button" tabindex="0", so Enter/Space
+    // open it — but only when the card itself is focused, not a nested action button.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const card = e.target.closest && e.target.closest('.session-card');
+        if (!card || card !== e.target) return;
+        e.preventDefault();
+        const terminalId = card.dataset.terminalId;
+        if (terminalId) openSession(terminalId);
+    });
+
+    // Re-apply session card active states after HTMX swaps in fresh session list HTML
+    document.addEventListener('htmx:afterSwap', (event) => {
+        if (event.target?.id === 'session-list') {
+            updateSessionCardStates();
+            tickDurations(); // fill the freshly-swapped cards' duration immediately
+            // Re-render the tab bar from the fresh cards: renames propagate to tab
+            // labels, and tabs whose session ended get their dead marker. Skip when
+            // focus is inside the strip so an SSE update can't yank keyboard focus.
+            const bar = document.getElementById('singleTabBar');
+            if (singleTabs.length && bar && !bar.contains(document.activeElement)) {
+                updateSingleTabBar(singleTerminalId);
+            }
+        }
+    });
+}

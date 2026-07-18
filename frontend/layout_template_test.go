@@ -58,7 +58,7 @@ func TestLayoutMobileKeysUseKeycapClasses(t *testing.T) {
 	}
 
 	for _, label := range []string{"Esc", "^C", "Select"} {
-		btn := `<button ` + wantClass + ` onclick="`
+		btn := `<button ` + wantClass + ` data-action="`
 		if !strings.Contains(out, btn) {
 			t.Errorf("no keycap--mobile button found near label %q", label)
 		}
@@ -94,7 +94,7 @@ func TestLayoutDesktopControlsUseKeycap(t *testing.T) {
 		}
 	}
 	// Plain desktop keycaps use only the base class (no modifier).
-	if !strings.Contains(out, `<button class="keycap" onclick="sendKeyToTerminal(KEY_ESCAPE)"`) {
+	if !strings.Contains(out, `<button class="keycap" data-action="send-key" data-key="escape"`) {
 		t.Error("desktop Esc keycap button not rendered with base keycap class")
 	}
 }

@@ -4,6 +4,8 @@
 // carries a `sharing-public` class so the logo mark glows (the ambient "you're
 // exposed" signal, in place of a dedicated header glyph).
 
+import { register } from './actions.js';
+
 const SHARE_HINT = 'Tunnel may take a few seconds to become reachable';
 const SHARE_HINT_PUBLIC = 'The tunnel stays up until you go private';
 
@@ -16,7 +18,7 @@ function showShare(id, on) {
 
 // Drives the sharing panel, its action buttons, and the ambient logo glow from
 // a status object {state, url, error}.
-function renderShare(st) {
+export function renderShare(st) {
     if (!st || !st.state) return;
     const pub = st.state === 'public';
     const publishing = st.state === 'publishing';
@@ -53,7 +55,7 @@ function renderShare(st) {
     }
 }
 
-async function refreshShareStatus() {
+export async function refreshShareStatus() {
     try {
         const res = await fetch('/api/share/status');
         if (res.ok) renderShare(await res.json());
@@ -61,7 +63,7 @@ async function refreshShareStatus() {
 }
 
 // POST a mutating action; both 200 and 502 carry the wrapper's status JSON.
-async function shareAction(btn, path, optimistic) {
+export async function shareAction(btn, path, optimistic) {
     if (btn.dataset.busy) return;
     btn.dataset.busy = '1';
     if (optimistic) renderShare({ state: optimistic });
@@ -75,20 +77,20 @@ async function shareAction(btn, path, optimistic) {
     }
 }
 
-function goPublic() {
+export function goPublic() {
     shareAction(shareEl('goPublicBtn'), '/api/share/start', 'publishing');
 }
 
-function goPrivate() {
+export function goPrivate() {
     resetCopyLabel();
     shareAction(shareEl('goPrivateBtn'), '/api/share/stop');
 }
 
-function regenerateShareKey() {
+export function regenerateShareKey() {
     shareAction(shareEl('regenBtn'), '/api/share/regenerate');
 }
 
-function copyShareString() {
+export function copyShareString() {
     const label = shareEl('copyBtn').querySelector('.lbl');
     const text = shareEl('connStr').textContent;
     const done = () => {
@@ -102,14 +104,14 @@ function copyShareString() {
     }
 }
 
-function resetCopyLabel() {
+export function resetCopyLabel() {
     const label = shareEl('copyBtn').querySelector('.lbl');
     if (label) label.textContent = 'COPY';
 }
 
 // Paints the connection string as a QR on the fixed-contrast canvas
 // (ink-on-paper in both themes — ledger D16; scanners want dark-on-light).
-function drawQR(text) {
+export function drawQR(text) {
     const canvas = shareEl('qrCanvas');
     if (!canvas || typeof qrcode !== 'function') return;
     if (canvas.dataset.drawn === text) return; // same string — canvas already correct
@@ -133,5 +135,12 @@ function drawQR(text) {
     }
 }
 
-// Reflect a live tunnel in the header after a reload/tab reopen.
-refreshShareStatus();
+export function init() {
+    register('share-copy', () => copyShareString());
+    register('share-regen', () => regenerateShareKey());
+    register('share-go-public', () => goPublic());
+    register('share-go-private', () => goPrivate());
+
+    // Reflect a live tunnel in the header after a reload/tab reopen.
+    refreshShareStatus();
+}

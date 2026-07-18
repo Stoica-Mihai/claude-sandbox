@@ -1,6 +1,11 @@
 // Settings editor: GET/PUT the whitelisted preference subset of container-settings.json.
 // Applies to NEW sessions (claude reads settings at spawn).
 
+import { isMobile } from './ui-utils.js';
+import { refreshShareStatus } from './share.js';
+import { fdSyncToggle, toggleThinking } from './theme.js';
+import { register } from './actions.js';
+
 // Custom select: open on value click, pick sets value + closes; click-outside closes.
 // An option's value is its data-value when present (label != value, e.g. the
 // advisor's "Opus 4.8" -> "claude-opus-4-8"), otherwise its label text.
@@ -45,48 +50,13 @@ function setSelOpen(sel, open) {
     }
 }
 
-function settingsPick(opt) {
+export function settingsPick(opt) {
     const sel = opt.closest('.sel');
     applyOption(sel, opt, opt.textContent);
     sel.dataset.value = optValue(opt);
     setSelOpen(sel, false);
     clearSettingsError();
 }
-document.addEventListener('click', (e) => {
-    const val = e.target.closest('#settingsModal .sel-val');
-    if (val) setSelOpen(val.closest('.sel'), !val.closest('.sel').classList.contains('open'));
-    document.querySelectorAll('#settingsModal .sel.open').forEach(s => {
-        if (!s.contains(e.target)) setSelOpen(s, false);
-    });
-});
-
-// Keyboard contract for .sel — ported from the kit's global keydown delegate
-// (futurism.js): Enter/Space/Down open; Up/Down move between options
-// (roving focus, options are tabindex=-1 so Tab skips them while closed);
-// Enter/Space picks the focused option; Escape/Tab close.
-document.addEventListener('keydown', (e) => {
-    const sel = e.target.closest && e.target.closest('#settingsModal .sel');
-    if (!sel) return;
-    const opts = Array.from(sel.querySelectorAll('.sel-opt'));
-    const open = sel.classList.contains('open');
-    const i = opts.indexOf(e.target);
-    if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (!open) setSelOpen(sel, true);
-        else if (i < opts.length - 1) opts[i + 1].focus();
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (i > 0) opts[i - 1].focus();
-    } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        if (!open) setSelOpen(sel, true);
-        else if (i > -1) settingsPick(opts[i]);
-    } else if (e.key === 'Escape') {
-        if (open) { e.preventDefault(); setSelOpen(sel, false); }
-    } else if (e.key === 'Tab') {
-        if (open) setSelOpen(sel, false);
-    }
-});
 
 // Set a .sel to a value (matched against each option's data-value/label),
 // showing that option's label and storing the value on the element.
@@ -110,8 +80,8 @@ function getSel(field) {
 // SAVE button and hint are shown for Session only. Sharing is off-limits on
 // mobile — a mobile user is usually the tunnel client, and a mis-tap on GO
 // PRIVATE / regenerate would disconnect them.
-function settingsSelectCategory(cat) {
-    if (cat === 'sharing' && typeof isMobile === 'function' && isMobile()) return;
+export function settingsSelectCategory(cat) {
+    if (cat === 'sharing' && isMobile()) return;
     document.querySelectorAll('#settingsModal .snav').forEach(b => {
         const on = b.dataset.cat === cat;
         b.classList.toggle('active', on);
@@ -124,10 +94,10 @@ function settingsSelectCategory(cat) {
     const hint = document.getElementById('settings-hint');
     if (save) save.classList.toggle('hidden', cat !== 'session');
     if (hint) hint.classList.toggle('hidden', cat !== 'session');
-    if (cat === 'sharing' && typeof refreshShareStatus === 'function') refreshShareStatus();
+    if (cat === 'sharing') refreshShareStatus();
 }
 
-async function openSettingsModal() {
+export async function openSettingsModal() {
     const dlg = document.getElementById('settingsModal');
     const hint = document.getElementById('settings-hint');
     if (hint) { hint.textContent = SETTINGS_HINT; hint.classList.remove('err'); }
@@ -135,7 +105,7 @@ async function openSettingsModal() {
     // itself by mis-tapping GO PRIVATE.
     const shareNav = document.querySelector('#settingsModal .snav[data-cat="sharing"]');
     if (shareNav) {
-        const mobile = typeof isMobile === 'function' && isMobile();
+        const mobile = isMobile();
         shareNav.disabled = mobile;
         shareNav.title = mobile ? 'Manage sharing from a desktop' : '';
     }
@@ -156,7 +126,7 @@ async function openSettingsModal() {
     dlg.showModal();
 }
 
-async function saveSettings() {
+export async function saveSettings() {
     const btn = document.getElementById('settings-save');
     const label = btn.querySelector('span');
     const payload = {
@@ -205,6 +175,49 @@ async function saveSettings() {
     }
 }
 
-// Clear a stale save error as soon as the user edits the language or toggle.
-document.getElementById('settings-language')?.addEventListener('input', clearSettingsError);
-document.getElementById('settings-thinking')?.addEventListener('click', clearSettingsError);
+export function init() {
+    register('open-settings', () => openSettingsModal());
+    register('settings-cat', (el) => settingsSelectCategory(el.dataset.cat));
+    register('settings-pick', (el) => settingsPick(el));
+    register('toggle-thinking', (el) => { toggleThinking(el); clearSettingsError(); });
+    register('save-settings', () => saveSettings());
+
+    document.addEventListener('click', (e) => {
+        const val = e.target.closest('#settingsModal .sel-val');
+        if (val) setSelOpen(val.closest('.sel'), !val.closest('.sel').classList.contains('open'));
+        document.querySelectorAll('#settingsModal .sel.open').forEach(s => {
+            if (!s.contains(e.target)) setSelOpen(s, false);
+        });
+    });
+
+    // Keyboard contract for .sel — ported from the kit's global keydown delegate
+    // (futurism.js): Enter/Space/Down open; Up/Down move between options
+    // (roving focus, options are tabindex=-1 so Tab skips them while closed);
+    // Enter/Space picks the focused option; Escape/Tab close.
+    document.addEventListener('keydown', (e) => {
+        const sel = e.target.closest && e.target.closest('#settingsModal .sel');
+        if (!sel) return;
+        const opts = Array.from(sel.querySelectorAll('.sel-opt'));
+        const open = sel.classList.contains('open');
+        const i = opts.indexOf(e.target);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!open) setSelOpen(sel, true);
+            else if (i < opts.length - 1) opts[i + 1].focus();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (i > 0) opts[i - 1].focus();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!open) setSelOpen(sel, true);
+            else if (i > -1) settingsPick(opts[i]);
+        } else if (e.key === 'Escape') {
+            if (open) { e.preventDefault(); setSelOpen(sel, false); }
+        } else if (e.key === 'Tab') {
+            if (open) setSelOpen(sel, false);
+        }
+    });
+
+    // Clear a stale save error as soon as the user edits the language.
+    document.getElementById('settings-language')?.addEventListener('input', clearSettingsError);
+}
