@@ -62,7 +62,17 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 	parsed.Path = r.URL.Path
 	parsed.RawQuery = r.URL.RawQuery
 
-	// Dial backend.
+	// Upgrade the client FIRST: the origin check (CSWSH guard) runs inside
+	// Upgrade, so dialing the backend before it would open a backend attach —
+	// with its scrollback replay side effects — for a request that gets
+	// rejected.
+	clientConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		slog.Error("websocket upgrade failed", "error", err)
+		return
+	}
+	defer clientConn.Close()
+
 	backendConn, resp, err := backendDialer.Dial(parsed.String(), nil)
 	if err != nil {
 		if resp != nil {
@@ -77,18 +87,13 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 				"error", err,
 			)
 		}
-		http.Error(w, "backend connection failed", http.StatusBadGateway)
+		// Already upgraded: signal failure via a close frame. Not code 1000,
+		// so the client treats it as abnormal and retries with backoff.
+		msg := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "backend connection failed")
+		_ = clientConn.WriteMessage(websocket.CloseMessage, msg)
 		return
 	}
 	defer backendConn.Close()
-
-	// Upgrade client connection.
-	clientConn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		slog.Error("websocket upgrade failed", "error", err)
-		return
-	}
-	defer clientConn.Close()
 
 	done := make(chan struct{})
 	go pipeWs(backendConn, clientConn, "backend→client", func() { close(done) })

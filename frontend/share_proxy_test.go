@@ -79,4 +79,8 @@ func TestHandleShareProxyUpstreamUnreachable(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for unreachable sidecar, got %d", rec.Code)
 	}
+	// The 502 must carry the ShareStatus envelope so share.js can render it.
+	if !strings.Contains(rec.Body.String(), `"state":"error"`) {
+		t.Fatalf("502 body is not a ShareStatus envelope: %s", rec.Body.String())
+	}
 }

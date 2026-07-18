@@ -36,8 +36,10 @@ type Server struct {
 // newReverseProxy builds a reverse proxy that forwards verbatim to the target,
 // with bounded dial + response-header timeouts so a hung upstream can't wedge a
 // request goroutine. SSE responses (text/event-stream) flush immediately —
-// httputil.ReverseProxy detects the content type itself.
-func newReverseProxy(targetURL string) (http.Handler, error) {
+// httputil.ReverseProxy detects the content type itself. An unreachable
+// upstream answers 502 with errBody (JSON), not the default empty body, so
+// clients that parse error envelopes get a real message.
+func newReverseProxy(targetURL string, errBody []byte) (http.Handler, error) {
 	target, err := url.Parse(targetURL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing proxy target URL: %w", err)
@@ -47,6 +49,12 @@ func newReverseProxy(targetURL string) (http.Handler, error) {
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 		ResponseHeaderTimeout: 30 * time.Second,
+	}
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		slog.Error("proxy upstream error", "target", targetURL, "path", r.URL.Path, "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write(errBody)
 	}
 	return rp, nil
 }
@@ -64,11 +72,11 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		return nil, fmt.Errorf("creating static sub-FS: %w", err)
 	}
 
-	backendProxy, err := newReverseProxy(backendURL)
+	backendProxy, err := newReverseProxy(backendURL, backendDownBody())
 	if err != nil {
 		return nil, err
 	}
-	holesailProxy, err := newReverseProxy(holesailURL)
+	holesailProxy, err := newReverseProxy(holesailURL, shareDownBody())
 	if err != nil {
 		return nil, err
 	}
@@ -226,9 +234,26 @@ func (s *Server) backendRequest(ctx context.Context, method, path string, body i
 	return s.client.Do(req)
 }
 
-// forwardError writes the backend's error status and body to the client.
+// backendDownBody is the 502 JSON envelope for an unreachable backend.
+func backendDownBody() []byte {
+	b, _ := json.Marshal(map[string]string{"error": "backend connection failed"})
+	return b
+}
+
+// shareDownBody is the 502 ShareStatus envelope for an unreachable sidecar,
+// so share.js's renderShare surfaces the message instead of a parse failure.
+func shareDownBody() []byte {
+	msg := "Share sidecar unreachable."
+	b, _ := json.Marshal(api.ShareStatus{State: api.ShareError, Error: &msg})
+	return b
+}
+
+// forwardError writes the backend's error status, Content-Type, and body.
 func forwardError(w http.ResponseWriter, resp *http.Response) {
 	body, _ := io.ReadAll(resp.Body)
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 }

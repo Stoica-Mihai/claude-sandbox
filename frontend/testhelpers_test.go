@@ -31,7 +31,7 @@ func newTestServer(backendURL string) *Server {
 // setHolesail points a test Server's share proxy at the given sidecar URL.
 func setHolesail(t *testing.T, s *Server, url string) {
 	t.Helper()
-	hp, err := newReverseProxy(url)
+	hp, err := newReverseProxy(url, shareDownBody())
 	if err != nil {
 		t.Fatalf("building holesail proxy: %v", err)
 	}
