@@ -98,6 +98,27 @@ func writeWorkspaceDirErr(w http.ResponseWriter, err error) {
 	writeErr(w, http.StatusBadRequest, "invalid path")
 }
 
+// decodeJSON decodes the request body into dst, writing a 400 with errMsg and
+// returning false on failure.
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, errMsg string) bool {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		writeErr(w, http.StatusBadRequest, errMsg)
+		return false
+	}
+	return true
+}
+
+// requirePathValue returns a required path parameter, writing a 400 with
+// missingMsg and returning ok=false when it is empty.
+func requirePathValue(w http.ResponseWriter, r *http.Request, key, missingMsg string) (string, bool) {
+	v := r.PathValue(key)
+	if v == "" {
+		writeErr(w, http.StatusBadRequest, missingMsg)
+		return "", false
+	}
+	return v, true
+}
+
 // handleHealthz returns a simple JSON health check response.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -116,8 +137,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		CWD    string `json:"cwd"`
 		Resume string `json:"resume"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
+	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
 
@@ -153,9 +173,8 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteHistory removes a conversation from the resume history by uuid.
 func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
-	uuid := r.PathValue("uuid")
-	if uuid == "" {
-		writeErr(w, http.StatusBadRequest, "missing uuid")
+	uuid, ok := requirePathValue(w, r, "uuid", "missing uuid")
+	if !ok {
 		return
 	}
 
@@ -177,9 +196,8 @@ func (s *Server) handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
 
 // handleKill terminates a session.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		writeErr(w, http.StatusBadRequest, "missing session name")
+	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
 		return
 	}
 
@@ -194,9 +212,8 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 
 // handleSetSessionName sets a custom display name for a session.
 func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		writeErr(w, http.StatusBadRequest, "missing session name")
+	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
 		return
 	}
 
@@ -210,8 +227,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
+	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
 	if len(req.Name) > maxSessionNameLen {
@@ -283,8 +299,7 @@ func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 // join/prefix/stat logic as handleDirectories so both agree on error messages.
 func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateDirectoryRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &req, "invalid request body") {
 		return
 	}
 
@@ -330,9 +345,8 @@ func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
 // handleUpload accepts an image file upload and saves it to a temp directory
 // accessible from the session. Returns the file path as JSON.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	sessionName := r.PathValue("terminalId")
-	if sessionName == "" {
-		writeErr(w, http.StatusBadRequest, "missing session name")
+	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
 		return
 	}
 

@@ -104,8 +104,7 @@ func validLanguage(s string) bool {
 // then refreshes the live settings.json so new sessions pick it up.
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var req editableSettings
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
+	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
 

@@ -42,8 +42,7 @@ func (s *Server) handleGetUIPrefs(w http.ResponseWriter, r *http.Request) {
 // dashboard is single-tenant).
 func (s *Server) handlePutUIPrefs(w http.ResponseWriter, r *http.Request) {
 	var req uiPrefs
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
+	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
 	if !slices.Contains(allowedAccents, req.Accent) {
