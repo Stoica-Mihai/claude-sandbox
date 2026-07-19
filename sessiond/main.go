@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	api "claude-sandbox-api"
 	"claude-sandbox-sessiond/protocol"
 )
 
@@ -35,9 +36,7 @@ func main() {
 	ping := flag.Bool("ping", false, "probe the control socket and exit (healthcheck)")
 	flag.Parse()
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	api.InitLogging()
 
 	sockDir, err := protocol.SockDir()
 	if err != nil {

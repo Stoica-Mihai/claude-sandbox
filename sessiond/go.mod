@@ -3,11 +3,14 @@ module claude-sandbox-sessiond
 go 1.26.1
 
 require (
+	claude-sandbox-api v0.0.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20260713092251-4bee1914c0cf
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/vt v0.0.0-20260719004043-bb9a97036f23
 	github.com/creack/pty v1.1.24
 )
+
+replace claude-sandbox-api => ../shared
 
 require (
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect

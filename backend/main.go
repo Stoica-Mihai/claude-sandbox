@@ -6,26 +6,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
+
+	api "claude-sandbox-api"
 )
 
 func main() {
-	listenAddr := ":8081"
-	if envPort := os.Getenv("BACKEND_PORT"); envPort != "" {
-		port := strings.TrimLeft(envPort, ":")
-		if _, err := strconv.Atoi(port); err == nil {
-			listenAddr = ":" + port
-		} else {
-			slog.Warn("ignoring invalid BACKEND_PORT", "value", envPort)
-		}
-	}
-
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	api.InitLogging()
+	listenAddr := api.ListenAddr("BACKEND_PORT", ":8081")
 
 	if err := initPaths(); err != nil {
 		slog.Error("failed to initialize session directories", "error", err)

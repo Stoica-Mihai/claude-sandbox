@@ -6,40 +6,20 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
+
+	api "claude-sandbox-api"
 )
 
 func main() {
-	// Resolve listen address from DASHBOARD_PORT env var, default :8080.
-	listenAddr := ":8080"
-	if envPort := os.Getenv("DASHBOARD_PORT"); envPort != "" {
-		port := strings.TrimLeft(envPort, ":")
-		if _, err := strconv.Atoi(port); err == nil {
-			listenAddr = ":" + port
-		} else {
-			slog.Warn("ignoring invalid DASHBOARD_PORT", "value", envPort)
-		}
-	}
+	api.InitLogging()
 
+	listenAddr := api.ListenAddr("DASHBOARD_PORT", ":8080")
 	// Backend API URL (where sessions, relays, SSE, WebSocket live).
-	backendURL := "http://backend:8081"
-	if envURL := os.Getenv("BACKEND_URL"); envURL != "" {
-		backendURL = strings.TrimRight(envURL, "/")
-	}
-
+	backendURL := api.URLFromEnv("BACKEND_URL", "http://backend:8081")
 	// Holesail sidecar control URL (share tunnel).
-	holesailURL := "http://holesail:9000"
-	if envURL := os.Getenv("HOLESAIL_URL"); envURL != "" {
-		holesailURL = strings.TrimRight(envURL, "/")
-	}
-
-	// Structured logging to stderr.
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	holesailURL := api.URLFromEnv("HOLESAIL_URL", "http://holesail:9000")
 
 	initAllowedWSOrigins()
 
@@ -61,15 +41,7 @@ func main() {
 	// Tunnel listener: the holesail sidecar relays share-tunnel traffic here,
 	// so tunnel origin is a property of the socket (see shareguard.go). Not
 	// published to the host; reachable only on the compose network.
-	tunnelAddr := ":8090"
-	if envPort := os.Getenv("TUNNEL_PORT"); envPort != "" {
-		port := strings.TrimLeft(envPort, ":")
-		if _, err := strconv.Atoi(port); err == nil {
-			tunnelAddr = ":" + port
-		} else {
-			slog.Warn("ignoring invalid TUNNEL_PORT", "value", envPort)
-		}
-	}
+	tunnelAddr := api.ListenAddr("TUNNEL_PORT", ":8090")
 	tunnelServer := &http.Server{
 		Addr:              tunnelAddr,
 		Handler:           markTunnel(mux),
