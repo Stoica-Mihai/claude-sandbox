@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -113,6 +114,17 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, errMsg string) 
 		return false
 	}
 	return true
+}
+
+// requireEnum reports whether val is in allowed; when not, it writes a 400
+// "invalid <field>" and returns false so the caller returns early. Shared by
+// the settings and ui-prefs validators.
+func requireEnum(w http.ResponseWriter, val string, allowed []string, field string) bool {
+	if slices.Contains(allowed, val) {
+		return true
+	}
+	writeErr(w, http.StatusBadRequest, "invalid "+field)
+	return false
 }
 
 // requirePathValue returns a required path parameter, writing a 400 with

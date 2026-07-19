@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"slices"
 
 	api "claude-sandbox-api"
 )
@@ -45,12 +44,10 @@ func (s *Server) handlePutUIPrefs(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req, "invalid JSON") {
 		return
 	}
-	if !slices.Contains(allowedAccents, req.Accent) {
-		writeErr(w, http.StatusBadRequest, "invalid accent")
+	if !requireEnum(w, req.Accent, allowedAccents, "accent") {
 		return
 	}
-	if !slices.Contains(allowedThemes, req.Theme) {
-		writeErr(w, http.StatusBadRequest, "invalid theme")
+	if !requireEnum(w, req.Theme, allowedThemes, "theme") {
 		return
 	}
 

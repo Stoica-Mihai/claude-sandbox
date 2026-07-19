@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	api "claude-sandbox-api"
@@ -109,8 +108,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate against the allowlists; reject without touching any file.
-	if !slices.Contains(allowedModels, req.Model) {
-		writeErr(w, http.StatusBadRequest, "invalid model")
+	if !requireEnum(w, req.Model, allowedModels, "model") {
 		return
 	}
 	// advisorModel must be empty (off) or a canonical Claude model id
@@ -127,8 +125,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "advisor model must be more capable than the main model (e.g. Sonnet main + Opus advisor); with Opus as the main model, set the advisor to none")
 		return
 	}
-	if !slices.Contains(allowedEffort, req.EffortLevel) {
-		writeErr(w, http.StatusBadRequest, "invalid effortLevel")
+	if !requireEnum(w, req.EffortLevel, allowedEffort, "effortLevel") {
 		return
 	}
 	if !validLanguage(req.Language) {

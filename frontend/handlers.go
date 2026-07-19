@@ -215,6 +215,18 @@ func cacheMiddleware(etags map[string]string, next http.Handler) http.Handler {
 
 // --- Shared helpers ---
 
+// requirePathValue returns a required path parameter, writing a 400 (plain
+// text — these transform routes are not JSON) and returning ok=false when it is
+// empty. Mirrors the backend helper of the same name.
+func requirePathValue(w http.ResponseWriter, r *http.Request, key, missingMsg string) (string, bool) {
+	v := r.PathValue(key)
+	if v == "" {
+		http.Error(w, missingMsg, http.StatusBadRequest)
+		return "", false
+	}
+	return v, true
+}
+
 // renderTemplate executes a named template into a buffer and writes the result.
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) {
 	var buf bytes.Buffer
@@ -367,9 +379,8 @@ func (s *Server) proxyThenRenderSessions(w http.ResponseWriter, r *http.Request,
 // handleKill forwards the kill request to the backend, then renders the
 // updated sessions fragment.
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
-	terminalId := r.PathValue("terminalId")
-	if terminalId == "" {
-		http.Error(w, "missing session name", http.StatusBadRequest)
+	terminalId, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
 		return
 	}
 
@@ -381,9 +392,8 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 // backend's SSE refreshes the sidebar). Keyed by conversation uuid, distinct
 // from handleKill's terminalId route.
 func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request) {
-	uuid := r.PathValue("uuid")
-	if uuid == "" {
-		http.Error(w, "missing uuid", http.StatusBadRequest)
+	uuid, ok := requirePathValue(w, r, "uuid", "missing uuid")
+	if !ok {
 		return
 	}
 
@@ -404,9 +414,8 @@ func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request
 // handleSetSessionName forwards the rename request to the backend, then
 // renders the updated sessions fragment.
 func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
-	terminalId := r.PathValue("terminalId")
-	if terminalId == "" {
-		http.Error(w, "missing session name", http.StatusBadRequest)
+	terminalId, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
 		return
 	}
 
