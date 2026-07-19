@@ -216,6 +216,35 @@ func TestBridgeBuffersInputBeforeAttach(t *testing.T) {
 	}
 }
 
+// TestBridgeForwardsReactivate: after attach, a reactivate control message
+// reaches the session socket as a CONTROL frame (not dropped, not input).
+func TestBridgeForwardsReactivate(t *testing.T) {
+	fake := newFakeSessionSocket(t)
+	s := newBridgeServer(t, fake.dial)
+	client := dialBridgeWS(t, s)
+
+	if err := client.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":80,"rows":24}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fake.attached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("bridge never attached")
+	}
+
+	if err := client.WriteMessage(websocket.TextMessage, []byte(`{"type":"reactivate"}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case fr := <-fake.frames:
+		if fr.typ != protocol.FrameControl || string(fr.payload) != `{"type":"reactivate"}` {
+			t.Fatalf("frame = 0x%02x %q, want reactivate CONTROL", fr.typ, fr.payload)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("reactivate never forwarded")
+	}
+}
+
 // TestBridgeDialFailureClosesAbnormally: a failed session dial after the
 // upgrade closes the WS with a non-1000 code so the client retries.
 func TestBridgeDialFailureClosesAbnormally(t *testing.T) {

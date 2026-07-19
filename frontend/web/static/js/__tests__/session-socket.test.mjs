@@ -71,6 +71,16 @@ test('connect → open reports open (not resumed) and enables send', () => {
     assert.equal(sockets[0].sent[1], '{"type":"resize","cols":80,"rows":24}');
 });
 
+test('sendControl sends JSON when open, is dropped when not open', () => {
+    const sock = newSocket();
+    sock.connect();
+    assert.equal(sock.sendControl({ type: 'reactivate' }), false, 'no control before open');
+
+    sockets[0].open();
+    assert.equal(sock.sendControl({ type: 'reactivate' }), true);
+    assert.equal(sockets[0].sent.at(-1), '{"type":"reactivate"}');
+});
+
 test('normal closure (1000) → ended, no reconnect scheduled', () => {
     const sock = newSocket();
     sock.connect();

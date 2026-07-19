@@ -139,6 +139,17 @@ export const TerminalManager = {
         instance.socket = socket;
         socket.connect();
 
+        // Focusing a suspended terminal takes the live view back WITHOUT typing:
+        // ask the server to reactivate us and repaint (a fresh snapshot arrives).
+        // This is the passive counterpart to the input-driven takeover below —
+        // it injects nothing into the session.
+        containerEl.addEventListener('focusin', () => {
+            if (socket.status === 'open' && instance.needsRefresh) {
+                instance.needsRefresh = false;
+                socket.sendControl({ type: 'reactivate' });
+            }
+        });
+
         // User input -> socket (binary so Go routes it to the PTY).
         term.onData((data) => {
             if (socket.status === 'lost') {

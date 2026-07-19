@@ -90,11 +90,17 @@ export class SessionSocket {
         return true;
     }
 
+    // sendControl sends a JSON control message (text frame); false when the
+    // socket isn't open.
+    sendControl(msg) {
+        if (this.status !== 'open' || this.ws?.readyState !== WebSocket.OPEN) return false;
+        this.ws.send(JSON.stringify(msg));
+        return true;
+    }
+
     // sendResize reports the terminal dimensions (JSON control message).
     sendResize(cols, rows) {
-        if (this.status !== 'open' || this.ws?.readyState !== WebSocket.OPEN) return false;
-        this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-        return true;
+        return this.sendControl({ type: 'resize', cols, rows });
     }
 
     // retry re-arms a lost connection (manual retry after exhausted backoff).

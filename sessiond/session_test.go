@@ -23,6 +23,10 @@ func socketpairFiles(t *testing.T) (*os.File, *os.File) {
 	if err != nil {
 		t.Fatalf("socketpair: %v", err)
 	}
+	// Non-blocking so os.File deadlines work: session.begin rewraps the PTY
+	// side, but the program side is used directly by tests that set read
+	// deadlines on it.
+	_ = syscall.SetNonblock(fds[1], true)
 	a := os.NewFile(uintptr(fds[0]), "pty-side")
 	b := os.NewFile(uintptr(fds[1]), "program-side")
 	t.Cleanup(func() { a.Close(); b.Close() })
@@ -189,6 +193,46 @@ func TestSnapshotRenderedAtJoiningViewerWidth(t *testing.T) {
 		t.Fatalf("snapshot must start with a reset, got %q", snap[:min(len(snap), 40)])
 	}
 	assertMaxRenderedWidth(t, snap, 44)
+}
+
+// TestReactivateTakesLiveViewWithoutInput: a suspended viewer sending a
+// reactivate control frame becomes active and gets a fresh snapshot, the
+// previously active viewer is deactivated, and no byte reaches the PTY.
+func TestReactivateTakesLiveViewWithoutInput(t *testing.T) {
+	s, programSide := startTestSession(t)
+
+	a := attachTestViewer(t, s, 100, 30)
+	if typ, _ := readOneFrame(t, a); typ != protocol.FrameSnapshot {
+		t.Fatalf("A: expected snapshot, got 0x%02x", typ)
+	}
+
+	// B attaching makes B active and suspends A (A gets a deactivated frame).
+	b := attachTestViewer(t, s, 80, 24)
+	if typ, _ := readOneFrame(t, b); typ != protocol.FrameSnapshot {
+		t.Fatalf("B: expected snapshot, got 0x%02x", typ)
+	}
+	if typ, payload := readOneFrame(t, a); typ != protocol.FrameControl || !bytes.Contains(payload, []byte(protocol.ControlDeactivated)) {
+		t.Fatalf("A: expected deactivated, got 0x%02x %q", typ, payload)
+	}
+
+	// A reactivates by focus — a control frame, never input.
+	if err := protocol.WriteJSONFrame(a, protocol.FrameControl, protocol.Control{Type: protocol.ControlReactivate}); err != nil {
+		t.Fatal(err)
+	}
+
+	if typ, _ := readOneFrame(t, a); typ != protocol.FrameSnapshot {
+		t.Fatalf("A reactivate: expected fresh snapshot, got 0x%02x", typ)
+	}
+	if typ, payload := readOneFrame(t, b); typ != protocol.FrameControl || !bytes.Contains(payload, []byte(protocol.ControlDeactivated)) {
+		t.Fatalf("B: expected deactivated after A reactivates, got 0x%02x %q", typ, payload)
+	}
+
+	// Nothing was ever written to the PTY.
+	_ = programSide.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	buf := make([]byte, 16)
+	if n, err := programSide.Read(buf); err == nil && n > 0 {
+		t.Fatalf("reactivate wrote %d bytes to the PTY: %q", n, buf[:n])
+	}
 }
 
 // TestSessionKillSendsClose verifies Kill delivers a CLOSE frame with reason

@@ -68,14 +68,16 @@ type cmdResize struct {
 type cmdOutput struct{ data []byte }
 type cmdEnd struct{ reason string }
 type cmdKill struct{}
+type cmdReactivate struct{ conn net.Conn }
 
-func (cmdAttach) isSessCmd() {}
-func (cmdDetach) isSessCmd() {}
-func (cmdInput) isSessCmd()  {}
-func (cmdResize) isSessCmd() {}
-func (cmdOutput) isSessCmd() {}
-func (cmdEnd) isSessCmd()    {}
-func (cmdKill) isSessCmd()   {}
+func (cmdAttach) isSessCmd()     {}
+func (cmdDetach) isSessCmd()     {}
+func (cmdInput) isSessCmd()      {}
+func (cmdResize) isSessCmd()     {}
+func (cmdOutput) isSessCmd()     {}
+func (cmdEnd) isSessCmd()        {}
+func (cmdKill) isSessCmd()       {}
+func (cmdReactivate) isSessCmd() {}
 
 var deactivatedMsg, _ = json.Marshal(protocol.Control{Type: protocol.ControlDeactivated})
 
@@ -225,6 +227,8 @@ func (s *session) handle(c sessCmd) bool {
 		s.handleInput(c)
 	case cmdResize:
 		s.handleResize(c)
+	case cmdReactivate:
+		s.handleReactivate(c)
 	case cmdOutput:
 		s.handleOutput(c.data)
 	case cmdKill:
@@ -328,9 +332,28 @@ func (s *session) handleAttach(c cmdAttach) {
 	v := &viewer{conn: c.conn, out: make(chan viewerMsg, viewerQueueSize), size: viewerSize{c.cols, c.rows}}
 	go s.viewerWriter(v)
 	s.viewers[c.conn] = v
-	s.activateViewer(c.conn, v)
+	s.activateAndSnapshot(c.conn, v)
+}
+
+// handleReactivate makes an already-registered viewer active and repaints it
+// with a fresh snapshot, without writing anything to the PTY. Unknown conns
+// (detached/never-attached) are ignored.
+func (s *session) handleReactivate(c cmdReactivate) {
+	v, ok := s.viewers[c.conn]
+	if !ok {
+		return
+	}
+	v.suspended = false
+	s.activateAndSnapshot(c.conn, v)
+}
+
+// activateAndSnapshot makes conn the active viewer (resizing the PTY to its
+// dimensions, suspending the others) and enqueues it a fresh snapshot rendered
+// at those dimensions. Shared by attach and reactivate.
+func (s *session) activateAndSnapshot(conn net.Conn, v *viewer) {
+	s.activateViewer(conn, v)
 	if !s.enqueue(v, viewerMsg{protocol.FrameSnapshot, s.term.Snapshot()}) {
-		s.dropViewer(c.conn)
+		s.dropViewer(conn)
 	}
 }
 
@@ -506,8 +529,13 @@ func (s *session) readConn(conn net.Conn) {
 			if json.Unmarshal(payload, &ctl) != nil {
 				continue
 			}
-			if ctl.Type == protocol.ControlResize && ctl.Cols > 0 && ctl.Rows > 0 {
+			switch {
+			case ctl.Type == protocol.ControlResize && ctl.Cols > 0 && ctl.Rows > 0:
 				if !s.send(cmdResize{conn: conn, cols: ctl.Cols, rows: ctl.Rows}) {
+					return
+				}
+			case ctl.Type == protocol.ControlReactivate:
+				if !s.send(cmdReactivate{conn: conn}) {
 					return
 				}
 			}

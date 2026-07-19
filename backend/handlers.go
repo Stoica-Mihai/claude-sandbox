@@ -545,25 +545,35 @@ func bridgeWSToFrames(conn *websocket.Conn, sess net.Conn, sessionName string) {
 				slog.Debug("invalid control message", "session", sessionName, "error", err)
 				continue
 			}
-			if msg.Type != protocol.ControlResize || msg.Cols == 0 || msg.Rows == 0 {
-				continue
-			}
-			if !attached {
-				att, _ := json.Marshal(protocol.Attach{Cols: msg.Cols, Rows: msg.Rows})
-				if !writeFrame(protocol.FrameAttach, att) {
-					return
+			switch msg.Type {
+			case protocol.ControlResize:
+				if msg.Cols == 0 || msg.Rows == 0 {
+					continue
 				}
-				attached = true
-				if len(pending) > 0 {
-					if !writeFrame(protocol.FrameData, pending) {
+				// The first valid resize becomes the ATTACH handshake (it carries
+				// the viewer's dimensions); later ones forward as CONTROL.
+				if !attached {
+					att, _ := json.Marshal(protocol.Attach{Cols: msg.Cols, Rows: msg.Rows})
+					if !writeFrame(protocol.FrameAttach, att) {
 						return
 					}
-					pending = nil
+					attached = true
+					if len(pending) > 0 {
+						if !writeFrame(protocol.FrameData, pending) {
+							return
+						}
+						pending = nil
+					}
+					continue
 				}
-				continue
-			}
-			if !writeFrame(protocol.FrameControl, data) {
-				return
+				if !writeFrame(protocol.FrameControl, data) {
+					return
+				}
+			case protocol.ControlReactivate:
+				// Passive live-view request — meaningless before attach.
+				if attached && !writeFrame(protocol.FrameControl, data) {
+					return
+				}
 			}
 		case websocket.BinaryMessage:
 			if !attached {

@@ -42,6 +42,9 @@ const (
 	ControlResize      = "resize"
 	ControlDeactivated = "deactivated"
 	ControlError       = "error"
+	// ControlReactivate: a suspended viewer asks to become active and get a
+	// fresh snapshot, without injecting any input into the PTY.
+	ControlReactivate = "reactivate"
 )
 
 // Control mirrors the WS JSON control contract (see the Control* constants).
