@@ -332,13 +332,14 @@ export function init() {
         }
     });
 
-    // Listen for HTMX responses from spawn to auto-open the new terminal
+    // Auto-open the new terminal on a spawn response. Identify the spawn by its
+    // request path (only the picker form POSTs to /api/sessions) — NOT by the
+    // X-Terminal-Id header, which the backend sets on success only, so keying on
+    // it made every failure silent (no button feedback, modal frozen).
     document.addEventListener('htmx:afterRequest', (event) => {
+        if (event.detail?.pathInfo?.requestPath !== '/api/sessions') return;
         const xhr = event.detail.xhr;
         if (!xhr) return;
-
-        const terminalId = xhr.getResponseHeader('X-Terminal-Id');
-        if (!terminalId) return; // not a spawn response
 
         if (xhr.status >= 400) {
             const submitBtn = document.getElementById('dir-picker-submit');
@@ -354,6 +355,7 @@ export function init() {
         }
 
         document.getElementById('newSessionModal')?.close();
-        openSession(terminalId);
+        const terminalId = xhr.getResponseHeader('X-Terminal-Id');
+        if (terminalId) openSession(terminalId);
     });
 }

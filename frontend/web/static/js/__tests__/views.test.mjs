@@ -175,9 +175,13 @@ function spawnEnv() {
     });
 }
 
-function afterRequestEvent(status, terminalId) {
+// A spawn response is identified by its request path (/api/sessions), not the
+// X-Terminal-Id header — the backend omits that header on failure, so the
+// failure path must fire with no header present.
+function afterRequestEvent(status, terminalId, requestPath = '/api/sessions') {
     return {
         detail: {
+            pathInfo: { requestPath },
             xhr: {
                 status,
                 getResponseHeader: (h) => (h === 'X-Terminal-Id' ? terminalId : null),
@@ -186,11 +190,12 @@ function afterRequestEvent(status, terminalId) {
     };
 }
 
-test('spawn failure adds btn-spawn-fail class and label (not inline bg/color)', () => {
+test('spawn failure (no X-Terminal-Id header) adds btn-spawn-fail class and label', () => {
     const env = spawnEnv();
     const btn = env.document.getElementById('dir-picker-submit');
 
-    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, 'term-1'));
+    // Realistic failure: 500 with no header — the bug was this being ignored.
+    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, null));
 
     assert.ok(btn.classList.contains('btn-spawn-fail'), 'btn-spawn-fail class added');
     assert.equal(btn.textContent, 'Failed — try again', 'failure label set');
@@ -202,7 +207,7 @@ test('spawn-fail resets to Launch label and drops the class after timeout', () =
     const env = spawnEnv();
     const btn = env.document.getElementById('dir-picker-submit');
 
-    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, 'term-1'));
+    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, null));
     env.flushTimers();
 
     assert.equal(btn.classList.contains('btn-spawn-fail'), false, 'class removed');
@@ -215,7 +220,7 @@ test('spawn-fail restores Resume label when a resume was selected', () => {
     env.sandbox.dirPickerSetSel('resume', 'u1', null);
     const btn = env.document.getElementById('dir-picker-submit');
 
-    env.document.dispatch('htmx:afterRequest', afterRequestEvent(503, 'term-1'));
+    env.document.dispatch('htmx:afterRequest', afterRequestEvent(503, null));
     env.flushTimers();
 
     assert.equal(btn.textContent, 'Resume', 'resume label restored');
@@ -237,13 +242,14 @@ test('successful spawn (2xx) closes the modal, opens the session, no fail flag',
     assert.ok(tab, 'opened the spawned terminal (container created)');
 });
 
-test('afterRequest without X-Terminal-Id header is ignored (not a spawn response)', () => {
+test('afterRequest for a non-spawn path is ignored', () => {
     const env = spawnEnv();
     const btn = env.document.getElementById('dir-picker-submit');
     btn.textContent = 'Launch';
 
-    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, null));
+    // A failing request to any other path must not touch the spawn button.
+    env.document.dispatch('htmx:afterRequest', afterRequestEvent(500, null, '/api/directories'));
 
-    assert.equal(btn.classList.contains('btn-spawn-fail'), false, 'untouched when no terminal id');
+    assert.equal(btn.classList.contains('btn-spawn-fail'), false, 'untouched for non-spawn path');
     assert.equal(btn.textContent, 'Launch', 'label untouched');
 });
