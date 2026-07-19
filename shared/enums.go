@@ -66,6 +66,12 @@ var Themes = []string{"light", "dark"}
 // segment. Shared by the backend validator and the client-side pre-check.
 const NewProjectNamePattern = `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`
 
+// ModelFamilies lists the Claude model families from most to least capable.
+// The backend's capability rank (advisor check) and its canonical-id regex both
+// derive from this one list, so a family present in one but not the other can't
+// silently misrank or misvalidate — adding a family is a single edit here.
+var ModelFamilies = []string{"fable", "opus", "sonnet", "haiku"}
+
 // ModelValues returns the model allowlist as plain strings for validation.
 func ModelValues() []string { return optionValues(Models) }
 

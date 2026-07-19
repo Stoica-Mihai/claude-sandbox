@@ -16,18 +16,14 @@ import (
 // modelRank ranks a model family by capability so the advisor can be required
 // to be strictly more capable than the main model (claude rejects the request
 // otherwise). Works on both main aliases ("opus[1m]") and advisor ids
-// ("claude-opus-4-8"). Unknown families rank 0.
+// ("claude-opus-4-8"). Ranks derive from api.ModelFamilies (most-capable
+// first), the same list canonicalModelID's alternation uses. Unknown: 0.
 func modelRank(s string) int {
 	s = strings.ToLower(s)
-	switch {
-	case strings.Contains(s, "fable"):
-		return 4
-	case strings.Contains(s, "opus"):
-		return 3
-	case strings.Contains(s, "sonnet"):
-		return 2
-	case strings.Contains(s, "haiku"):
-		return 1
+	for i, fam := range api.ModelFamilies {
+		if strings.Contains(s, fam) {
+			return len(api.ModelFamilies) - i
+		}
 	}
 	return 0
 }
@@ -40,7 +36,11 @@ var allowedEffort = api.EffortValues()
 
 // canonicalModelID matches a full Claude model id (e.g. claude-opus-4-8),
 // the shape the advisor accepts — version-agnostic so it survives new releases.
-var canonicalModelID = regexp.MustCompile(`^claude-(fable|opus|sonnet|haiku)-[0-9][0-9-]*$`)
+// The family alternation is built from api.ModelFamilies (the list modelRank
+// also uses) so the two never disagree on which families exist.
+var canonicalModelID = regexp.MustCompile(
+	`^claude-(` + strings.Join(api.ModelFamilies, "|") + `)-[0-9][0-9-]*$`,
+)
 
 // editableSettings is the whitelisted preference subset the dashboard may
 // read and write. All other keys in container-settings.json are off-limits.
