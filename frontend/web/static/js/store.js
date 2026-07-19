@@ -7,7 +7,7 @@ let sessions = [];
 
 export function getSessions() { return sessions; }
 
-// Find a session by its terminal id (dtach name), or null if it ended.
+// Find a session by its terminal id, or null if it ended.
 export function getSession(terminalId) {
     return sessions.find(s => s.name === terminalId) || null;
 }

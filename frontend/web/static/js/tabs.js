@@ -10,7 +10,7 @@ import { getSession, subscribe } from './store.js';
 export let singleTerminalId = null;    // currently active tab
 export let singleTabs = [];            // array of open tab terminal IDs
 // Last-known display name per tab, so a tab whose session ended keeps its
-// label instead of degrading to a truncated dtach id.
+// label instead of degrading to a truncated session id.
 const tabNames = {};
 
 // Open a session terminal
