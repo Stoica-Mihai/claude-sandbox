@@ -1,7 +1,7 @@
 // Settings editor: GET/PUT the whitelisted preference subset of container-settings.json.
 // Applies to NEW sessions (claude reads settings at spawn).
 
-import { isMobile } from './ui-utils.js';
+import { isMobile, sendJSON, errorText } from './ui-utils.js';
 import { refreshShareStatus } from './share.js';
 import { fdSyncToggle, toggleThinking } from './theme.js';
 import { register } from './actions.js';
@@ -145,15 +145,9 @@ export async function saveSettings() {
     btn.classList.add('saving');
     label.textContent = 'SAVING…';
     try {
-        const res = await fetch('/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        const res = await sendJSON('/api/settings', 'PUT', payload);
         if (!res.ok) {
-            let msg = 'Save failed (' + res.status + ')';
-            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
-            throw new Error(msg);
+            throw new Error(await errorText(res, 'Save failed (' + res.status + ')'));
         }
         if (hint) { hint.textContent = defaultHint; hint.classList.remove('err'); }
         btn.classList.remove('saving');

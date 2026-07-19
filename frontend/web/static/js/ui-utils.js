@@ -62,6 +62,48 @@ export function fmtDuration(sec) {
     return s + 's';
 }
 
+// POST/PUT a JSON body, always setting Content-Type (a caller once omitted it
+// and only worked because the backend ignores content-type). Returns the fetch
+// Response; callers keep their own status handling.
+export function sendJSON(url, method, body) {
+    return fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+}
+
+// Extract a backend error message ({"error": msg}) from a response, falling
+// back to a caller-supplied string, then a generic status line.
+export async function errorText(res, fallback) {
+    const data = await res.json().catch(() => null);
+    return (data && data.error) || fallback || `Request failed (${res.status})`;
+}
+
+// Copy text to the clipboard, resolving true only on a real copy. Prefers the
+// async Clipboard API (secure contexts), falling back to execCommand — the
+// dashboard often runs over plain HTTP / a share tunnel where the Clipboard API
+// is unavailable, so a silent false "success" is worse than a visible failure.
+export function copyToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => execCopy(text));
+    }
+    return Promise.resolve(execCopy(text));
+}
+
+// Legacy execCommand copy via a throwaway textarea; returns whether it copied.
+function execCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select?.();
+    let ok = false;
+    try { ok = !!(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+}
+
 // Kit toast (CSS lives in futurism.css; the .toaster host is built on demand).
 // For notices that must outlive the modal, e.g. "created, git init failed".
 export function dpToast(msg) {

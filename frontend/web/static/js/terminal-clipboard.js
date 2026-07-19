@@ -3,26 +3,7 @@
 // handler swallows images, so both are handled here.
 
 import { ANSI_RED, ANSI_RESET } from './terminal-ansi.js';
-
-// Copy text via the async Clipboard API, falling back to execCommand for
-// non-secure contexts where the API is unavailable.
-function copyText(text) {
-    if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).catch(() => copyFallback(text));
-    } else {
-        copyFallback(text);
-    }
-}
-
-function copyFallback(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); } catch (e) { /* best effort */ }
-    document.body.removeChild(ta);
-}
+import { copyToClipboard, errorText } from './ui-utils.js';
 
 // Wire copy-on-select (desktop), Escape re-focus, and image-paste upload for a
 // terminal. `manager` provides the live socket for sending an uploaded image path.
@@ -31,7 +12,7 @@ export function wireClipboard(containerEl, term, terminalId, manager, mobile) {
     if (!mobile) {
         containerEl.addEventListener('mouseup', () => {
             const sel = term.getSelection();
-            if (sel) copyText(sel);
+            if (sel) copyToClipboard(sel); // fire-and-forget: no UI feedback here
         });
     }
 
@@ -71,8 +52,8 @@ export function wireClipboard(containerEl, term, terminalId, manager, mobile) {
             fetch(`/api/sessions/${terminalId}/upload`, { method: 'POST', body: formData })
                 .then(async (resp) => {
                     if (!resp.ok) {
-                        const err = await resp.json().catch(() => ({}));
-                        term.write(`\r\n${ANSI_RED}[Upload failed: ${err.error || resp.statusText}]${ANSI_RESET}`);
+                        const msg = await errorText(resp, resp.statusText);
+                        term.write(`\r\n${ANSI_RED}[Upload failed: ${msg}]${ANSI_RESET}`);
                         return;
                     }
                     const { path } = await resp.json();

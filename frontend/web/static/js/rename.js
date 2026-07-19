@@ -1,6 +1,7 @@
 // Rename Session modal: open, submit (PUT name), Enter-to-submit.
 
 import { register } from './actions.js';
+import { sendJSON } from './ui-utils.js';
 
 let renameTargetId = null;
 
@@ -21,10 +22,7 @@ export function init() {
         if (!renameTargetId) return;
         const name = document.getElementById('renameInput').value.trim();
         const targetId = renameTargetId;
-        fetch(`/api/sessions/${targetId}/name`, {
-            method: 'PUT',
-            body: JSON.stringify({ name })
-        }).then(res => {
+        sendJSON(`/api/sessions/${targetId}/name`, 'PUT', { name }).then(res => {
             if (!res.ok) throw new Error(`Rename failed (${res.status})`);
             document.getElementById('renameModal').close();
             renameTargetId = null;

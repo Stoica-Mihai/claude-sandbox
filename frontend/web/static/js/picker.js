@@ -1,6 +1,6 @@
 // New Session modal: directory picker, inline new-project editor, spawn wiring.
 
-import { escapeHtml, setBtnLabel, dpSkelRows, AROW_CSS, relTime, dpToast } from './ui-utils.js';
+import { escapeHtml, setBtnLabel, dpSkelRows, AROW_CSS, relTime, dpToast, sendJSON, errorText } from './ui-utils.js';
 import { dpDelToIdle } from './history-del.js';
 import { register } from './actions.js';
 import { openSession } from './tabs.js';
@@ -125,11 +125,7 @@ export async function createProject() {
 
     let res;
     try {
-        res = await fetch('/api/directories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, name, gitInit }),
-        });
+        res = await sendJSON('/api/directories', 'POST', { path, name, gitInit });
     } catch (e) {
         dpEditorShowError(els, 'Could not create — check the connection.');
         return;
@@ -150,9 +146,7 @@ export async function createProject() {
     }
 
     if (res.status === 400 || res.status === 409) {
-        let msg = 'Could not create the folder.';
-        try { msg = (await res.json()).error || msg; } catch (e) { /* keep generic */ }
-        dpEditorShowError(els, msg);
+        dpEditorShowError(els, await errorText(res, 'Could not create the folder.'));
         return;
     }
 

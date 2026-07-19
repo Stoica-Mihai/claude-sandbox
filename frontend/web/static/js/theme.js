@@ -2,6 +2,7 @@
 
 import { syncTerminalBgVar, TerminalManager } from './terminal.js';
 import { register } from './actions.js';
+import { sendJSON } from './ui-utils.js';
 
 // Accent palette injected by layout.html from shared/enums.go (single source
 // with the backend's name validation).
@@ -107,11 +108,7 @@ export function flipTheme() {
 // of truth, reconciled on load. Single-tenant dashboard, so last write wins.
 export function saveUIPrefs() {
     var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    fetch('/api/ui-prefs', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accent: curAccent.name, theme: theme })
-    }).catch(function() {});
+    sendJSON('/api/ui-prefs', 'PUT', { accent: curAccent.name, theme: theme }).catch(function() {});
 }
 
 export function loadUIPrefs() {

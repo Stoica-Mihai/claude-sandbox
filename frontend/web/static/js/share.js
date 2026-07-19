@@ -5,6 +5,7 @@
 // exposed" signal, in place of a dedicated header glyph).
 
 import { register } from './actions.js';
+import { copyToClipboard } from './ui-utils.js';
 
 const SHARE_HINT = 'Tunnel may take a few seconds to become reachable';
 const SHARE_HINT_PUBLIC = 'The tunnel stays up until you go private';
@@ -107,31 +108,6 @@ export function copyShareString() {
             setTimeout(resetCopyLabel, 2600);
         }
     });
-}
-
-// Copy text, resolving true only on a real copy. Prefers the async Clipboard
-// API (secure contexts), falling back to execCommand — the connection string
-// grants full access, and the dashboard often runs over plain HTTP / the tunnel
-// where the Clipboard API is unavailable, so a silent false success is worse
-// than a visible failure.
-function copyToClipboard(text) {
-    if (navigator.clipboard?.writeText) {
-        return navigator.clipboard.writeText(text).then(() => true, () => execCopy(text));
-    }
-    return Promise.resolve(execCopy(text));
-}
-
-// Legacy execCommand copy via a throwaway textarea; returns whether it copied.
-function execCopy(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-    document.body.appendChild(ta);
-    ta.select?.();
-    let ok = false;
-    try { ok = !!(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; }
-    ta.remove();
-    return ok;
 }
 
 // Select the visible connection string so the user can copy it manually when
