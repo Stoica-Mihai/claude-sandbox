@@ -23,8 +23,9 @@ import (
 )
 
 // maxProxyJSONBody caps a JSON body the frontend buffers before forwarding it
-// to the backend (which enforces its own, authoritative limit).
-const maxProxyJSONBody = 64 << 10
+// to the backend (which enforces the same, authoritative limit). Shared via
+// shared/limits so the proxy bound and the backend cap can't drift.
+const maxProxyJSONBody = api.MaxJSONBody
 
 // Server is the HTTP server serving the dashboard frontend.
 // It renders HTML templates with data fetched from the backend API,

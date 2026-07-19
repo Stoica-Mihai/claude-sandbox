@@ -30,10 +30,9 @@ const (
 	// maxSessionNameLen caps custom session names (bytes) — the index file
 	// persists them, so unbounded names mean unbounded index growth.
 	maxSessionNameLen = 120
-	// maxJSONBody caps request bodies decoded as JSON. Every such route carries
-	// a small object (a cwd, a name, a prefs subset), so a generous cap still
-	// rejects a body sent to exhaust memory.
-	maxJSONBody = 64 << 10
+	// maxJSONBody caps request bodies decoded as JSON — the authoritative limit,
+	// shared with the frontend proxy's pre-forward bound via shared/limits.
+	maxJSONBody = api.MaxJSONBody
 )
 
 // uploadDir lives on the claude-state volume shared with the sessions
