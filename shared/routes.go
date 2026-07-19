@@ -1,5 +1,7 @@
 package api
 
+import "strings"
+
 // API route path patterns shared by the backend (which registers the handlers)
 // and the frontend (which registers the mirrored proxy routes and builds
 // request URLs to the backend). Single source, so adding or renaming a route is
@@ -25,3 +27,18 @@ const (
 	RouteWSTerminal      = "/ws/terminal/{terminalId}"
 	RouteHealthz         = "/healthz"
 )
+
+// Concrete-path builders fill a route pattern's placeholder, so a request URL
+// is single-sourced with its pattern instead of rebuilt by string concat (which
+// silently duplicates the pattern's shape and can drift from it).
+func SessionPath(terminalID string) string {
+	return strings.Replace(RouteSession, "{terminalId}", terminalID, 1)
+}
+
+func SessionNamePath(terminalID string) string {
+	return strings.Replace(RouteSessionName, "{terminalId}", terminalID, 1)
+}
+
+func HistoryItemPath(uuid string) string {
+	return strings.Replace(RouteHistoryItem, "{uuid}", uuid, 1)
+}

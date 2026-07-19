@@ -372,7 +372,7 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.proxyThenRenderSessions(w, r, "DELETE", api.RouteSessions+"/"+terminalId, nil, "failed to kill session via backend")
+	s.proxyThenRenderSessions(w, r, "DELETE", api.SessionPath(terminalId), nil, "failed to kill session via backend")
 }
 
 // handleDeleteHistoryProxy forwards a history-delete to the backend and passes
@@ -386,7 +386,7 @@ func (s *Server) handleDeleteHistoryProxy(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := s.backendRequest(r.Context(), "DELETE", api.RouteSessionsHistory+"/"+uuid, nil)
+	resp, err := s.backendRequest(r.Context(), "DELETE", api.HistoryItemPath(uuid), nil)
 	if err != nil {
 		badGateway(w, "failed to delete history via backend", err)
 		return
@@ -417,7 +417,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.proxyThenRenderSessions(w, r, "PUT", api.RouteSessions+"/"+terminalId+"/name", bytes.NewReader(body), "failed to rename session via backend")
+	s.proxyThenRenderSessions(w, r, "PUT", api.SessionNamePath(terminalId), bytes.NewReader(body), "failed to rename session via backend")
 }
 
 // handleDirectories fetches directory data from the backend and renders the
