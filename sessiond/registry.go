@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -170,7 +171,14 @@ func (r *registry) serveControl(ln net.Listener) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			return
+			// Closed listener = shutdown; anything else is transient (EMFILE),
+			// where returning would kill the control socket for the daemon's life.
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			slog.Warn("control accept error, retrying", "error", err)
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
 		go r.handleControlConn(conn)
 	}

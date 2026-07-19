@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -175,7 +176,15 @@ func (s *session) serve(ln net.Listener) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				return
+				// A closed listener means teardown; anything else is transient
+				// (e.g. EMFILE) — logging and retrying keeps the session
+				// attachable instead of silently going dark for its whole life.
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
+				slog.Warn("session accept error, retrying", "session", s.name, "error", err)
+				time.Sleep(10 * time.Millisecond)
+				continue
 			}
 			go s.readConn(conn)
 		}

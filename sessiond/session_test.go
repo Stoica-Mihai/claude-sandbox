@@ -282,6 +282,51 @@ func TestSurvivingViewerResizeTakesOverLive(t *testing.T) {
 	readFrameUntil(t, a, "after takeover")
 }
 
+// scriptedListener returns one transient Accept error, then signals and blocks
+// until Close. It lets a test prove the accept loop retries a transient error
+// instead of exiting.
+type scriptedListener struct {
+	failed       bool
+	secondAccept chan struct{}
+	closed       chan struct{}
+}
+
+func (l *scriptedListener) Accept() (net.Conn, error) {
+	if !l.failed {
+		l.failed = true
+		return nil, syscall.EMFILE // transient, not net.ErrClosed
+	}
+	select {
+	case l.secondAccept <- struct{}{}:
+	default:
+	}
+	<-l.closed
+	return nil, net.ErrClosed
+}
+func (l *scriptedListener) Close() error   { close(l.closed); return nil }
+func (l *scriptedListener) Addr() net.Addr { return fakeAddr{} }
+
+type fakeAddr struct{}
+
+func (fakeAddr) Network() string { return "pipe" }
+func (fakeAddr) String() string  { return "pipe" }
+
+// TestSessionServeSurvivesTransientAcceptError: a transient Accept error must
+// not kill the accept loop, or the session goes unattachable for its whole life.
+func TestSessionServeSurvivesTransientAcceptError(t *testing.T) {
+	s := newSession("claude-acc", "/workspace/x", "u", time.Now())
+	ln := &scriptedListener{secondAccept: make(chan struct{}, 1), closed: make(chan struct{})}
+	s.serve(ln)
+
+	select {
+	case <-ln.secondAccept:
+		// Loop retried after the transient error and called Accept again.
+	case <-time.After(2 * time.Second):
+		t.Fatal("accept loop exited on a transient error instead of retrying")
+	}
+	_ = ln.Close() // unblock and end the accept goroutine
+}
+
 // TestSessionKillSendsClose verifies Kill delivers a CLOSE frame with reason
 // "killed" and tears the session down.
 func TestSessionKillSendsClose(t *testing.T) {
