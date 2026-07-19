@@ -33,7 +33,7 @@ function envWithActiveTerminal() {
     env.sandbox.TerminalManager.get = () => inst;
     // Drive the active-tab state (singleTerminalId) through the public open path,
     // since views.js's let-scoped state is not reachable from the sandbox.
-    env.sandbox.openSessionSingle('term-1');
+    env.sandbox.openSession('term-1');
     return env;
 }
 
@@ -95,20 +95,19 @@ test('mobileToggleSelect tolerates a missing button on close path', () => {
     assert.doesNotThrow(() => env.sandbox.mobileToggleSelect(null));
 });
 
-// ---------- openSessionSingle: term-tab class (replaces absolute inset-0) ----------
+// ---------- openSession: term-tab container class ----------
 
-test('openSessionSingle gives the tab container the term-tab class, not utility classes', () => {
+test('openSession gives the terminal container the term-tab class, not utility classes', () => {
     const env = loadViews({ mobile: false, ids: ['singleTerminal'] });
     const created = [];
     env.sandbox.TerminalManager.create = (id, container) => created.push(container);
 
-    env.sandbox.openSessionSingle('term-xyz');
+    env.sandbox.openSession('term-xyz');
 
     const terminal = env.document.getElementById('singleTerminal');
-    const tab = terminal.children.find(c => c.id === 'singleTab-term-xyz');
-    assert.ok(tab, 'tab container created');
+    const tab = terminal.children.find(c => c.id === 'singleTerm-term-xyz');
+    assert.ok(tab, 'terminal container created');
     assert.ok(tab.classList.contains('term-tab'), 'has term-tab class');
-    assert.ok(tab.classList.contains('hidden'), 'starts hidden');
     assert.ok(tab.classList.contains('terminal-bg'), 'keeps terminal-bg class');
     assert.equal(tab.classList.contains('absolute'), false, 'no leftover absolute utility class');
     assert.equal(tab.classList.contains('inset-0'), false, 'no leftover inset-0 utility class');
@@ -232,10 +231,10 @@ test('successful spawn (2xx) closes the modal, opens the session, no fail flag',
 
     assert.equal(btn.classList.contains('btn-spawn-fail'), false, 'no fail class on success');
     assert.equal(closed, true, 'new-session modal closed');
-    // Effect assertion: openSession (imported from tabs) created the tab container.
+    // Effect assertion: openSession (imported from tabs) created the terminal container.
     const terminal = env.document.getElementById('singleTerminal');
-    const tab = terminal.children.find(c => c.id === 'singleTab-term-ok');
-    assert.ok(tab, 'opened the spawned terminal (tab container created)');
+    const tab = terminal.children.find(c => c.id === 'singleTerm-term-ok');
+    assert.ok(tab, 'opened the spawned terminal (container created)');
 });
 
 test('afterRequest without X-Terminal-Id header is ignored (not a spawn response)', () => {

@@ -4,7 +4,7 @@ import { loadViews, FakeElement } from './load-views.mjs';
 
 // The client session store: single source of truth for the server session
 // list, fed by the #session-data JSON embedded in the sessions fragment.
-// These tests pin that the tab bar / badge render from the store, not from
+// These tests pin that the badge + card states render from the store, not from
 // scraped sidebar card markup.
 
 function sessionJSON(list) {
@@ -57,43 +57,6 @@ test('malformed payload keeps the last known state', () => {
     env.document.getElementById('session-data').textContent = '{not json';
     env.document.dispatch('htmx:afterSwap', { target: { id: 'session-list' } });
     assert.equal(env.sandbox.getSessions().length, 1);
-});
-
-// ---------- tab bar renders from the store ----------
-
-function tabEnv(sessions) {
-    return storeEnv(sessions, ['singleTerminal', 'singleTabBar']);
-}
-
-test('tab label comes from the store display_name', () => {
-    const env = tabEnv([{ name: 't1', display_name: 'my-project' }]);
-    env.sandbox.openSessionSingle('t1');
-
-    const bar = env.document.getElementById('singleTabBar');
-    assert.ok(bar.innerHTML.includes('my-project'), 'label rendered from store');
-    assert.ok(!bar.innerHTML.includes('Session ended'), 'live session has no dead marker');
-});
-
-test('rename propagates to the tab label on the next session-list swap', () => {
-    const env = tabEnv([{ name: 't1', display_name: 'old-name' }]);
-    env.sandbox.openSessionSingle('t1');
-
-    swapSessions(env, [{ name: 't1', display_name: 'new-name' }]);
-
-    const bar = env.document.getElementById('singleTabBar');
-    assert.ok(bar.innerHTML.includes('new-name'), 'renamed label rendered');
-    assert.ok(!bar.innerHTML.includes('old-name'), 'stale label gone');
-});
-
-test('session gone from the list marks the tab dead but keeps its label', () => {
-    const env = tabEnv([{ name: 't1', display_name: 'proj' }]);
-    env.sandbox.openSessionSingle('t1');
-
-    swapSessions(env, []);
-
-    const bar = env.document.getElementById('singleTabBar');
-    assert.ok(bar.innerHTML.includes('Session ended'), 'dead marker rendered');
-    assert.ok(bar.innerHTML.includes('proj'), 'last-known label kept');
 });
 
 // ---------- header badge follows the store ----------

@@ -53,17 +53,6 @@
    position every frame, and the kit's cubic-bezier lags visibly behind a fast
    drag. Linear keeps the fill glued to the finger; --ease is for discrete
    state transitions (open/close, hover), not live-drag following. */
-/* D13: .ttab — the closeable terminal-tab strip; the kit's .tabs/.tab has no
-   close variant to extend. Follows the kit's tab contract exactly (role=
-   tablist/tab, aria-selected, roving tabindex, ArrowLeft/Right move+activate,
-   Enter/Space activate — ported by hand in views.js rather than adopting
-   .tabs/fdInit, consistent with how this app hand-wires every other
-   interaction). Delete/Backspace-to-close is an app-original addition with
-   no kit precedent (the kit's plain tab has nothing to dismiss). The nested
-   close <button> is NOT the .scard button-in-button hazard — role=tab isn't
-   role=button, so there's no activation-ambiguity between the tab's own
-   select gesture and the button's dismiss gesture; it's given tabindex=-1 so
-   it stays out of the tablist's roving-tabindex sequence. */
 /* D14: .newrow — the "+ NEW PROJECT…" row pinned under the folder list; the kit
    has no "row pinned under a list" component. Reuses the app's own list-row
    language (top 2px var(--line) divider, --hover-bg on hover, muted→ink text)
@@ -73,8 +62,7 @@
    border — Law-conformant). Its :focus-visible insets the ring
    (outline-offset:-3px) instead of the kit's +3px (kit .btn/.iconbtn/.acc etc.):
    the row is edge-to-edge inside the modal frame, so an outside ring would be
-   clipped by the frame border — same inset-ring reasoning as .scard:focus-visible
-   and .ttab .x:focus-visible. */
+   clipped by the frame border — same inset-ring reasoning as .scard:focus-visible. */
 /* D15: .newedit .gitinit overrides the kit's block/uppercase/letter-spaced
    `label` (a form-field caption) into an inline horizontal checkbox label
    (flex, gap, no uppercase/tracking, white-space:nowrap) so the "git init"
@@ -179,27 +167,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 /* The "no sessions" message is panel-only; the collapsed rail shows chips or nothing. */
 .side:not(.expanded) .empty-state{display:none}
 
-/* ===== Main / terminal tabs ===== */
+/* ===== Main / terminal ===== */
 .main{flex:1;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;min-width:0}
-.tabbar{height:42px;display:flex;align-items:stretch;border-bottom:3px solid var(--line);background:var(--surf);flex:none;overflow-x:auto}
-.ttab{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:2px solid var(--line);cursor:pointer;font-weight:800;font-style:italic;font-size:13px;white-space:nowrap;
-  transition:background var(--fast),color var(--fast)}
-.ttab.on{background:var(--ink);color:var(--bg)}
-/* Real button, not a bare span: a ~13px glyph with no padding was a near-unusable
-   hit target. Padding grows the tap/click area without growing the glyph itself. */
-.ttab .x{font-style:normal;font-weight:900;font-size:inherit;font-family:inherit;line-height:1;
-  color:inherit;background:none;border:0;cursor:pointer;padding:7px 7px 7px 4px;margin-left:-4px;
-  opacity:.5;transition:opacity var(--fast),background var(--fast)}
-.ttab:hover .x,.ttab .x:focus-visible{opacity:1}
-.ttab .x:hover{background:var(--line)}
-.ttab.on .x:hover{background:var(--bg);color:var(--ink)}
-.ttab .x:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.ttab .tdot{width:7px;height:7px;flex:none;background:var(--muted)}
-.ttab .tdot.on{background:var(--accent);animation:var(--blink)}
-.ttab.on .tdot{background:var(--on-accent)}
-/* Session ended but tab kept open (scrollback still readable): dot stays muted
-   even on the active tab, no blink. */
-.ttab .tdot.dead,.ttab.on .tdot.dead{background:var(--muted);animation:none}
 .ctrlbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
 
 /* ===== Keycap modifiers (base .keycap is the kit) ===== */
@@ -374,15 +343,15 @@ input.err-flash{outline:3px solid var(--accent)}
 
 /* ===== Forced colors (Windows High Contrast) — app classes (kit ships its own for kit classes) ===== */
 @media (forced-colors:active){
-  .ttab.on,.tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
-  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{background:Highlight}
-  .scard .live.dead,.ttab .tdot{background:GrayText}
+  .tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
+  .statpill .dot,.scard .live:not(.dead){background:Highlight}
+  .scard .live.dead{background:GrayText}
   #pullIndicator .pull-fill{background:Highlight}
 }
 
 /* ===== Reduced motion — static ring on the app's live dots (kit disables animation globally) ===== */
 @media (prefers-reduced-motion:reduce){
-  .statpill .dot,.scard .live:not(.dead),.ttab .tdot.on{box-shadow:0 0 0 2px var(--accent)}
+  .statpill .dot,.scard .live:not(.dead){box-shadow:0 0 0 2px var(--accent)}
 }
 
 /* ===== Responsive: mobile-first ===== */

@@ -9,7 +9,7 @@ Docker-based sandbox for running [Claude Code](https://claude.ai/code) in an iso
 - **Web dashboard** at `:8080` for managing sessions from a browser
   - View, spawn, resume, and kill Claude Code sessions
   - Full interactive terminal via xterm.js, bridged over WebSocket to the session host
-  - Tabbed terminals — open multiple sessions as tabs
+  - One terminal at a time, switched from the sidebar session list (no tab strip)
   - Detach/reattach with an exact terminal snapshot (scrollback, colors, modes)
   - Self-contained Futurism design system (no CSS-framework CDN); dark/light theme toggle + 7-color accent picker
   - Responsive mobile layout with touch input bar
@@ -77,7 +77,7 @@ The web dashboard is available at `http://localhost:8080` after starting the con
 
 - **Session list** — sidebar showing all running Claude Code sessions (managed and external)
 - **Terminal** — full xterm.js terminal with WebSocket relay for interactive sessions
-- **Tabbed terminals** — open multiple sessions as tabs, switch between them
+- **Sidebar-driven session switching** — the sidebar lists every running session; click one to show it in the single terminal view (kill/rename inline)
 - **Directory picker** — browse `/workspace` and spawn sessions in any subdirectory; a "+ NEW PROJECT…" row creates a folder at the current browse depth (optional `git init`, on by default) and immediately launches a session in it
 - **Mobile support** — responsive layout with slide-out drawer and touch input bar
 - **Theme toggle** — dark/light mode with localStorage persistence, plus a separate accent-color picker (7 colors, persisted)

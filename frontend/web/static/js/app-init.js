@@ -3,8 +3,8 @@
 import { applySidebar } from './sidebar.js';
 import { isMobile } from './ui-utils.js';
 import { openNewSessionModal } from './picker.js';
-import { closeSingleTab, switchSingleTab, singleTerminalId, singleTabs, tickDurations } from './tabs.js';
-import { subscribe } from './store.js';
+import { openSession, tickDurations } from './tabs.js';
+import { getSessions, subscribe } from './store.js';
 
 // ===== Keyboard shortcuts (desktop only) =====
 export function handleShortcuts(e) {
@@ -28,24 +28,14 @@ export function handleShortcuts(e) {
         return;
     }
 
-    // Alt+W — Close current tab
-    if (e.altKey && key === 'w') {
-        e.preventDefault();
-        if (singleTerminalId) {
-            closeSingleTab(singleTerminalId);
-        }
-        return;
-    }
-
-    // Alt+1 through Alt+9 — Switch to tab N
+    // Alt+1 through Alt+9 — Show the Nth session from the sidebar list.
     if (e.altKey) {
         const digit = parseInt(key, 10);
         if (digit >= 1 && digit <= 9) {
             e.preventDefault();
-            const index = digit - 1;
-            if (index < singleTabs.length) {
-                switchSingleTab(singleTabs[index]);
-            }
+            const sessions = getSessions();
+            const session = sessions[digit - 1];
+            if (session) openSession(session.name);
             return;
         }
     }

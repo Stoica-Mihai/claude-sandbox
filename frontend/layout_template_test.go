@@ -91,7 +91,7 @@ func TestSessionsFragmentEmptyPayload(t *testing.T) {
 func TestLayoutKeyhintKbdUsesKeycapClasses(t *testing.T) {
 	out := renderLayout(t, nil)
 
-	labels := []string{"NEW", "CLICK", "ALT+N", "ALT+W"}
+	labels := []string{"NEW", "CLICK", "ALT+N", "ALT+1-9"}
 	for _, label := range labels {
 		want := `<kbd class="keycap keycap--hint">` + label + `</kbd>`
 		if !strings.Contains(out, want) {
