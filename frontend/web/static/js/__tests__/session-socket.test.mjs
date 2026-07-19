@@ -35,6 +35,8 @@ function makeEnv() {
     timers = [];
     globalThis.WebSocket = FakeWS;
     globalThis.location = { protocol: 'http:', host: 'test.local' };
+    // Mirror layout.html's injection of the shared WS control vocabulary.
+    globalThis.window = { WS_CONTROL: { resize: 'resize', deactivated: 'deactivated', reactivate: 'reactivate', error: 'error' } };
     globalThis.setTimeout = (fn, delay) => { timers.push({ fn, delay }); return timers.length; };
     globalThis.clearTimeout = (id) => { if (timers[id - 1]) timers[id - 1].cleared = true; };
 }

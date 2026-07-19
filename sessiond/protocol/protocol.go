@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	api "claude-sandbox-api"
 )
 
 // Frame types. DATA/CONTROL mirror the WebSocket binary/text split so the
@@ -43,14 +45,15 @@ type Attach struct {
 	Rows uint16 `json:"rows"`
 }
 
-// Control.Type values — the single owner of the WS/protocol control vocabulary.
+// Control.Type values — aliases of the shared api WS-control vocabulary (its
+// single owner), kept as protocol.Control* so sessiond and the backend bridge
+// reference them unchanged. ControlReactivate: a suspended viewer asks to
+// become active and get a fresh snapshot, without injecting input into the PTY.
 const (
-	ControlResize      = "resize"
-	ControlDeactivated = "deactivated"
-	ControlError       = "error"
-	// ControlReactivate: a suspended viewer asks to become active and get a
-	// fresh snapshot, without injecting any input into the PTY.
-	ControlReactivate = "reactivate"
+	ControlResize      = api.WSControlResize
+	ControlDeactivated = api.WSControlDeactivated
+	ControlError       = api.WSControlError
+	ControlReactivate  = api.WSControlReactivate
 )
 
 // Control mirrors the WS JSON control contract (see the Control* constants).

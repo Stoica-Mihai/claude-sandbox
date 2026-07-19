@@ -8,6 +8,7 @@ import { SessionSocket } from './session-socket.js';
 import { ANSI_RED, ANSI_GRAY, ANSI_RESET } from './terminal-ansi.js';
 import { wireClipboard } from './terminal-clipboard.js';
 import { wireTouchScroll } from './terminal-touch.js';
+import { wsControl } from './protocol.js';
 
 // Re-export the theme surface so existing importers (theme.js, tests) keep
 // importing it from terminal.js.
@@ -121,7 +122,7 @@ export const TerminalManager = {
                 }
             },
             onControl: (msg) => {
-                if (msg.type === 'deactivated') instance.needsRefresh = true;
+                if (msg.type === wsControl().DEACTIVATED) instance.needsRefresh = true;
             },
             onStatus: (status, info) => {
                 if (status === 'open') {
@@ -151,7 +152,7 @@ export const TerminalManager = {
         containerEl.addEventListener('focusin', () => {
             if (socket.status === 'open' && instance.needsRefresh) {
                 instance.needsRefresh = false;
-                socket.sendControl({ type: 'reactivate' });
+                socket.sendControl({ type: wsControl().REACTIVATE });
             }
         });
 

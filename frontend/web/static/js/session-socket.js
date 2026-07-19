@@ -7,6 +7,8 @@
 //   lost   — reconnect attempts exhausted; retry() re-arms.
 //   closed — close() was called (tab closed); terminal state.
 
+import { wsControl } from './protocol.js';
+
 const MAX_RECONNECT_ATTEMPTS = 10;
 // Start fast: a relay is briefly absent after a backend restart/rebuild, so the
 // first retries recover sub-second. Doubles to the cap from there.
@@ -100,7 +102,7 @@ export class SessionSocket {
 
     // sendResize reports the terminal dimensions (JSON control message).
     sendResize(cols, rows) {
-        return this.sendControl({ type: 'resize', cols, rows });
+        return this.sendControl({ type: wsControl().RESIZE, cols, rows });
     }
 
     // retry re-arms a lost connection (manual retry after exhausted backoff).

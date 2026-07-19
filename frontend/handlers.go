@@ -161,6 +161,18 @@ func templateFuncs() template.FuncMap {
 			return template.JS(b), err
 		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
+		// wsControlJSON injects the WS control vocabulary (window.WS_CONTROL) so
+		// the browser JS speaks the same control protocol as sessiond/protocol
+		// without re-typing the literals.
+		"wsControlJSON": func() (template.JS, error) {
+			b, err := json.Marshal(map[string]string{
+				"resize":      api.WSControlResize,
+				"deactivated": api.WSControlDeactivated,
+				"reactivate":  api.WSControlReactivate,
+				"error":       api.WSControlError,
+			})
+			return template.JS(b), err
+		},
 	}
 }
 

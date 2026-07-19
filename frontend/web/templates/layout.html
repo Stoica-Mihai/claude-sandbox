@@ -310,6 +310,8 @@
 // Dashboard enums injected from shared/enums.go (single source with backend validation).
 window.ACCENTS = {{accentsJSON}};
 window.NEW_PROJECT_NAME_PATTERN = "{{newProjectPattern}}";
+// WS control vocabulary injected from the shared Go contract (single source with sessiond/protocol).
+window.WS_CONTROL = {{wsControlJSON}};
 </script>
 <script type="module" src="/static/js/main.js"></script>
 </body>
