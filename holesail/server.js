@@ -37,10 +37,6 @@ const KEY_FILE = process.env.SHARE_KEY_FILE || '/data/share.key'
 // Must stay under the frontend proxy's 30s client timeout so failures
 // surface as this wrapper's JSON body, not a bare proxy 502.
 const READY_TIMEOUT_MS = 25000
-// Liveness probe cadence + per-probe timeout; two consecutive failures flip
-// state to error so a transient DHT hiccup doesn't flap the status.
-const PROBE_INTERVAL_MS = Number(process.env.SHARE_PROBE_INTERVAL_MS || 5 * 60 * 1000)
-const PROBE_TIMEOUT_MS = 20000
 
 // Load the persisted key, or create one. The key IS the credential:
 // the secure connection string is literally "hs://s000" + key.
@@ -128,42 +124,6 @@ async function stopTunnel() {
   state = 'private'
   lastError = null
 }
-
-// Liveness watchdog: Holesail exposes no lifecycle events, so while public we
-// periodically dial our own key as a client (a real end-to-end DHT probe).
-// Two consecutive failures flip state to error so status() stops advertising
-// a dead hs:// URL.
-let probeFailures = 0
-
-async function probeTunnel() {
-  if (state !== 'public') {
-    probeFailures = 0
-    return
-  }
-  let probe = null
-  try {
-    probe = new Holesail({ client: true, secure: true, key })
-    await withTimeout(probe.ready(), PROBE_TIMEOUT_MS, 'tunnel probe timed out')
-    probeFailures = 0
-  } catch (err) {
-    probeFailures++
-    console.error(`tunnel probe failed (${probeFailures}): ${err.message || err}`)
-    if (probeFailures >= 2 && state === 'public') {
-      state = 'error'
-      lastError = 'tunnel unreachable: ' + (err.message || String(err))
-      await closeInstance()
-      probeFailures = 0
-    }
-  } finally {
-    if (probe) {
-      try { await probe.close() } catch {}
-    }
-  }
-}
-
-setInterval(() => {
-  op = op.then(probeTunnel).catch(() => {})
-}, PROBE_INTERVAL_MS).unref()
 
 async function regenerate() {
   const wasPublic = state === 'public'
