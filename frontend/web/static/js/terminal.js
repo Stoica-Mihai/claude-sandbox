@@ -41,8 +41,14 @@ export const TerminalManager = {
         term.loadAddon(webLinksAddon);
 
         // GPU-accelerated rendering (desktop only — saves battery on mobile).
+        // Skip on Firefox: its xterm WebGL renderer drops differential repaints
+        // (e.g. exiting an inline view like /usage leaves the old screen on
+        // display until the next input forces a redraw — the "press Esc twice"
+        // bug). Firefox falls back to xterm's DOM renderer, which repaints
+        // reliably; a terminal dashboard doesn't need the GPU path.
+        const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent || '');
         let webglAddon = null;
-        if (!mobile && typeof WebglAddon !== 'undefined') {
+        if (!mobile && !isFirefox && typeof WebglAddon !== 'undefined') {
             try {
                 webglAddon = new WebglAddon.WebglAddon();
                 webglAddon.onContextLoss(() => {
