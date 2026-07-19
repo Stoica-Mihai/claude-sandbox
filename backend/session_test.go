@@ -21,6 +21,7 @@ type fakeHost struct {
 	spawnErr error
 	killErr  error
 	dial     func(name string) (net.Conn, error)
+	listFn   func() ([]protocol.SessionInfo, error) // overrides sessions when set
 }
 
 func (f *fakeHost) Spawn(cwd, uuid string, resume bool) (string, error) {
@@ -37,6 +38,9 @@ func (f *fakeHost) Spawn(cwd, uuid string, resume bool) (string, error) {
 func (f *fakeHost) List() ([]protocol.SessionInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.listFn != nil {
+		return f.listFn()
+	}
 	return append([]protocol.SessionInfo(nil), f.sessions...), nil
 }
 
@@ -252,5 +256,42 @@ func TestSweepOrphanUploads(t *testing.T) {
 	}
 	if _, err := os.Stat(liveDir); err != nil {
 		t.Fatalf("live session upload dir must be kept: %v", err)
+	}
+}
+
+// TestDeleteHistoryWaitsForSessionExit: a live conversation's transcript must
+// not be deleted until its session has left sessiond's list (the process
+// exited and finished flushing), or the dying process would re-create it.
+func TestDeleteHistoryWaitsForSessionExit(t *testing.T) {
+	uuid := testUUID1
+	_, tx := seedTranscript(t, uuid, "/workspace/a")
+	idx := loadSessionIndex()
+	idx.add(uuid, "/workspace/a", 100)
+	sm, fh := newTestManager(t, idx)
+	sm.store.add(sessionRecord{Name: "claude-live", CWD: "/workspace/a", SessionID: uuid})
+
+	// The session lingers in the list for the first two polls, then exits. While
+	// it is still listed the transcript must remain on disk. (listFn runs under
+	// the fake's own lock, so calls is serialized.)
+	calls := 0
+	fh.listFn = func() ([]protocol.SessionInfo, error) {
+		calls++
+		if calls < 3 {
+			if _, err := os.Stat(tx); err != nil {
+				t.Errorf("transcript deleted while session still live (poll %d)", calls)
+			}
+			return []protocol.SessionInfo{{Name: "claude-live", UUID: uuid}}, nil
+		}
+		return nil, nil // exited
+	}
+
+	if err := sm.DeleteHistory(uuid); err != nil {
+		t.Fatalf("DeleteHistory: %v", err)
+	}
+	if calls < 3 {
+		t.Fatalf("did not wait for the session to leave the list (calls=%d)", calls)
+	}
+	if _, err := os.Stat(tx); !os.IsNotExist(err) {
+		t.Fatalf("transcript not deleted after the session exited: %v", err)
 	}
 }

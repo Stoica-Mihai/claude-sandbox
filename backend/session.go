@@ -22,6 +22,12 @@ const (
 	// pollInterval is how often the poller reconciles the store against
 	// sessiond's LIST (catching sessions that exit on their own).
 	pollInterval = 5 * time.Second
+	// sessionExitWait bounds how long DeleteHistory waits for a killed session
+	// to leave sessiond's list before deleting its transcript. It must exceed
+	// sessiond's SIGTERM→SIGKILL grace so the process has finished flushing.
+	sessionExitWait = 3 * time.Second
+	// sessionExitPoll is the poll cadence within sessionExitWait.
+	sessionExitPoll = 50 * time.Millisecond
 )
 
 // SessionManager owns the backend's in-memory session store, fed by sessiond

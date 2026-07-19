@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"claude-sandbox-sessiond/protocol"
 )
 
 // Spawn creates a new Claude Code conversation in cwd. It generates a uuid and
@@ -76,11 +78,16 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 		return fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
 	}
 
-	// Kill the live session running this conversation, if any.
+	// Kill the live session running this conversation, if any, and wait for it
+	// to actually exit before deleting the transcript. sessiond ACKs a kill at
+	// SIGTERM, but claude can still flush its .jsonl during the grace period, so
+	// deleting earlier would let the dying process re-create the transcript we
+	// removed — an orphan the index no longer references.
 	if rec, ok := sm.store.byUUID(uuid); ok {
 		if err := sm.Kill(rec.Name); err != nil {
 			return err
 		}
+		sm.waitForSessionGone(rec.Name)
 	}
 
 	if err := sm.index.remove(uuid); err != nil {
@@ -88,6 +95,37 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 	}
 	deleteTranscript(uuid)
 	return nil
+}
+
+// waitForSessionGone blocks until sessiond's list no longer contains name (the
+// process has exited and been reaped) or sessionExitWait elapses. A list error
+// or the timeout returns best-effort, so a wedged sessiond can't hang a delete.
+func (sm *SessionManager) waitForSessionGone(name string) {
+	deadline := time.Now().Add(sessionExitWait)
+	for {
+		infos, err := sm.sd.List()
+		if err != nil {
+			return
+		}
+		if !containsSession(infos, name) {
+			return
+		}
+		if !time.Now().Before(deadline) {
+			slog.Warn("session still listed after kill; deleting transcript anyway", "session", name)
+			return
+		}
+		time.Sleep(sessionExitPoll)
+	}
+}
+
+// containsSession reports whether infos holds a session with the given name.
+func containsSession(infos []protocol.SessionInfo, name string) bool {
+	for _, info := range infos {
+		if info.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Kill terminates a session via sessiond and drops it from the store. A
