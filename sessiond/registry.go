@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -28,6 +29,25 @@ const (
 // setPTYSize resizes a PTY master.
 func setPTYSize(f *os.File, cols, rows uint16) error {
 	return pty.Setsize(f, &pty.Winsize{Cols: cols, Rows: rows})
+}
+
+// pollableMaster rewraps a PTY master so os.File deadlines work: dup the fd,
+// set it non-blocking, hand it to os.NewFile (which registers non-blocking
+// fds with the runtime poller), and close the original blocking wrapper.
+// Without this, SetWriteDeadline is a silent no-op and a program that stops
+// reading stdin blocks the session actor in a raw write syscall.
+func pollableMaster(f *os.File) (*os.File, error) {
+	dupFd, err := syscall.Dup(int(f.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("dup pty master: %w", err)
+	}
+	if err := syscall.SetNonblock(dupFd, true); err != nil {
+		_ = syscall.Close(dupFd)
+		return nil, fmt.Errorf("set pty master non-blocking: %w", err)
+	}
+	nf := os.NewFile(uintptr(dupFd), f.Name())
+	_ = f.Close()
+	return nf, nil
 }
 
 // registry owns the live session set and serves the control-socket ops.
@@ -93,11 +113,18 @@ func (r *registry) spawn(cwd, uuid string, resume bool) (string, error) {
 		}
 
 		cmd := r.newCommand(cwd, uuid, resume)
-		ptmx, err := pty.Start(cmd)
+		raw, err := pty.Start(cmd)
 		if err != nil {
 			_ = ln.Close()
 			_ = os.Remove(sockPath)
 			return "", fmt.Errorf("starting claude: %w", err)
+		}
+		ptmx, err := pollableMaster(raw)
+		if err != nil {
+			_ = ln.Close()
+			_ = os.Remove(sockPath)
+			_ = raw.Close()
+			return "", err
 		}
 
 		s := newSession(name, cwd, uuid, time.Now())

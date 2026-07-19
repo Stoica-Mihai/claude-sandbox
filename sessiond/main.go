@@ -79,6 +79,12 @@ func main() {
 		slog.Error("cannot create socket dir", "dir", sockDir, "error", err)
 		os.Exit(1)
 	}
+	// MkdirAll no-ops on an existing dir (image/volume pre-create it with the
+	// build umask), so enforce the 0700 contract explicitly.
+	if err := os.Chmod(sockDir, 0o700); err != nil {
+		slog.Error("cannot chmod socket dir", "dir", sockDir, "error", err)
+		os.Exit(1)
+	}
 	cleanStaleSockets(sockDir)
 
 	reg := newRegistry(sockDir)

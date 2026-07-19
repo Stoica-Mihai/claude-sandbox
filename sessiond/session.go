@@ -18,9 +18,6 @@ const (
 	// viewerQueueSize is the per-viewer outbound buffer; a viewer that falls
 	// this far behind is evicted instead of blocking the actor.
 	viewerQueueSize = 256
-	// inputWriteTimeout bounds a PTY input write so a program that stops
-	// reading stdin can't freeze the session actor.
-	inputWriteTimeout = 2 * time.Second
 	// killGracePeriod is how long a kill waits after SIGTERM before SIGKILL.
 	killGracePeriod = 2 * time.Second
 	// defaultCols/defaultRows seed the PTY before a viewer reports dimensions.
@@ -79,6 +76,10 @@ func (cmdKill) isSessCmd()     {}
 func (cmdEscalate) isSessCmd() {}
 
 var deactivatedMsg = []byte(`{"type":"deactivated"}`)
+
+// inputWriteTimeout bounds a PTY input write so a program that stops reading
+// stdin can't freeze the session actor. Variable so tests can shorten it.
+var inputWriteTimeout = 2 * time.Second
 
 // session hosts one claude process: it owns the PTY, mirrors output into the
 // emulator, and fans out to attached viewers. All mutable state is owned by a
@@ -329,6 +330,10 @@ func (s *session) handleInput(c cmdInput) {
 	}
 	if err := s.ptmx.SetWriteDeadline(time.Now().Add(inputWriteTimeout)); err == nil {
 		defer func() { _ = s.ptmx.SetWriteDeadline(time.Time{}) }()
+	} else {
+		// Deadline unsupported means the fd bypassed pollableMaster — a stalled
+		// program could then wedge this actor; make that visible.
+		slog.Warn("pty write deadline unsupported", "session", s.name, "error", err)
 	}
 	if _, err := s.ptmx.Write(c.data); err != nil {
 		slog.Warn("input write failed", "session", s.name, "error", err)

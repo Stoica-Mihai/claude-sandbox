@@ -23,6 +23,9 @@ func socketpairFiles(t *testing.T) (*os.File, *os.File) {
 	if err != nil {
 		t.Fatalf("socketpair: %v", err)
 	}
+	// Non-blocking before NewFile so the poller registers them and deadlines work.
+	_ = syscall.SetNonblock(fds[0], true)
+	_ = syscall.SetNonblock(fds[1], true)
 	a := os.NewFile(uintptr(fds[0]), "pty-side")
 	b := os.NewFile(uintptr(fds[1]), "program-side")
 	t.Cleanup(func() { a.Close(); b.Close() })
@@ -376,4 +379,118 @@ func TestSessionConcurrentAccessRaceFree(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+// TestInputWriteDeadlineKeepsActorAlive: a program that stops reading stdin
+// (unread PTY slave) must fail the input write with an error CONTROL frame to
+// the sender while the actor keeps serving output.
+func TestInputWriteDeadlineKeepsActorAlive(t *testing.T) {
+	prev := inputWriteTimeout
+	inputWriteTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { inputWriteTimeout = prev })
+
+	ptmx, pts, err := ptyOpen()
+	if err != nil {
+		t.Skipf("pty open: %v", err)
+	}
+	t.Cleanup(func() { ptmx.Close(); pts.Close() })
+
+	s := newSession("claude-stuck", "/workspace/x", "uuid-s", time.Now())
+	s.begin(ptmx, nil)
+	t.Cleanup(func() {
+		s.Kill()
+		<-s.Exited()
+	})
+
+	client := attachTestViewer(t, s, 80, 24)
+	if typ, _ := readOneFrame(t, client); typ != protocol.FrameSnapshot {
+		t.Fatalf("expected snapshot, got 0x%02x", typ)
+	}
+
+	// Nobody reads the slave. One oversize newline-terminated burst (the PTY
+	// boots in canonical mode, where only line-terminated input queues)
+	// overfills the input queue; the deadline fires and the error comes back
+	// as a CONTROL frame.
+	if err := protocol.WriteFrame(client, protocol.FrameData, bytes.Repeat([]byte("xxxxxxx\n"), 8<<10)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_ = client.SetReadDeadline(deadline)
+		typ, payload, err := protocol.ReadFrame(client)
+		if err != nil {
+			t.Fatalf("input-deadline error never surfaced: %v", err)
+		}
+		if typ == protocol.FrameControl && bytes.Contains(payload, []byte(`"error"`)) {
+			break
+		}
+	}
+
+	// Actor must still be responsive: slave-side output reaches a fresh viewer.
+	if _, err := pts.Write([]byte("still alive")); err != nil {
+		t.Fatal(err)
+	}
+	fresh := attachTestViewer(t, s, 80, 24)
+	readFrameUntil(t, fresh, "still alive")
+}
+
+// TestSlowViewerEvicted: a viewer that never drains its connection is evicted
+// once its queue fills, and the actor keeps serving other viewers.
+func TestSlowViewerEvicted(t *testing.T) {
+	s, programSide := startTestSession(t)
+
+	// stuck viewer: attach, then never read — its writer blocks on the pipe,
+	// its queue fills, the actor evicts it.
+	stuck := attachTestViewer(t, s, 80, 24)
+	_ = stuck
+
+	healthy := attachTestViewer(t, s, 80, 24)
+	go func() { // healthy viewer drains everything
+		for {
+			_ = healthy.SetReadDeadline(time.Now().Add(20 * time.Second))
+			if _, _, err := protocol.ReadFrame(healthy); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Flood well past viewerQueueSize; the actor must never block.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < viewerQueueSize+64; i++ {
+			if _, err := programSide.Write([]byte("spam\n")); err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("actor wedged while a viewer was not draining")
+	}
+
+	// Input from a live viewer still round-trips (actor responsive).
+	got := make(chan struct{})
+	go func() {
+		buf := make([]byte, 64)
+		for {
+			n, err := programSide.Read(buf)
+			if err != nil {
+				return
+			}
+			if bytes.Contains(buf[:n], []byte("ping")) {
+				close(got)
+				return
+			}
+		}
+	}()
+	if err := protocol.WriteFrame(healthy, protocol.FrameData, []byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("input from healthy viewer did not reach the program")
+	}
 }
