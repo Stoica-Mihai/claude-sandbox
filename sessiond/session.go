@@ -24,7 +24,7 @@ const (
 	// this far behind is evicted instead of blocking the actor.
 	viewerQueueSize = 256
 	// killGracePeriod is how long a kill waits after SIGTERM before SIGKILL.
-	killGracePeriod = 2 * time.Second
+	killGracePeriod = protocol.KillGracePeriod
 	// defaultCols/defaultRows seed the PTY before a viewer reports dimensions.
 	defaultCols = 80
 	defaultRows = 24

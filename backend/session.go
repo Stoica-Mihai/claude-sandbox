@@ -23,9 +23,10 @@ const (
 	// sessiond's LIST (catching sessions that exit on their own).
 	pollInterval = 5 * time.Second
 	// sessionExitWait bounds how long DeleteHistory waits for a killed session
-	// to leave sessiond's list before deleting its transcript. It must exceed
-	// sessiond's SIGTERM→SIGKILL grace so the process has finished flushing.
-	sessionExitWait = 3 * time.Second
+	// to leave sessiond's list before deleting its transcript. Derived from the
+	// SIGTERM→SIGKILL grace plus a margin so the ordering (wait must exceed
+	// grace, or transcripts get deleted mid-flush) can't invert on a tuning edit.
+	sessionExitWait = protocol.KillGracePeriod + time.Second
 	// sessionExitPoll is the poll cadence within sessionExitWait.
 	sessionExitPoll = 50 * time.Millisecond
 )

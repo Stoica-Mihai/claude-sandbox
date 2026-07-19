@@ -30,6 +30,12 @@ const (
 // largest legitimate frames).
 const MaxFrame = 16 << 20
 
+// KillGracePeriod is how long a kill waits after SIGTERM before SIGKILL. The
+// backend bounds its post-kill transcript-delete wait to strictly exceed this
+// (see backend sessionExitWait) so the process has finished flushing first —
+// the two are one ordering rule, single-sourced here.
+const KillGracePeriod = 2 * time.Second
+
 // Attach is the handshake opening a session stream; dimensions are mandatory
 // so the snapshot renders at the viewer's real size.
 type Attach struct {
