@@ -50,10 +50,9 @@ services:
       - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
       # Container settings; entrypoint copies this into the scoped config dir.
       - ./container-settings.json:/home/claude/container-settings.json
-      # sessiond sockets (shared with the backend bridge).
-      - claude-sock:/home/claude/.local/state/claude
-      # Image-paste uploads: written by the backend, read by claude here.
-      - claude-uploads:/tmp/uploads
+      # Shared state: sessiond sockets + image-paste uploads (backend writes,
+      # claude reads).
+      - claude-state:/home/claude/.local/state/claude
 
     environment:
       - HOME=/home/claude
@@ -104,10 +103,8 @@ services:
       - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
       # Settings editor source file (GET/PUT /api/settings).
       - ./container-settings.json:/home/claude/container-settings.json
-      # sessiond sockets (control + per-session attach).
-      - claude-sock:/home/claude/.local/state/claude
-      # Image-paste uploads (written here, read by claude in sessions).
-      - claude-uploads:/tmp/uploads
+      # Shared state: sessiond sockets (control + per-session attach) + uploads.
+      - claude-state:/home/claude/.local/state/claude
 
     environment:
       - HOME=/home/claude
@@ -206,6 +203,5 @@ networks:
     driver: bridge
 
 volumes:
-  claude-sock:
-  claude-uploads:
+  claude-state:
   holesail-share-key:

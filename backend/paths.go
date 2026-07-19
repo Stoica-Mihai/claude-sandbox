@@ -7,28 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"claude-sandbox-sessiond/protocol"
 )
 
 // sockDir is the sessiond socket directory (shared volume with the sessions
 // container).
 var sockDir string
 
-// initPaths resolves the sessiond socket directory. It honors CLAUDE_SOCK_DIR
-// so the backend and sessiond agree on the location; otherwise it defaults
-// under XDG_RUNTIME_DIR (fallback ~/.local/state).
+// initPaths resolves the sessiond socket directory from the protocol package
+// (the single owner of the rendezvous path).
 func initPaths() error {
-	sockDir = os.Getenv("CLAUDE_SOCK_DIR")
-	if sockDir == "" {
-		base := os.Getenv("XDG_RUNTIME_DIR")
-		if base == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return err
-			}
-			base = filepath.Join(home, ".local", "state")
-		}
-		sockDir = filepath.Join(base, "claude", "sock")
+	d, err := protocol.SockDir()
+	if err != nil {
+		return err
 	}
+	sockDir = d
 	return nil
 }
 

@@ -3,13 +3,13 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -25,30 +25,6 @@ const (
 	// termType is the TERM environment variable for new sessions.
 	termType = "xterm-256color"
 )
-
-// setPTYSize resizes a PTY master.
-func setPTYSize(f *os.File, cols, rows uint16) error {
-	return pty.Setsize(f, &pty.Winsize{Cols: cols, Rows: rows})
-}
-
-// pollableMaster rewraps a PTY master so os.File deadlines work: dup the fd,
-// set it non-blocking, hand it to os.NewFile (which registers non-blocking
-// fds with the runtime poller), and close the original blocking wrapper.
-// Without this, SetWriteDeadline is a silent no-op and a program that stops
-// reading stdin blocks the session actor in a raw write syscall.
-func pollableMaster(f *os.File) (*os.File, error) {
-	dupFd, err := syscall.Dup(int(f.Fd()))
-	if err != nil {
-		return nil, fmt.Errorf("dup pty master: %w", err)
-	}
-	if err := syscall.SetNonblock(dupFd, true); err != nil {
-		_ = syscall.Close(dupFd)
-		return nil, fmt.Errorf("set pty master non-blocking: %w", err)
-	}
-	nf := os.NewFile(uintptr(dupFd), f.Name())
-	_ = f.Close()
-	return nf, nil
-}
 
 // registry owns the live session set and serves the control-socket ops.
 type registry struct {
@@ -113,18 +89,11 @@ func (r *registry) spawn(cwd, uuid string, resume bool) (string, error) {
 		}
 
 		cmd := r.newCommand(cwd, uuid, resume)
-		raw, err := pty.Start(cmd)
+		ptmx, err := pty.Start(cmd)
 		if err != nil {
 			_ = ln.Close()
 			_ = os.Remove(sockPath)
 			return "", fmt.Errorf("starting claude: %w", err)
-		}
-		ptmx, err := pollableMaster(raw)
-		if err != nil {
-			_ = ln.Close()
-			_ = os.Remove(sockPath)
-			_ = raw.Close()
-			return "", err
 		}
 
 		s := newSession(name, cwd, uuid, time.Now())
@@ -162,16 +131,16 @@ func (r *registry) list() []protocol.SessionInfo {
 	return out
 }
 
-// kill terminates a session by name.
-func (r *registry) kill(name string) error {
+// kill terminates a session by name; ok=false means the name is unknown.
+func (r *registry) kill(name string) (ok bool) {
 	r.mu.Lock()
-	s, ok := r.sessions[name]
+	s, found := r.sessions[name]
 	r.mu.Unlock()
-	if !ok {
-		return fmt.Errorf("session not found: %s", name)
+	if !found {
+		return false
 	}
 	s.Kill()
-	return nil
+	return true
 }
 
 // shutdown kills every session and waits (bounded) for their teardown.
@@ -217,7 +186,7 @@ func (r *registry) handleControlConn(conn net.Conn) {
 		return
 	}
 	var req protocol.Request
-	if err := jsonUnmarshal(payload, &req); err != nil {
+	if err := json.Unmarshal(payload, &req); err != nil {
 		_ = protocol.WriteJSONFrame(conn, protocol.FrameResponse, protocol.Response{Error: "bad request"})
 		return
 	}
@@ -238,10 +207,11 @@ func (r *registry) handleControlConn(conn net.Conn) {
 			resp.Name = name
 		}
 	case protocol.OpKill:
-		if err := r.kill(req.Name); err != nil {
-			resp.Error = err.Error()
-		} else {
+		if r.kill(req.Name) {
 			resp.OK = true
+		} else {
+			resp.NotFound = true
+			resp.Error = "session not found: " + req.Name
 		}
 	default:
 		resp.Error = "unknown op: " + req.Op

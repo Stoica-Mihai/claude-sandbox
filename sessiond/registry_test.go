@@ -113,17 +113,5 @@ func TestControlUnknownOp(t *testing.T) {
 	}
 }
 
-// ptyOpen opens a real PTY pair with the master rewrapped pollable, as spawn does.
-func ptyOpen() (*os.File, *os.File, error) {
-	raw, tty, err := pty.Open()
-	if err != nil {
-		return nil, nil, err
-	}
-	master, err := pollableMaster(raw)
-	if err != nil {
-		_ = raw.Close()
-		_ = tty.Close()
-		return nil, nil, err
-	}
-	return master, tty, nil
-}
+// ptyOpen opens a real PTY pair; session.begin makes the master pollable.
+func ptyOpen() (*os.File, *os.File, error) { return pty.Open() }

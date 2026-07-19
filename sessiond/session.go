@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/creack/pty"
 
 	"claude-sandbox-sessiond/protocol"
 )
@@ -64,18 +68,16 @@ type cmdResize struct {
 type cmdOutput struct{ data []byte }
 type cmdEnd struct{ reason string }
 type cmdKill struct{}
-type cmdEscalate struct{}
 
-func (cmdAttach) isSessCmd()   {}
-func (cmdDetach) isSessCmd()   {}
-func (cmdInput) isSessCmd()    {}
-func (cmdResize) isSessCmd()   {}
-func (cmdOutput) isSessCmd()   {}
-func (cmdEnd) isSessCmd()      {}
-func (cmdKill) isSessCmd()     {}
-func (cmdEscalate) isSessCmd() {}
+func (cmdAttach) isSessCmd() {}
+func (cmdDetach) isSessCmd() {}
+func (cmdInput) isSessCmd()  {}
+func (cmdResize) isSessCmd() {}
+func (cmdOutput) isSessCmd() {}
+func (cmdEnd) isSessCmd()    {}
+func (cmdKill) isSessCmd()   {}
 
-var deactivatedMsg = []byte(`{"type":"deactivated"}`)
+var deactivatedMsg, _ = json.Marshal(protocol.Control{Type: protocol.ControlDeactivated})
 
 // inputWriteTimeout bounds a PTY input write so a program that stops reading
 // stdin can't freeze the session actor. Variable so tests can shorten it.
@@ -104,9 +106,7 @@ type session struct {
 	ln         net.Listener
 	viewers    map[net.Conn]*viewer
 	active     net.Conn // active viewer: the one the PTY size follows
-	lastCols   uint16
-	lastRows   uint16
-	killReason string // set when a kill op initiated teardown
+	killReason string   // set when a kill op initiated teardown
 }
 
 func newSession(name, cwd, uuid string, created time.Time) *session {
@@ -123,10 +123,35 @@ func newSession(name, cwd, uuid string, created time.Time) *session {
 	}
 }
 
+// pollableMaster rewraps an fd-backed file so os.File deadlines work: dup the
+// fd, set it non-blocking, hand it to os.NewFile (which registers non-blocking
+// fds with the runtime poller), and close the original blocking wrapper.
+// Without this, SetWriteDeadline is a silent no-op and a program that stops
+// reading stdin blocks the session actor in a raw write syscall.
+func pollableMaster(f *os.File) (*os.File, error) {
+	dupFd, err := syscall.Dup(int(f.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("dup pty master: %w", err)
+	}
+	if err := syscall.SetNonblock(dupFd, true); err != nil {
+		_ = syscall.Close(dupFd)
+		return nil, fmt.Errorf("set pty master non-blocking: %w", err)
+	}
+	nf := os.NewFile(uintptr(dupFd), f.Name())
+	_ = f.Close()
+	return nf, nil
+}
+
 // begin wires an open PTY (and optionally its command) into the session and
-// starts the actor, read loop, and child watcher. Split from spawn so tests
-// can inject a file pair with a nil cmd.
+// starts the actor, read loop, and child watcher. It owns the pollability
+// invariant: whatever fd arrives is rewrapped so write deadlines are real.
+// Split from spawn so tests can inject a file pair with a nil cmd.
 func (s *session) begin(ptmx *os.File, cmd *exec.Cmd) {
+	if nf, err := pollableMaster(ptmx); err == nil {
+		ptmx = nf
+	} else {
+		slog.Warn("pty master not pollable; write deadlines degraded", "session", s.name, "error", err)
+	}
 	s.ptmx = ptmx
 	s.cmd = cmd
 	s.applyResize(defaultCols, defaultRows)
@@ -204,10 +229,6 @@ func (s *session) handle(c sessCmd) bool {
 		s.handleOutput(c.data)
 	case cmdKill:
 		return s.handleKill()
-	case cmdEscalate:
-		if s.processAlive() {
-			_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGKILL)
-		}
 	case cmdEnd:
 		if s.killReason == "" {
 			s.killReason = c.reason
@@ -217,9 +238,9 @@ func (s *session) handle(c sessCmd) bool {
 	return false
 }
 
-// handleKill starts termination: mark the reason, signal the group, and
-// schedule escalation. Teardown happens when the child-exit watcher fires;
-// with no process (tests) teardown is immediate.
+// handleKill starts termination: mark the reason and signal the child.
+// Teardown happens when the child-exit watcher fires; with no process (tests)
+// teardown is immediate.
 func (s *session) handleKill() bool {
 	if s.killReason == "" {
 		s.killReason = protocol.CloseKilled
@@ -227,10 +248,21 @@ func (s *session) handleKill() bool {
 	if !s.processAlive() {
 		return true
 	}
+	s.terminateChild()
+	return false
+}
+
+// terminateChild signals the process group SIGTERM and schedules a SIGKILL
+// escalation after the grace period. Safe off the actor: cmd is immutable
+// after begin and processAlive reads only the waited channel.
+func (s *session) terminateChild() {
 	pid := s.cmd.Process.Pid
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	time.AfterFunc(killGracePeriod, func() { s.send(cmdEscalate{}) })
-	return false
+	time.AfterFunc(killGracePeriod, func() {
+		if s.processAlive() {
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+		}
+	})
 }
 
 // processAlive reports whether the session's child process is still running.
@@ -255,9 +287,7 @@ func (s *session) teardown() {
 	if s.processAlive() {
 		// PTY died or daemon is stopping while the child lives: best-effort kill;
 		// the watcher goroutine reaps it.
-		pid := s.cmd.Process.Pid
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
-		time.AfterFunc(killGracePeriod, func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+		s.terminateChild()
 	}
 
 	reason := s.killReason
@@ -338,7 +368,7 @@ func (s *session) handleInput(c cmdInput) {
 	if _, err := s.ptmx.Write(c.data); err != nil {
 		slog.Warn("input write failed", "session", s.name, "error", err)
 		if ok {
-			msg, _ := json.Marshal(protocol.Control{Type: "error", Message: "input write failed: " + err.Error()})
+			msg, _ := json.Marshal(protocol.Control{Type: protocol.ControlError, Message: "input write failed: " + err.Error()})
 			if !s.enqueue(v, viewerMsg{protocol.FrameControl, msg}) {
 				s.dropViewer(c.conn)
 			}
@@ -384,13 +414,12 @@ func (s *session) handleResize(c cmdResize) {
 	}
 }
 
-// applyResize records the dimensions and resizes the emulator and PTY (the
-// kernel delivers SIGWINCH to the foreground process group).
+// applyResize resizes the emulator and PTY (the kernel delivers SIGWINCH to
+// the foreground process group).
 func (s *session) applyResize(cols, rows uint16) {
-	s.lastCols, s.lastRows = cols, rows
 	s.term.Resize(cols, rows)
 	if s.ptmx != nil {
-		if err := setPTYSize(s.ptmx, cols, rows); err != nil {
+		if err := pty.Setsize(s.ptmx, &pty.Winsize{Cols: cols, Rows: rows}); err != nil {
 			slog.Debug("resize failed", "session", s.name, "error", err)
 		}
 	}
@@ -443,7 +472,10 @@ func (s *session) viewerWriter(v *viewer) {
 // readConn handles one attach connection: an ATTACH handshake with real
 // dimensions, then input DATA and resize CONTROL frames.
 func (s *session) readConn(conn net.Conn) {
-	typ, payload, err := protocol.ReadFrame(conn)
+	// One buffered reader per connection: header+payload (and adjacent small
+	// frames) collapse into single reads on this per-keystroke path.
+	br := bufio.NewReader(conn)
+	typ, payload, err := protocol.ReadFrame(br)
 	if err != nil || typ != protocol.FrameAttach {
 		_ = conn.Close()
 		return
@@ -459,7 +491,7 @@ func (s *session) readConn(conn net.Conn) {
 	}
 
 	for {
-		typ, payload, err := protocol.ReadFrame(conn)
+		typ, payload, err := protocol.ReadFrame(br)
 		if err != nil {
 			s.send(cmdDetach{conn: conn})
 			return
@@ -474,7 +506,7 @@ func (s *session) readConn(conn net.Conn) {
 			if json.Unmarshal(payload, &ctl) != nil {
 				continue
 			}
-			if ctl.Type == "resize" && ctl.Cols > 0 && ctl.Rows > 0 {
+			if ctl.Type == protocol.ControlResize && ctl.Cols > 0 && ctl.Rows > 0 {
 				if !s.send(cmdResize{conn: conn, cols: ctl.Cols, rows: ctl.Rows}) {
 					return
 				}

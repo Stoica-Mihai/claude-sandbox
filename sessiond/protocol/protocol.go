@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -36,7 +37,14 @@ type Attach struct {
 	Rows uint16 `json:"rows"`
 }
 
-// Control mirrors the WS JSON control contract ("resize", "deactivated", "error").
+// Control.Type values — the single owner of the WS/protocol control vocabulary.
+const (
+	ControlResize      = "resize"
+	ControlDeactivated = "deactivated"
+	ControlError       = "error"
+)
+
+// Control mirrors the WS JSON control contract (see the Control* constants).
 type Control struct {
 	Type    string `json:"type"`
 	Cols    uint16 `json:"cols,omitempty"`
@@ -80,12 +88,34 @@ type SessionInfo struct {
 	Created int64  `json:"created"`
 }
 
-// Response is a control-socket response.
+// Response is a control-socket response. NotFound distinguishes "sessiond
+// does not know this session" from real failures, so clients never infer the
+// taxonomy from OK-ness.
 type Response struct {
 	OK       bool          `json:"ok"`
 	Error    string        `json:"error,omitempty"`
+	NotFound bool          `json:"notFound,omitempty"`
 	Name     string        `json:"name,omitempty"`
 	Sessions []SessionInfo `json:"sessions,omitempty"`
+}
+
+// SockDir resolves the socket directory both sessiond and the backend must
+// agree on: CLAUDE_SOCK_DIR, else XDG_RUNTIME_DIR/claude/sock, else
+// ~/.local/state/claude/sock. Single owner — the two processes rendezvous on
+// this path over a shared volume.
+func SockDir() (string, error) {
+	if d := os.Getenv("CLAUDE_SOCK_DIR"); d != "" {
+		return d, nil
+	}
+	base := os.Getenv("XDG_RUNTIME_DIR")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(base, "claude", "sock"), nil
 }
 
 // ControlSock returns the control socket path under the socket dir.
@@ -95,6 +125,8 @@ func ControlSock(dir string) string { return filepath.Join(dir, "control.sock") 
 func SessionSock(dir, name string) string { return filepath.Join(dir, name+".sock") }
 
 // WriteFrame writes one frame: type byte, big-endian u32 length, payload.
+// Header and payload go out as one vectored write (a single syscall on
+// net.Conn), not two — this sits under every hot stream writer.
 func WriteFrame(w io.Writer, typ byte, payload []byte) error {
 	if len(payload) > MaxFrame {
 		return fmt.Errorf("frame payload %d exceeds max %d", len(payload), MaxFrame)
@@ -102,15 +134,12 @@ func WriteFrame(w io.Writer, typ byte, payload []byte) error {
 	var hdr [5]byte
 	hdr[0] = typ
 	binary.BigEndian.PutUint32(hdr[1:], uint32(len(payload)))
-	if _, err := w.Write(hdr[:]); err != nil {
-		return err
-	}
+	bufs := net.Buffers{hdr[:]}
 	if len(payload) > 0 {
-		if _, err := w.Write(payload); err != nil {
-			return err
-		}
+		bufs = append(bufs, payload)
 	}
-	return nil
+	_, err := bufs.WriteTo(w)
+	return err
 }
 
 // WriteJSONFrame marshals v and writes it as a frame of the given type.
@@ -122,8 +151,21 @@ func WriteJSONFrame(w io.Writer, typ byte, v any) error {
 	return WriteFrame(w, typ, b)
 }
 
-// ReadFrame reads one frame, rejecting payloads over MaxFrame.
+// ReadFrame reads one frame, rejecting payloads over MaxFrame. The payload is
+// freshly allocated and owned by the caller.
 func ReadFrame(r io.Reader) (byte, []byte, error) {
+	return readFrame(r, nil)
+}
+
+// ReadFrameInto is ReadFrame with a caller-owned scratch buffer: the returned
+// payload aliases scratch when it fits (valid until the next call), falling
+// back to allocation for larger frames. For hot loops that consume the
+// payload before reading again.
+func ReadFrameInto(r io.Reader, scratch []byte) (byte, []byte, error) {
+	return readFrame(r, scratch)
+}
+
+func readFrame(r io.Reader, scratch []byte) (byte, []byte, error) {
 	var hdr [5]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return 0, nil, err
@@ -132,11 +174,21 @@ func ReadFrame(r io.Reader) (byte, []byte, error) {
 	if n > MaxFrame {
 		return 0, nil, fmt.Errorf("frame payload %d exceeds max %d", n, MaxFrame)
 	}
-	payload := make([]byte, n)
+	payload := scratch
+	if uint32(cap(payload)) < n {
+		payload = make([]byte, n)
+	}
+	payload = payload[:n]
 	if _, err := io.ReadFull(r, payload); err != nil {
 		return 0, nil, err
 	}
 	return hdr[0], payload, nil
+}
+
+// DialSession opens an attach stream to a session's socket. Transport policy
+// (timeouts, address shape) lives here, next to Do.
+func DialSession(sockDir, name string) (net.Conn, error) {
+	return net.DialTimeout("unix", SessionSock(sockDir, name), 5*time.Second)
 }
 
 // Do performs one control-socket request/response round-trip.

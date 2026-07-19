@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -24,7 +25,9 @@ import (
 )
 
 const (
-	uploadDir = "/tmp/uploads"
+	// uploadDir lives on the claude-state volume shared with the sessions
+	// container, so claude can read pasted-image paths the backend writes.
+	uploadDir = "/home/claude/.local/state/claude/uploads"
 	// maxUploadSize is the maximum allowed image upload size (10 MB).
 	maxUploadSize = 10 << 20
 	// maxSessionNameLen caps custom session names (bytes) — the index file
@@ -35,12 +38,6 @@ const (
 // newDirNameRe restricts new project folder names to a single safe path
 // segment. The pattern is shared with the client-side pre-check via shared/enums.
 var newDirNameRe = regexp.MustCompile(api.NewProjectNamePattern)
-
-type controlMessage struct {
-	Type string `json:"type"`
-	Cols uint16 `json:"cols,omitempty"`
-	Rows uint16 `json:"rows,omitempty"`
-}
 
 type Server struct {
 	sm       *SessionManager
@@ -217,7 +214,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check session exists
-	if _, ok := s.sm.GetSession(sessionName); !ok {
+	if !s.sm.HasSession(sessionName) {
 		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
@@ -354,7 +351,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := s.sm.GetSession(sessionName); !ok {
+	if !s.sm.HasSession(sessionName) {
 		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
@@ -477,7 +474,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := s.sm.GetSession(sessionName); !ok {
+	if !s.sm.HasSession(sessionName) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -543,12 +540,12 @@ func bridgeWSToFrames(conn *websocket.Conn, sess net.Conn, sessionName string) {
 
 		switch msgType {
 		case websocket.TextMessage:
-			var msg controlMessage
+			var msg protocol.Control
 			if err := json.Unmarshal(data, &msg); err != nil {
 				slog.Debug("invalid control message", "session", sessionName, "error", err)
 				continue
 			}
-			if msg.Type != "resize" || msg.Cols == 0 || msg.Rows == 0 {
+			if msg.Type != protocol.ControlResize || msg.Cols == 0 || msg.Rows == 0 {
 				continue
 			}
 			if !attached {
@@ -586,26 +583,30 @@ func bridgeWSToFrames(conn *websocket.Conn, sess net.Conn, sessionName string) {
 // to a normal WS closure (the session ended); any other stream end leaves the
 // socket to close abnormally, so the client's reconnect logic engages.
 func bridgeFramesToWS(sess net.Conn, conn *websocket.Conn) {
+	writeWS := func(msgType int, data []byte) bool {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(msgType, data) == nil
+	}
+	// Buffered reads + a reused scratch buffer: this loop carries every PTY
+	// output chunk, and gorilla copies the payload into its own write buffer.
+	br := bufio.NewReader(sess)
+	scratch := make([]byte, 16<<10)
 	for {
-		typ, payload, err := protocol.ReadFrame(sess)
+		typ, payload, err := protocol.ReadFrameInto(br, scratch)
 		if err != nil {
 			return
 		}
 		switch typ {
 		case protocol.FrameSnapshot, protocol.FrameData:
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+			if !writeWS(websocket.BinaryMessage, payload) {
 				return
 			}
 		case protocol.FrameControl:
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			if !writeWS(websocket.TextMessage, payload) {
 				return
 			}
 		case protocol.FrameClose:
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended")
-			_ = conn.WriteMessage(websocket.CloseMessage, msg)
+			writeWS(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended"))
 			return
 		}
 	}

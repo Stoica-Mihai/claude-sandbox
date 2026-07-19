@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"time"
 
 	"claude-sandbox-sessiond/protocol"
 )
@@ -62,12 +61,16 @@ func (h *protocolHost) Kill(name string) error {
 	if err != nil {
 		return err
 	}
-	if !resp.OK {
+	switch {
+	case resp.OK:
+		return nil
+	case resp.NotFound:
 		return fmt.Errorf("%w: %s", errHostSession, resp.Error)
+	default:
+		return fmt.Errorf("sessiond kill: %s", resp.Error)
 	}
-	return nil
 }
 
 func (h *protocolHost) DialSession(name string) (net.Conn, error) {
-	return net.DialTimeout("unix", protocol.SessionSock(h.sockDir, name), 5*time.Second)
+	return protocol.DialSession(h.sockDir, name)
 }

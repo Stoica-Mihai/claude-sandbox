@@ -23,9 +23,6 @@ func socketpairFiles(t *testing.T) (*os.File, *os.File) {
 	if err != nil {
 		t.Fatalf("socketpair: %v", err)
 	}
-	// Non-blocking before NewFile so the poller registers them and deadlines work.
-	_ = syscall.SetNonblock(fds[0], true)
-	_ = syscall.SetNonblock(fds[1], true)
 	a := os.NewFile(uintptr(fds[0]), "pty-side")
 	b := os.NewFile(uintptr(fds[1]), "program-side")
 	t.Cleanup(func() { a.Close(); b.Close() })
@@ -75,6 +72,33 @@ func readFrameUntil(t *testing.T, conn net.Conn, want string) {
 		}
 		if bytes.Contains(got.Bytes(), []byte(want)) {
 			return
+		}
+	}
+}
+
+// drainFrames discards a viewer's frames in the background until its
+// connection errors (test end or eviction).
+func drainFrames(conn net.Conn) {
+	go func() {
+		for {
+			_ = conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+			if _, _, err := protocol.ReadFrame(conn); err != nil {
+				return
+			}
+		}
+	}()
+}
+
+// assertMaxRenderedWidth strips escapes from a rendered snapshot (each escape
+// becomes a row delimiter) and fails if any painted row exceeds cols.
+func assertMaxRenderedWidth(t *testing.T, snap []byte, cols int) {
+	t.Helper()
+	stripped := regexp.MustCompile(`\x1b(\[[0-9;:?]*[a-zA-Z]|.)`).ReplaceAllString(string(snap), "\x00")
+	for _, row := range strings.Split(stripped, "\x00") {
+		for _, line := range strings.Split(row, "\r\n") {
+			if len([]rune(line)) > cols {
+				t.Fatalf("snapshot row wider than viewer (%d > %d): %q", len([]rune(line)), cols, line)
+			}
 		}
 	}
 }
@@ -145,15 +169,7 @@ func TestSessionScrollbackReplay(t *testing.T) {
 // row may exceed it, or the client terminal wraps every row.
 func TestSnapshotRenderedAtJoiningViewerWidth(t *testing.T) {
 	s, programSide := startTestSession(t)
-	wideViewer := attachTestViewer(t, s, 100, 30)
-	go func() { // keep the wide viewer's pipe drained
-		for {
-			_ = wideViewer.SetReadDeadline(time.Now().Add(5 * time.Second))
-			if _, _, err := protocol.ReadFrame(wideViewer); err != nil {
-				return
-			}
-		}
-	}()
+	drainFrames(attachTestViewer(t, s, 100, 30)) // wide viewer stays drained
 
 	wide := strings.Repeat("X", 80)
 	if _, err := programSide.Write([]byte(wide)); err != nil {
@@ -172,16 +188,7 @@ func TestSnapshotRenderedAtJoiningViewerWidth(t *testing.T) {
 	if !bytes.HasPrefix(snap, []byte(termReset)) {
 		t.Fatalf("snapshot must start with a reset, got %q", snap[:min(len(snap), 40)])
 	}
-	// Strip escapes (each becomes a row delimiter); every painted row must fit
-	// the narrow width.
-	stripped := regexp.MustCompile(`\x1b(\[[0-9;:?]*[a-zA-Z]|.)`).ReplaceAllString(string(snap), "\x00")
-	for _, row := range strings.Split(stripped, "\x00") {
-		for _, line := range strings.Split(row, "\r\n") {
-			if len([]rune(line)) > 44 {
-				t.Fatalf("snapshot row wider than viewer (%d > 44): %q", len([]rune(line)), line)
-			}
-		}
-	}
+	assertMaxRenderedWidth(t, snap, 44)
 }
 
 // TestSessionKillSendsClose verifies Kill delivers a CLOSE frame with reason
@@ -275,14 +282,7 @@ func TestStaleResizeCannotSteerPTY(t *testing.T) {
 	s, programSide := startTestSession(t)
 
 	viewer := attachTestViewer(t, s, 44, 10)
-	go func() { // drain the real viewer
-		for {
-			_ = viewer.SetReadDeadline(time.Now().Add(5 * time.Second))
-			if _, _, err := protocol.ReadFrame(viewer); err != nil {
-				return
-			}
-		}
-	}()
+	drainFrames(viewer)
 
 	// A conn that was never registered (same shape as one already evicted:
 	// the detach ran, its resize command is still in flight).
@@ -299,14 +299,7 @@ func TestStaleResizeCannotSteerPTY(t *testing.T) {
 	for time.Now().Before(deadline) && !bytes.Contains(s.term.Snapshot(), []byte("X")) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	stripped := regexp.MustCompile(`\x1b(\[[0-9;:?]*[a-zA-Z]|.)`).ReplaceAllString(string(s.term.Snapshot()), "\x00")
-	for _, row := range strings.Split(stripped, "\x00") {
-		for _, line := range strings.Split(row, "\r\n") {
-			if len([]rune(line)) > 44 {
-				t.Fatalf("stale resize changed the emulator width (row len %d): %q", len([]rune(line)), line)
-			}
-		}
-	}
+	assertMaxRenderedWidth(t, s.term.Snapshot(), 44)
 
 	// The registered viewer must still be able to resize (it is the active one).
 	if err := protocol.WriteJSONFrame(viewer, protocol.FrameControl, protocol.Control{Type: "resize", Cols: 60, Rows: 20}); err != nil {
@@ -445,14 +438,7 @@ func TestSlowViewerEvicted(t *testing.T) {
 	_ = stuck
 
 	healthy := attachTestViewer(t, s, 80, 24)
-	go func() { // healthy viewer drains everything
-		for {
-			_ = healthy.SetReadDeadline(time.Now().Add(20 * time.Second))
-			if _, _, err := protocol.ReadFrame(healthy); err != nil {
-				return
-			}
-		}
-	}()
+	drainFrames(healthy)
 
 	// Flood well past viewerQueueSize; the actor must never block.
 	done := make(chan struct{})

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -18,26 +17,6 @@ import (
 
 	"claude-sandbox-sessiond/protocol"
 )
-
-// jsonUnmarshal aliases json.Unmarshal for use in registry.go.
-var jsonUnmarshal = json.Unmarshal
-
-// sockDirPath resolves the socket directory: CLAUDE_SOCK_DIR, else
-// XDG_RUNTIME_DIR/claude/sock, else ~/.local/state/claude/sock.
-func sockDirPath() (string, error) {
-	if d := os.Getenv("CLAUDE_SOCK_DIR"); d != "" {
-		return d, nil
-	}
-	base := os.Getenv("XDG_RUNTIME_DIR")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(base, "claude", "sock"), nil
-}
 
 // cleanStaleSockets unlinks leftover sockets from a previous run.
 func cleanStaleSockets(dir string) {
@@ -60,7 +39,7 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
-	sockDir, err := sockDirPath()
+	sockDir, err := protocol.SockDir()
 	if err != nil {
 		slog.Error("cannot resolve socket dir", "error", err)
 		os.Exit(1)

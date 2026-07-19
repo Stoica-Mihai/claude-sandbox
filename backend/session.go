@@ -49,9 +49,10 @@ func NewSessionManager(broker *Broker) *SessionManager {
 	return sm
 }
 
-// GetSession returns the store record for a session name.
-func (sm *SessionManager) GetSession(name string) (sessionRecord, bool) {
-	return sm.store.get(name)
+// HasSession reports whether a live session with this name exists.
+func (sm *SessionManager) HasSession(name string) bool {
+	_, ok := sm.store.get(name)
+	return ok
 }
 
 // DialSession opens an attach stream to a session via sessiond.

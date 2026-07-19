@@ -49,10 +49,4 @@ RUN mkdir -p /home/claude/.local/state/claude/sock
 
 COPY --from=builder /backend-server /home/claude/backend-server
 
-# Pre-create the upload mountpoint claude-owned, so the claude-uploads volume
-# inherits writable ownership on first mount.
-USER root
-RUN mkdir -p /tmp/uploads && chown claude:claude /tmp/uploads
-USER claude
-
 CMD ["/home/claude/backend-server"]

@@ -119,12 +119,6 @@ COPY --from=builder /sessiond /home/claude/sessiond
 COPY --chown=claude:claude entrypoint.sh /home/claude/entrypoint.sh
 RUN chmod +x /home/claude/entrypoint.sh
 
-# Pre-create the upload mountpoint claude-owned, so the claude-uploads volume
-# inherits writable ownership on first mount (claude reads pasted images here).
-USER root
-RUN mkdir -p /tmp/uploads && chown claude:claude /tmp/uploads
-USER claude
-
 WORKDIR /workspace
 
 ENTRYPOINT ["/home/claude/entrypoint.sh"]

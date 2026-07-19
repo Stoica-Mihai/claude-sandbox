@@ -18,14 +18,17 @@ import (
 
 // fakeSessionSocket is a scripted sessiond session endpoint: it records the
 // frames it receives and plays queued responses after the ATTACH handshake.
+// frame is one recorded protocol frame.
+type frame struct {
+	typ     byte
+	payload []byte
+}
+
 type fakeSessionSocket struct {
-	t        *testing.T
-	ln       net.Listener
-	attached chan protocol.Attach
-	frames   chan struct {
-		typ     byte
-		payload []byte
-	}
+	t         *testing.T
+	ln        net.Listener
+	attached  chan protocol.Attach
+	frames    chan frame
 	sendClose chan string // reason to send as a CLOSE frame
 }
 
@@ -37,13 +40,10 @@ func newFakeSessionSocket(t *testing.T) *fakeSessionSocket {
 		t.Fatal(err)
 	}
 	f := &fakeSessionSocket{
-		t:        t,
-		ln:       ln,
-		attached: make(chan protocol.Attach, 1),
-		frames: make(chan struct {
-			typ     byte
-			payload []byte
-		}, 16),
+		t:         t,
+		ln:        ln,
+		attached:  make(chan protocol.Attach, 1),
+		frames:    make(chan frame, 16),
 		sendClose: make(chan string, 1),
 	}
 	t.Cleanup(func() { ln.Close() })
@@ -90,10 +90,7 @@ func (f *fakeSessionSocket) serve() {
 		if err != nil {
 			return
 		}
-		f.frames <- struct {
-			typ     byte
-			payload []byte
-		}{typ, payload}
+		f.frames <- frame{typ, payload}
 	}
 }
 
