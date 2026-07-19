@@ -13,6 +13,9 @@ import { wireTouchScroll } from './terminal-touch.js';
 // importing it from terminal.js.
 export { terminalThemes, getTerminalTheme, syncTerminalBgVar };
 
+// One encoder for every keystroke (allocating one per input is pure waste).
+const textEncoder = new TextEncoder();
+
 // TerminalManager — manages multiple xterm.js instances and their sockets.
 export const TerminalManager = {
     instances: {}, // terminalId -> { term, socket, fitAddon, webLinksAddon, webglAddon, containerId, needsRefresh }
@@ -46,8 +49,10 @@ export const TerminalManager = {
             try {
                 webglAddon = new WebglAddon.WebglAddon();
                 webglAddon.onContextLoss(() => {
-                    webglAddon.dispose();
-                    webglAddon = null;
+                    // Clear the instance's ref (set below), not just this local,
+                    // so a later destroy() can't dispose the addon a second time.
+                    instance.webglAddon?.dispose();
+                    instance.webglAddon = null;
                 });
                 term.loadAddon(webglAddon);
             } catch (e) {
@@ -163,7 +168,7 @@ export const TerminalManager = {
                 instance.needsRefresh = false;
                 term.clear();
             }
-            socket.send(new TextEncoder().encode(data));
+            socket.send(textEncoder.encode(data));
             // On mobile, dismiss the keyboard after Enter so output is visible.
             if (data === '\r' && isMobile()) {
                 const ta = containerEl.querySelector('.xterm-helper-textarea');
