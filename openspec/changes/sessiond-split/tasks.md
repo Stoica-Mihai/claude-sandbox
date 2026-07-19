@@ -6,13 +6,13 @@
 
 ## 2. sessiond core
 
-- [ ] 2.1 Move `termstate.go` into sessiond; extend `Snapshot()` with mode re-assertion (?2004, ?1000/?1002/?1003/?1006, ?1) per task 1.1's answer; port its tests
-- [ ] 2.2 Session actor: port the relay actor loop (viewer registry, per-viewer queues + evict-on-full, active-viewer/suspension/deactivated logic, snapshot-on-attach) minus reconnect loop, generation guards, resize flap, `awaitingSnapshot` — ATTACH carries dims so the snapshot renders immediately
-- [ ] 2.3 Fix in transit: active-viewer slot only assignable to registered viewers (evicted-conn resize/input cannot become `lastResizer`); add regression test for the resize-racing-eviction interleaving
-- [ ] 2.4 Spawn/kill: `pty.Start` of claude with TERM + cwd + `--session-id`/`--resume` flag, name generation, child `Wait` watcher → session teardown (CLOSE to viewers, socket unlink, registry drop); kill = SIGTERM → grace → SIGKILL on the process group
-- [ ] 2.5 Input write deadline on the PTY master; error surfaces to the writing viewer, actor keeps running; test with a stopped reader
-- [ ] 2.6 Sockets: control listener (SPAWN/LIST/KILL request-response) + per-session listeners (ATTACH→SNAPSHOT→stream); boot = mkdir 0700 + stale-socket cleanup; `-ping` flag for the healthcheck
-- [ ] 2.7 Port relay actor tests to the sessiond actor; add attach-handshake and LIST tests; `go test -race ./...` clean
+- [x] 2.1 Move `termstate.go` into sessiond; extend `Snapshot()` with mode re-assertion (?2004, ?1000/?1002/?1003/?1006, ?1) per task 1.1's answer; port its tests
+- [x] 2.2 Session actor: port the relay actor loop (viewer registry, per-viewer queues + evict-on-full, active-viewer/suspension/deactivated logic, snapshot-on-attach) minus reconnect loop, generation guards, resize flap, `awaitingSnapshot` — ATTACH carries dims so the snapshot renders immediately
+- [x] 2.3 Fix in transit: active-viewer slot only assignable to registered viewers (evicted-conn resize/input cannot become `lastResizer`); add regression test for the resize-racing-eviction interleaving
+- [x] 2.4 Spawn/kill: `pty.Start` of claude with TERM + cwd + `--session-id`/`--resume` flag, name generation, child `Wait` watcher → session teardown (CLOSE to viewers, socket unlink, registry drop); kill = SIGTERM → grace → SIGKILL on the process group
+- [x] 2.5 Input write deadline on the PTY master; error surfaces to the writing viewer, actor keeps running; test with a stopped reader
+- [x] 2.6 Sockets: control listener (SPAWN/LIST/KILL request-response) + per-session listeners (ATTACH→SNAPSHOT→stream); boot = mkdir 0700 + stale-socket cleanup; `-ping` flag for the healthcheck
+- [x] 2.7 Port relay actor tests to the sessiond actor; add attach-handshake and LIST tests; `go test -race ./...` clean
 
 ## 3. Backend as bridge
 
