@@ -127,6 +127,38 @@ test('copy writes the string to the clipboard and flashes the label', async () =
     assert.equal(label.textContent, 'COPY');
 });
 
+test('copy falls back to execCommand when the Clipboard API rejects', async () => {
+    const env = loadShare({ fetchResponses: [PUBLIC] });
+    await env.settle();
+
+    // Clipboard API present but rejects (e.g. permission denied in a non-secure context).
+    globalThis.navigator = { clipboard: { writeText: () => Promise.reject(new Error('denied')) } };
+    let execArg = null;
+    env.document.execCommand = (cmd) => { execArg = cmd; return true; };
+
+    env.sandbox.copyShareString();
+    await env.settle();
+
+    assert.equal(execArg, 'copy', 'used the execCommand fallback');
+    const label = env.document.getElementById('copyBtn').querySelector('.lbl');
+    assert.equal(label.textContent, 'COPIED ✓', 'reports success when the fallback copied');
+});
+
+test('copy never fakes success: no Clipboard API and a failing execCommand', async () => {
+    const env = loadShare({ fetchResponses: [PUBLIC] });
+    await env.settle();
+
+    globalThis.navigator = {}; // no clipboard API (non-secure context)
+    env.document.execCommand = () => false;
+
+    env.sandbox.copyShareString();
+    await env.settle();
+
+    const label = env.document.getElementById('copyBtn').querySelector('.lbl');
+    assert.notEqual(label.textContent, 'COPIED ✓', 'must not claim success when nothing copied');
+    assert.equal(label.textContent, 'COPY MANUALLY');
+});
+
 test('busy guard: a second goPublic while in flight issues no second POST', async () => {
     const env = loadShare({ fetchResponses: [PRIVATE] });
     await env.settle();

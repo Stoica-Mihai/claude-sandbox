@@ -91,17 +91,60 @@ export function regenerateShareKey() {
 }
 
 export function copyShareString() {
-    const label = shareEl('copyBtn').querySelector('.lbl');
+    const btn = shareEl('copyBtn');
+    if (!btn) return;
+    const label = btn.querySelector('.lbl');
     const text = shareEl('connStr').textContent;
-    const done = () => {
-        label.textContent = 'COPIED ✓';
-        setTimeout(resetCopyLabel, 1600);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, done);
-    } else {
-        done();
+    copyToClipboard(text).then((ok) => {
+        if (ok) {
+            label.textContent = 'COPIED ✓';
+            setTimeout(resetCopyLabel, 1600);
+        } else {
+            // Neither path copied (rare, locked-down browser): select the visible
+            // string so the user can copy it by hand. Never claim success.
+            selectConnString();
+            label.textContent = 'COPY MANUALLY';
+            setTimeout(resetCopyLabel, 2600);
+        }
+    });
+}
+
+// Copy text, resolving true only on a real copy. Prefers the async Clipboard
+// API (secure contexts), falling back to execCommand — the connection string
+// grants full access, and the dashboard often runs over plain HTTP / the tunnel
+// where the Clipboard API is unavailable, so a silent false success is worse
+// than a visible failure.
+function copyToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => execCopy(text));
     }
+    return Promise.resolve(execCopy(text));
+}
+
+// Legacy execCommand copy via a throwaway textarea; returns whether it copied.
+function execCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select?.();
+    let ok = false;
+    try { ok = !!(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+}
+
+// Select the visible connection string so the user can copy it manually when
+// both programmatic paths fail. No-ops where Selection/Range are unavailable.
+function selectConnString() {
+    const el = shareEl('connStr');
+    if (!el || typeof document.createRange !== 'function' ||
+        typeof window === 'undefined' || !window.getSelection) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
 }
 
 export function resetCopyLabel() {
