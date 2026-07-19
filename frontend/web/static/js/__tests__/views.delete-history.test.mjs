@@ -275,3 +275,39 @@ test('deleting the only previous session re-renders to the empty state', async (
     const actions = env.document.getElementById('session-actions');
     assert.ok(actions.children.some(c => c.classList.contains('empty-state')), 'empty-state shown');
 });
+
+// ---------- dpRenderHistory: stale-response race ----------
+
+// Concatenate innerHTML across the subtree (row titles are set via innerHTML,
+// not textContent, so the fake DOM's textContent getter can't see them).
+function collectHTML(el) {
+    let s = el.innerHTML || '';
+    (el.children || []).forEach(c => { s += collectHTML(c); });
+    return s;
+}
+
+test('dpRenderHistory drops a stale response that resolves after a newer render', async () => {
+    const env = loadViews({ mobile: false, ids: ['session-actions'] });
+    const resolvers = {};
+    env.sandbox.fetch = (url) => {
+        const cwd = new URLSearchParams(String(url).split('?')[1]).get('cwd');
+        return new Promise((resolve) => { resolvers[cwd] = resolve; });
+    };
+
+    const entriesA = [{ uuid: 'aaaaaaaa-1111-2222-3333-444444444444', created: 1700000000, name: 'from-folder-A' }];
+    const entriesB = [{ uuid: 'bbbbbbbb-5555-6666-7777-888888888888', created: 1700000100, name: 'from-folder-B' }];
+
+    // Start a render for folder A, then folder B — B supersedes A.
+    const pA = env.sandbox.dpRenderHistory('/workspace/A');
+    const pB = env.sandbox.dpRenderHistory('/workspace/B');
+
+    // The newer render (B) resolves first, then the stale one (A) lands late.
+    resolvers['/workspace/B']({ ok: true, status: 200, json: async () => entriesB });
+    await pB;
+    resolvers['/workspace/A']({ ok: true, status: 200, json: async () => entriesA });
+    await pA;
+
+    const html = collectHTML(env.document.getElementById('session-actions'));
+    assert.ok(html.includes('from-folder-B'), 'newer folder B rows present');
+    assert.ok(!html.includes('from-folder-A'), 'stale folder A rows dropped');
+});

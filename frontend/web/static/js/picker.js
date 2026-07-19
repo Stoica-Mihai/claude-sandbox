@@ -9,6 +9,10 @@ import { openSession } from './tabs.js';
 
 let dirPickerSel = { kind: null, uuid: null };
 let dpDirSkelTimer = null;
+// Monotonic token for dpRenderHistory: a later render supersedes an in-flight
+// one, so its (possibly slower) response is dropped instead of painting the
+// wrong folder's rows into the shared #session-actions.
+let historyRenderSeq = 0;
 
 // Open the New Session modal, resetting the picker to a fresh browse state
 // (re-fetch the root folder list) so it never reopens in a stale/selected state.
@@ -212,12 +216,14 @@ export async function dpSelectFolder(path, name) {
 export async function dpRenderHistory(path) {
     const actions = document.getElementById('session-actions');
     if (!actions) return;
+    const seq = ++historyRenderSeq;
 
     actions.querySelectorAll('.actitle, .row-host, .empty-state, .dp-skel').forEach(el => el.remove());
 
     // Delay the skeleton so fast responses never flash it; a single block
     // (not a counted list) so it doesn't promise a row count it can't know.
     const skelTimer = setTimeout(() => {
+        if (seq !== historyRenderSeq) return;
         const s = document.createElement('div');
         s.className = 'dp-skel';
         s.innerHTML = dpSkelRows(1, 52);
@@ -233,6 +239,9 @@ export async function dpRenderHistory(path) {
     } catch (e) { failed = true; }
 
     clearTimeout(skelTimer);
+    // A newer render superseded this one (folder switch / post-delete rerender):
+    // drop this stale result rather than paint the wrong folder's rows.
+    if (seq !== historyRenderSeq) return;
     actions.querySelectorAll('.dp-skel').forEach(el => el.remove());
 
     const label = document.createElement('div');
@@ -285,6 +294,7 @@ export async function dpRenderHistory(path) {
 export function init() {
     dirPickerSel = { kind: null, uuid: null };
     dpDirSkelTimer = null;
+    historyRenderSeq = 0;
 
     register('new-session', () => openNewSessionModal({}));
     register('dp-select-folder', (el) => dpSelectFolder(el.dataset.path, el.dataset.name));
