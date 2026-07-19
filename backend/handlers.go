@@ -478,7 +478,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ch:
-			fmt.Fprint(w, "event: update\ndata: \n\n")
+			fmt.Fprintf(w, "event: %s\ndata: \n\n", api.SSEEventUpdate)
 			flusher.Flush()
 		case <-keepalive.C:
 			fmt.Fprint(w, ": keepalive\n\n")

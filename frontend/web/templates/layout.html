@@ -78,7 +78,7 @@
                 <span class="kick">Sessions</span>
                 <button class="btn btn-primary btn-square btn-new" data-action="new-session"><span>+ NEW</span></button>
             </div>
-            <div id="session-list" class="list" hx-get="/fragments/sessions" hx-trigger="sse:update" hx-swap="innerHTML">
+            <div id="session-list" class="list" hx-get="/fragments/sessions" hx-trigger="sse:{{sseEvent}}" hx-swap="innerHTML">
                 {{template "sessions" .}}
             </div>
         </aside>

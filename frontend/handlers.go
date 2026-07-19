@@ -161,6 +161,7 @@ func templateFuncs() template.FuncMap {
 			return template.JS(b), err
 		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
+		"sseEvent":          func() string { return api.SSEEventUpdate },
 		// wsControlJSON injects the WS control vocabulary (window.WS_CONTROL) so
 		// the browser JS speaks the same control protocol as sessiond/protocol
 		// without re-typing the literals.

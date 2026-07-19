@@ -28,6 +28,11 @@ const (
 	RouteHealthz         = "/healthz"
 )
 
+// SSEEventUpdate is the Server-Sent-Event name the backend emits on a session
+// change and the dashboard's hx-trigger listens for — shared so the emit side
+// and the listener can't drift (a rename would silently stop live updates).
+const SSEEventUpdate = "update"
+
 // Concrete-path builders fill a route pattern's placeholder, so a request URL
 // is single-sourced with its pattern instead of rebuilt by string concat (which
 // silently duplicates the pattern's shape and can drift from it).
