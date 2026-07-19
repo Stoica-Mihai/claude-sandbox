@@ -62,8 +62,9 @@ export const TerminalManager = {
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
                 return false;
             }
-            // Block browser default for Escape, Ctrl+C, Ctrl+D, etc.
-            if (e.key === 'Escape' || (e.ctrlKey && ['c', 'd', 'z', 'l'].includes(e.key))) {
+            // Block browser default for Ctrl+C/D/Z/L. Escape is handled ahead of
+            // xterm by the window-capture listener in init() (xterm never sees it).
+            if (e.ctrlKey && ['c', 'd', 'z', 'l'].includes(e.key)) {
                 e.preventDefault();
                 e.stopPropagation();
             }
@@ -76,6 +77,23 @@ export const TerminalManager = {
         });
 
         term.open(containerEl);
+
+        // Keep browser autofill / password-manager popups off xterm's hidden
+        // textarea. Their suggestion popups swallow the first Escape (Esc
+        // dismisses the popup and blurs the field) before any DOM keydown fires,
+        // which is why an Escape into a freshly-focused terminal was eaten and
+        // needed a second press.
+        const helperTa = containerEl.querySelector('.xterm-helper-textarea');
+        if (helperTa) {
+            helperTa.setAttribute('autocomplete', 'off');
+            helperTa.setAttribute('autocorrect', 'off');
+            helperTa.setAttribute('autocapitalize', 'off');
+            helperTa.setAttribute('spellcheck', 'false');
+            helperTa.setAttribute('data-1p-ignore', 'true');   // 1Password
+            helperTa.setAttribute('data-lpignore', 'true');    // LastPass
+            helperTa.setAttribute('data-bwignore', 'true');    // Bitwarden
+            helperTa.setAttribute('data-form-type', 'other');
+        }
 
         wireClipboard(containerEl, term, terminalId, this, mobile);
         if (mobile) {
@@ -152,6 +170,14 @@ export const TerminalManager = {
 
         // User input -> socket (binary so Go routes it to the PTY).
         term.onData((data) => {
+            // Drop spurious focus reports. Claude enables focus tracking (mode
+            // ?1004) and xterm emits \x1b[I / \x1b[O as the hidden textarea gains
+            // or loses focus — which in a web page flaps constantly (body↔textarea,
+            // tab switches). A focus-OUT landing just before an Escape makes claude
+            // treat the terminal as unfocused and ignore the ESC (the "press Esc
+            // twice" bug). The dashboard terminal is always "focused" in any
+            // meaningful sense, so these reports carry no signal — never forward them.
+            if (data === '\x1b[I' || data === '\x1b[O') return;
             if (socket.status === 'lost') {
                 socket.retry();
                 return;
@@ -225,9 +251,45 @@ export const TerminalManager = {
         }
         return null;
     },
+
+    // The instance whose tab container is currently visible (single-tab view
+    // hides the others with .hidden), or null when none is shown.
+    visibleInstance() {
+        for (const instance of Object.values(this.instances)) {
+            const el = document.getElementById(instance.containerId);
+            if (el && !el.classList.contains('hidden')) return instance;
+        }
+        return null;
+    },
 };
 
 export function init() {
+    // Escape → PTY, routed at the document level. The physical Escape keydown
+    // often lands on <body>, not xterm's hidden textarea (focus drifts off it —
+    // alt-screen views, focus-report churn, DevTools), so xterm never turns it
+    // into \x1b. Catch it at capture on the document and send \x1b to the
+    // visible terminal. Capture + stopPropagation means xterm's own textarea
+    // handler never also fires, so there is no double-send when it IS focused.
+    // Guards: let modals and real input fields keep their own Escape.
+    // Escape → PTY, routed at window capture. The physical Escape keydown often
+    // lands on <body>, not xterm's hidden textarea (focus drifts off it), so
+    // xterm never turns it into \x1b. Catch it before anything else and send
+    // \x1b to the visible terminal. Capture + stopPropagation means xterm's own
+    // handler never also fires, so there is no double-send when it IS focused.
+    // Modals and real input fields keep their own Escape.
+    window.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' && e.keyCode !== 27) return;
+        if (document.querySelector('dialog[open]')) return; // modal owns Escape
+        const t = e.target;
+        const isXtermTextarea = t?.classList?.contains('xterm-helper-textarea');
+        if (!isXtermTextarea && (t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA')) return;
+        const inst = TerminalManager.visibleInstance();
+        if (!inst?.socket) return;
+        inst.socket.send(new TextEncoder().encode('\x1b'));
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
+
     // Block <dialog> cancel (Escape) while the terminal is focused.
     document.addEventListener('cancel', (e) => {
         if (document.activeElement?.classList?.contains('xterm-helper-textarea')) {
