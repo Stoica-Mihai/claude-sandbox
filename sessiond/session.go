@@ -343,7 +343,6 @@ func (s *session) handleReactivate(c cmdReactivate) {
 	if !ok {
 		return
 	}
-	v.suspended = false
 	s.activateAndSnapshot(c.conn, v)
 }
 
@@ -375,7 +374,6 @@ func (s *session) dropViewer(conn net.Conn) {
 func (s *session) handleInput(c cmdInput) {
 	v, ok := s.viewers[c.conn]
 	if ok {
-		v.suspended = false
 		s.activateViewer(c.conn, v)
 	}
 	if s.ptmx == nil {
@@ -399,14 +397,16 @@ func (s *session) handleInput(c cmdInput) {
 	}
 }
 
-// activateViewer makes conn the active viewer: others are suspended (broadcast
-// skips them) and told to clear on next input, and the PTY resizes to the new
-// active viewer's dimensions.
+// activateViewer makes conn the active viewer and owns the invariant that the
+// active viewer is never suspended: it clears conn's suspended flag, suspends
+// the others (broadcast skips them; they clear on next input), and resizes the
+// PTY to the new active viewer's dimensions.
 func (s *session) activateViewer(conn net.Conn, v *viewer) {
 	if s.active == conn || v.size.cols == 0 || v.size.rows == 0 {
 		return
 	}
 	s.active = conn
+	v.suspended = false
 	for other, ov := range s.viewers {
 		if other == conn {
 			continue
@@ -420,9 +420,12 @@ func (s *session) activateViewer(conn net.Conn, v *viewer) {
 }
 
 // handleResize stores a viewer's dimensions; the PTY follows only when that
-// viewer is the active one. The active slot is only ever assigned to a
-// registered viewer, so a resize racing an eviction cannot pin the size to a
-// dead connection.
+// viewer is the active one. When no viewer is active (the previous one
+// detached) the resizing viewer takes over via activateViewer — which clears
+// its suspended flag and snapshots it, so it never sits active-but-suspended
+// (steering the PTY yet skipped by broadcast). The active slot is only ever
+// assigned to a registered viewer, so a resize racing an eviction cannot pin
+// the size to a dead connection.
 func (s *session) handleResize(c cmdResize) {
 	v, ok := s.viewers[c.conn]
 	if !ok {
@@ -430,7 +433,8 @@ func (s *session) handleResize(c cmdResize) {
 	}
 	v.size = viewerSize{c.cols, c.rows}
 	if s.active == nil {
-		s.active = c.conn
+		s.activateAndSnapshot(c.conn, v)
+		return
 	}
 	if s.active == c.conn {
 		s.applyResize(c.cols, c.rows)

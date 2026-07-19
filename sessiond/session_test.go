@@ -235,6 +235,53 @@ func TestReactivateTakesLiveViewWithoutInput(t *testing.T) {
 	}
 }
 
+// TestSurvivingViewerResizeTakesOverLive: when the active viewer detaches, the
+// remaining (suspended) viewer that resizes must take over live — it gets a
+// fresh snapshot AND subsequent program output. Before the fix it went active
+// but stayed suspended, so broadcast skipped it and the screen blackholed.
+func TestSurvivingViewerResizeTakesOverLive(t *testing.T) {
+	s, programSide := startTestSession(t)
+
+	a := attachTestViewer(t, s, 100, 30)
+	if typ, _ := readOneFrame(t, a); typ != protocol.FrameSnapshot {
+		t.Fatalf("A: expected snapshot, got 0x%02x", typ)
+	}
+
+	// B attaching makes B active and suspends A.
+	b := attachTestViewer(t, s, 80, 24)
+	if typ, _ := readOneFrame(t, b); typ != protocol.FrameSnapshot {
+		t.Fatalf("B: expected snapshot, got 0x%02x", typ)
+	}
+	if typ, payload := readOneFrame(t, a); typ != protocol.FrameControl || !bytes.Contains(payload, []byte(protocol.ControlDeactivated)) {
+		t.Fatalf("A: expected deactivated, got 0x%02x %q", typ, payload)
+	}
+
+	// The active viewer leaves; A (still suspended) is the only viewer left.
+	b.Close()
+
+	// A resizes. Once the detach lands (active == nil) the resize makes A active
+	// again and must produce a fresh snapshot. Retry to absorb detach/resize
+	// ordering — resizes before the detach lands update size but send no frame.
+	deadline := time.Now().Add(3 * time.Second)
+	gotSnapshot := false
+	for time.Now().Before(deadline) && !gotSnapshot {
+		_ = protocol.WriteJSONFrame(a, protocol.FrameControl, protocol.Control{Type: protocol.ControlResize, Cols: 90, Rows: 28})
+		_ = a.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		if typ, _, err := protocol.ReadFrame(a); err == nil && typ == protocol.FrameSnapshot {
+			gotSnapshot = true
+		}
+	}
+	if !gotSnapshot {
+		t.Fatal("A never got a snapshot after taking over via resize")
+	}
+
+	// The clincher: live output after the takeover must reach A.
+	if _, err := programSide.Write([]byte("after takeover")); err != nil {
+		t.Fatal(err)
+	}
+	readFrameUntil(t, a, "after takeover")
+}
+
 // TestSessionKillSendsClose verifies Kill delivers a CLOSE frame with reason
 // "killed" and tears the session down.
 func TestSessionKillSendsClose(t *testing.T) {
