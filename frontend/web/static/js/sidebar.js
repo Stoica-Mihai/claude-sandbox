@@ -24,7 +24,10 @@ export function collapseSidebar() { applySidebar(false); }
 
 export function init() {
     register('toggle-sidebar', () => toggleSidebar());
-    document.getElementById('sidebarBackdrop')?.addEventListener('click', collapseSidebar);
+    // The backdrop only ever collapses — never toggles — so an off-sidebar click
+    // can't re-expand it. (A backdrop wired to toggle-sidebar fought its own
+    // collapse and left the sidebar open.)
+    register('collapse-sidebar', () => collapseSidebar());
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
         // Only dismiss an EXPANDED sidebar; otherwise a stray Escape (focused

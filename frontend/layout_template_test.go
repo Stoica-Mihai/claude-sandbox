@@ -135,7 +135,7 @@ func TestLayoutControlsCarryDataAction(t *testing.T) {
 	out := renderLayout(t, nil)
 
 	for _, action := range []string{
-		"open-settings", "flip-theme", "toggle-sidebar", "new-session",
+		"open-settings", "flip-theme", "toggle-sidebar", "collapse-sidebar", "new-session",
 		"save-settings", "settings-cat", "toggle-thinking",
 		"share-go-public", "share-go-private", "share-copy", "share-regen",
 	} {
