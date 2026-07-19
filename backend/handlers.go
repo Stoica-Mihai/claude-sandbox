@@ -25,9 +25,6 @@ import (
 )
 
 const (
-	// uploadDir lives on the claude-state volume shared with the sessions
-	// container, so claude can read pasted-image paths the backend writes.
-	uploadDir = "/home/claude/.local/state/claude/uploads"
 	// maxUploadSize is the maximum allowed image upload size (10 MB).
 	maxUploadSize = 10 << 20
 	// maxSessionNameLen caps custom session names (bytes) — the index file
@@ -38,6 +35,11 @@ const (
 	// rejects a body sent to exhaust memory.
 	maxJSONBody = 64 << 10
 )
+
+// uploadDir lives on the claude-state volume shared with the sessions
+// container, so claude can read pasted-image paths the backend writes. A var so
+// tests can redirect it.
+var uploadDir = "/home/claude/.local/state/claude/uploads"
 
 // newDirNameRe restricts new project folder names to a single safe path
 // segment. The pattern is shared with the client-side pre-check via shared/enums.

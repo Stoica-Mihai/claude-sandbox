@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -221,5 +222,35 @@ func TestRefreshFromList(t *testing.T) {
 
 	if sm.refreshFromList() {
 		t.Fatal("refresh with no drift must report no change")
+	}
+}
+
+// TestSweepOrphanUploads: a boot-time sweep removes upload dirs with no live
+// session (leaked when a session died while the backend was down) and keeps a
+// live session's dir.
+func TestSweepOrphanUploads(t *testing.T) {
+	sm, _ := newTestManager(t, loadSessionIndexFresh(t))
+	sm.store.add(sessionRecord{Name: "claude-live01", CWD: "/workspace/a", SessionID: testUUID1})
+
+	tmp := t.TempDir()
+	orig := uploadDir
+	uploadDir = tmp
+	t.Cleanup(func() { uploadDir = orig })
+
+	liveDir := filepath.Join(tmp, "claude-live01")
+	orphanDir := filepath.Join(tmp, "claude-dead99")
+	for _, d := range []string{liveDir, orphanDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sm.sweepOrphanUploads()
+
+	if _, err := os.Stat(orphanDir); !os.IsNotExist(err) {
+		t.Fatalf("orphan upload dir not removed: stat err = %v", err)
+	}
+	if _, err := os.Stat(liveDir); err != nil {
+		t.Fatalf("live session upload dir must be kept: %v", err)
 	}
 }

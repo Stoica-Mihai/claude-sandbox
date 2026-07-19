@@ -45,8 +45,35 @@ func NewSessionManager(broker *Broker) *SessionManager {
 		stopPoll: make(chan struct{}),
 	}
 	sm.refreshFromList()
+	sm.sweepOrphanUploads()
 	go sm.pollLoop()
 	return sm
+}
+
+// sweepOrphanUploads removes upload dirs left by sessions that died while the
+// backend was down — dropSession only cleans up on an observed live→dead
+// transition, so a crash-gap leak would otherwise persist on the shared volume.
+// Runs once at startup, after the store is reconciled and before serving.
+func (sm *SessionManager) sweepOrphanUploads() {
+	entries, err := os.ReadDir(uploadDir)
+	if err != nil {
+		return // no upload dir yet
+	}
+	live := make(map[string]bool)
+	for _, rec := range sm.store.list() {
+		live[rec.Name] = true
+	}
+	for _, e := range entries {
+		if !e.IsDir() || live[e.Name()] {
+			continue
+		}
+		p := filepath.Join(uploadDir, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			slog.Warn("failed to remove orphan upload dir", "path", p, "error", err)
+			continue
+		}
+		slog.Info("removed orphan upload dir", "path", p)
+	}
 }
 
 // HasSession reports whether a live session with this name exists.
