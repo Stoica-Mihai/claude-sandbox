@@ -1,11 +1,11 @@
 {{define "directory-picker"}}
-<form id="dir-picker-form" hx-post="/api/sessions" hx-target="#session-list" hx-swap="innerHTML">
+<form id="dir-picker-form" hx-post="{{routeSessions}}" hx-target="#session-list" hx-swap="innerHTML">
     <!-- Breadcrumb (HTMX navigates the browse level) -->
     <nav id="dp-breadcrumb" class="dp-crumb" aria-label="Breadcrumb">
-        <button type="button" class="seg" hx-get="/api/directories?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</button>
+        <button type="button" class="seg" hx-get="{{routeDirectories}}?path=" hx-target="#dir-picker" hx-swap="innerHTML">/workspace</button>
         {{range .Breadcrumbs}}
         <span class="sep">/</span>
-        <button type="button" class="seg" hx-get="/api/directories?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</button>
+        <button type="button" class="seg" hx-get="{{routeDirectories}}?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Name}}</button>
         {{end}}
     </nav>
 
@@ -24,7 +24,7 @@
                 <span class="fnm">{{.}}</span>
             </button>
             <button type="button" class="drill"
-                    hx-get="/api/directories?path={{$.Path}}{{if $.Path}}/{{end}}{{.}}"
+                    hx-get="{{routeDirectories}}?path={{$.Path}}{{if $.Path}}/{{end}}{{.}}"
                     hx-target="#dir-picker" hx-swap="innerHTML" title="Open subfolders">›</button>
         </div>
         {{end}}

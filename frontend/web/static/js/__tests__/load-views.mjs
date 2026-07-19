@@ -38,6 +38,18 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
         matchMedia: () => ({ matches: mobile }),
         WebSocket: { OPEN: 1 },
         htmx: null,
+        // Mirror layout.html's injection of the shared route patterns.
+        ROUTES: {
+            sessions: '/api/sessions',
+            settings: '/api/settings',
+            uiPrefs: '/api/ui-prefs',
+            directories: '/api/directories',
+            sessionsHistory: '/api/sessions/history',
+            sessionName: '/api/sessions/{terminalId}/name',
+            sessionUpload: '/api/sessions/{terminalId}/upload',
+            historyItem: '/api/sessions/history/{uuid}',
+            wsTerminal: '/ws/terminal/{terminalId}',
+        },
     };
 
     globalThis.window = window;

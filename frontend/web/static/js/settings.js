@@ -2,6 +2,7 @@
 // Applies to NEW sessions (claude reads settings at spawn).
 
 import { isMobile, sendJSON, errorText } from './ui-utils.js';
+import { settingsPath } from './routes.js';
 import { refreshShareStatus } from './share.js';
 import { fdSyncToggle, toggleThinking } from './theme.js';
 import { register } from './actions.js';
@@ -111,7 +112,7 @@ export async function openSettingsModal() {
     }
     settingsSelectCategory('session');
     try {
-        const res = await fetch('/api/settings');
+        const res = await fetch(settingsPath());
         if (res.ok) {
             const s = await res.json();
             setSel('model', s.model || '');
@@ -145,7 +146,7 @@ export async function saveSettings() {
     btn.classList.add('saving');
     label.textContent = 'SAVING…';
     try {
-        const res = await sendJSON('/api/settings', 'PUT', payload);
+        const res = await sendJSON(settingsPath(), 'PUT', payload);
         if (!res.ok) {
             throw new Error(await errorText(res, 'Save failed (' + res.status + ')'));
         }

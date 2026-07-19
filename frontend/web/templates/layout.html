@@ -28,7 +28,7 @@
     <script src="/static/vendor/addon-webgl.min.js"></script>
     <script src="/static/vendor/qrcode-generator.js"></script>
 </head>
-<body class="grain" hx-ext="sse" sse-connect="/events">
+<body class="grain" hx-ext="sse" sse-connect="{{routeEvents}}">
 <div class="app">
 
     <!-- ===== HEADER ===== -->
@@ -314,6 +314,8 @@ window.NEW_PROJECT_NAME_PATTERN = "{{newProjectPattern}}";
 window.WS_CONTROL = {{wsControlJSON}};
 // Share-tunnel state vocabulary injected from the shared Go contract (shared/types.go).
 window.SHARE_STATE = {{shareStateJSON}};
+// API route patterns injected from shared/routes.go (single source with backend routes + proxy).
+window.ROUTES = {{routesJSON}};
 </script>
 <script type="module" src="/static/js/main.js"></script>
 </body>

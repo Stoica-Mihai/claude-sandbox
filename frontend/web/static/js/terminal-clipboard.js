@@ -4,6 +4,7 @@
 
 import { ANSI_RED, ANSI_RESET } from './terminal-ansi.js';
 import { copyToClipboard, errorText } from './ui-utils.js';
+import { sessionUploadPath } from './routes.js';
 
 // Wire copy-on-select (desktop), Escape re-focus, and image-paste upload for a
 // terminal. `manager` provides the live socket for sending an uploaded image path.
@@ -49,7 +50,7 @@ export function wireClipboard(containerEl, term, terminalId, manager, mobile) {
             const formData = new FormData();
             formData.append('image', blob, 'clipboard.' + blob.type.split('/')[1]);
 
-            fetch(`/api/sessions/${terminalId}/upload`, { method: 'POST', body: formData })
+            fetch(sessionUploadPath(terminalId), { method: 'POST', body: formData })
                 .then(async (resp) => {
                     if (!resp.ok) {
                         const msg = await errorText(resp, resp.statusText);

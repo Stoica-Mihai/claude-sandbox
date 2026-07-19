@@ -8,6 +8,7 @@
 //   closed — close() was called (tab closed); terminal state.
 
 import { wsControl } from './protocol.js';
+import { wsTerminalPath } from './routes.js';
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 // Start fast: a relay is briefly absent after a backend restart/rebuild, so the
@@ -34,7 +35,7 @@ export class SessionSocket {
 
     connect() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${this.terminalId}`);
+        const ws = new WebSocket(`${protocol}//${location.host}${wsTerminalPath(this.terminalId)}`);
         ws.binaryType = 'arraybuffer';
         this.ws = ws;
         this.status = this.retryCount > 0 ? 'reconnecting' : 'connecting';

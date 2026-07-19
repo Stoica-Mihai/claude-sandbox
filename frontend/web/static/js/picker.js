@@ -4,6 +4,7 @@ import { escapeHtml, setBtnLabel, dpSkelRows, AROW_CSS, relTime, dpToast, sendJS
 import { dpDelToIdle } from './history-del.js';
 import { register } from './actions.js';
 import { openSession } from './tabs.js';
+import { sessionsPath, directoriesPath, sessionsHistoryPath } from './routes.js';
 
 // --- New Session modal: browse folders → select one → start new / resume ---
 
@@ -21,7 +22,7 @@ export function openNewSessionModal(event) {
     if (window.htmx) {
         const picker = document.getElementById('dir-picker');
         if (picker) picker.innerHTML = ''; // clear stale content from the last open
-        htmx.ajax('GET', '/api/directories', { target: '#dir-picker', swap: 'innerHTML' });
+        htmx.ajax('GET', directoriesPath(), { target: '#dir-picker', swap: 'innerHTML' });
     }
 }
 
@@ -125,7 +126,7 @@ export async function createProject() {
 
     let res;
     try {
-        res = await sendJSON('/api/directories', 'POST', { path, name, gitInit });
+        res = await sendJSON(directoriesPath(), 'POST', { path, name, gitInit });
     } catch (e) {
         dpEditorShowError(els, 'Could not create — check the connection.');
         return;
@@ -227,7 +228,7 @@ export async function dpRenderHistory(path) {
     let entries = [];
     let failed = false;
     try {
-        const res = await fetch('/api/sessions/history?cwd=' + encodeURIComponent(path));
+        const res = await fetch(sessionsHistoryPath(path));
         if (res.ok) entries = await res.json();
         else failed = true;
     } catch (e) { failed = true; }
@@ -341,7 +342,7 @@ export function init() {
     // X-Terminal-Id header, which the backend sets on success only, so keying on
     // it made every failure silent (no button feedback, modal frozen).
     document.addEventListener('htmx:afterRequest', (event) => {
-        if (event.detail?.pathInfo?.requestPath !== '/api/sessions') return;
+        if (event.detail?.pathInfo?.requestPath !== sessionsPath()) return;
         const xhr = event.detail.xhr;
         if (!xhr) return;
 

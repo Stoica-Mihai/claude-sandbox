@@ -2,6 +2,7 @@
 
 import { register } from './actions.js';
 import { sendJSON } from './ui-utils.js';
+import { sessionNamePath } from './routes.js';
 
 let renameTargetId = null;
 
@@ -22,7 +23,7 @@ export function init() {
         if (!renameTargetId) return;
         const name = document.getElementById('renameInput').value.trim();
         const targetId = renameTargetId;
-        sendJSON(`/api/sessions/${targetId}/name`, 'PUT', { name }).then(res => {
+        sendJSON(sessionNamePath(targetId), 'PUT', { name }).then(res => {
             if (!res.ok) throw new Error(`Rename failed (${res.status})`);
             document.getElementById('renameModal').close();
             renameTargetId = null;

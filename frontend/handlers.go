@@ -162,6 +162,28 @@ func templateFuncs() template.FuncMap {
 		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
 		"sseEvent":          func() string { return api.SSEEventUpdate },
+		// Route helpers so template hx-*/sse-connect attributes render from
+		// shared/routes.go instead of re-typed literals.
+		"routeEvents":      func() string { return api.RouteEvents },
+		"routeSessions":    func() string { return api.RouteSessions },
+		"routeDirectories": func() string { return api.RouteDirectories },
+		"sessionPath":      api.SessionPath,
+		// routesJSON injects the route patterns the browser JS builds URLs from
+		// (window.ROUTES), so a route rename in shared/routes.go flows to the JS.
+		"routesJSON": func() (template.JS, error) {
+			b, err := json.Marshal(map[string]string{
+				"sessions":        api.RouteSessions,
+				"settings":        api.RouteSettings,
+				"uiPrefs":         api.RouteUIPrefs,
+				"directories":     api.RouteDirectories,
+				"sessionsHistory": api.RouteSessionsHistory,
+				"sessionName":     api.RouteSessionName,
+				"sessionUpload":   api.RouteSessionUpload,
+				"historyItem":     api.RouteHistoryItem,
+				"wsTerminal":      api.RouteWSTerminal,
+			})
+			return template.JS(b), err
+		},
 		// shareStateJSON injects the share-tunnel state vocabulary
 		// (window.SHARE_STATE) so share.js branches on the shared Go contract
 		// instead of re-typed literals.

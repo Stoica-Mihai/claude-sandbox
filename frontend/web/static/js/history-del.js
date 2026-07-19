@@ -5,6 +5,7 @@
 // that inversion breaks the render↔delete import cycle.
 
 import { stopAnd } from './ui-utils.js';
+import { historyItemPath } from './routes.js';
 
 // Idle state: a trash button inside the .row-act container; click arms the confirm.
 export function dpDelToIdle(act, path, uuid, onDeleted) {
@@ -49,7 +50,7 @@ export function dpDelToConfirm(act, path, uuid, onDeleted) {
 export async function dpDelConfirmed(act, path, uuid, onDeleted) {
     let res;
     try {
-        res = await fetch('/api/sessions/history/' + encodeURIComponent(uuid), { method: 'DELETE' });
+        res = await fetch(historyItemPath(uuid), { method: 'DELETE' });
     } catch (e) {
         dpDelFail(act, path, uuid, onDeleted);
         return;
