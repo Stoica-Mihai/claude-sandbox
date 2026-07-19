@@ -2,74 +2,62 @@
 
 ## Purpose
 
-Defines requirements for the development workflow infrastructure: two multi-stage Docker builds (one per service) that minimize runtime image size, a `docker compose watch` based dev loop that rebuilds the affected service on source changes, and the supporting Makefile targets for building, running, and operating the containers.
+Defines requirements for the development workflow infrastructure: multi-stage Docker builds (one per first-party service) that minimize runtime image size, a `docker compose watch` based dev loop that rebuilds the affected service on source changes, and the supporting Makefile targets for building, running, and operating the containers.
 
 ## Requirements
 
 ### Requirement: Multi-stage Dockerfile per service
-The repository SHALL provide two separate multi-stage Dockerfiles, `Dockerfile.backend` and `Dockerfile.frontend`, one per service. Each Dockerfile MUST have a builder stage that compiles its Go service binary (with the Go toolchain, gcc, and libc6-dev) and a slim runtime stage that contains only the compiled binary plus that service's runtime dependencies. The Go toolchain, gcc, libc6-dev, source code, and Go module cache MUST NOT be present in either final runtime image, except that the backend runtime image SHALL retain Go so that `go test -race` can run in-container. The backend runtime SHALL include dtach, bash, git, curl, bubblewrap, qrencode, npm, and ca-certificates; the frontend runtime SHALL be minimal and SHALL NOT include dtach, socat, or claude. Neither image SHALL contain tmux or socat. Both runtime stages MUST run as non-root `USER claude` with `WORKDIR /workspace`.
+The repository SHALL provide a multi-stage Dockerfile per first-party service: `Dockerfile.sessions` (sessiond), `Dockerfile.backend`, and `Dockerfile.frontend` (the holesail sidecar keeps its own `Dockerfile.holesail`). Each MUST have a builder stage that compiles its Go binary and a runtime stage containing only the binary plus that service's runtime dependencies; source code, gcc, libc6-dev, and the Go module cache MUST NOT be present in any final runtime image.
+
+- The **sessions** runtime SHALL carry the heavy session environment — claude, bash, git, curl, bubblewrap, qrencode, npm, ca-certificates, and the Go toolchain (so `go test -race` can run in-container) — and SHALL NOT contain dtach, tmux, or socat. It runs sessiond as the non-root shared-UID user with `WORKDIR /workspace`.
+- The **backend** runtime SHALL be slim: the backend binary, curl (healthcheck), and ca-certificates only — no claude, no dtach, no npm, no Go toolchain. It runs as the same shared-UID user so the socket volume is writable by both.
+- The **frontend** runtime SHALL remain minimal and unchanged.
 
 #### Scenario: Builder stages compile the service binaries
-- **WHEN** the backend and frontend images are built
-- **THEN** the builder stage of each Dockerfile SHALL compile its Go service binary using the Go toolchain, gcc, and libc6-dev
-- **AND** each runtime stage SHALL copy only the compiled binary from its builder stage
+- **WHEN** the sessions, backend, and frontend images are built
+- **THEN** each builder stage SHALL compile its Go binary and each runtime stage SHALL copy only the compiled binary from its builder
 
-#### Scenario: Final images exclude build tooling
-- **WHEN** the final frontend image is inspected
-- **THEN** the Go toolchain, gcc, libc6-dev, service source code, and Go module cache SHALL NOT be present in its filesystem
+#### Scenario: dtach absent everywhere
+- **WHEN** all runtime images are inspected
+- **THEN** none SHALL contain dtach, tmux, or socat
+
+#### Scenario: Backend image is slim
 - **WHEN** the final backend image is inspected
-- **THEN** gcc, libc6-dev, service source code, and Go module cache SHALL NOT be present, but Go SHALL remain so `go test -race` can run in-container
+- **THEN** claude, npm, the Go toolchain, gcc, libc6-dev, and source code SHALL NOT be present
 
-#### Scenario: Service-specific runtime dependencies
-- **WHEN** the backend runtime image is inspected
-- **THEN** dtach, bash, git, curl, bubblewrap, qrencode, npm, and ca-certificates SHALL be present
-- **AND** tmux and socat SHALL NOT be present
-- **WHEN** the frontend runtime image is inspected
-- **THEN** it SHALL be minimal and SHALL NOT contain dtach, socat, claude, tmux, or the Go toolchain
-
-#### Scenario: Non-root user preserved
-- **WHEN** a container starts from either runtime image
-- **THEN** the process SHALL run as the non-root user `claude`
-- **AND** the working directory SHALL be `/workspace`
+#### Scenario: Sessions image carries the session environment
+- **WHEN** the final sessions image is inspected
+- **THEN** claude, git, bubblewrap, npm, and Go SHALL be present, and the container SHALL run as the non-root shared-UID user with `WORKDIR /workspace`
 
 ### Requirement: Dev workflow via docker compose watch
-The development workflow SHALL be driven by `docker compose watch`, exposed through the Makefile `watch` target. Each service in `docker-compose.yml` MUST declare a `develop.watch` entry with a `rebuild` action keyed on its own source directory (`./backend/` for backend, `./frontend/` for frontend) so that editing a source file rebuilds and restarts only the affected service. There SHALL NOT be a `docker-compose.dev.yml` file or a `make dev` target.
+The development workflow SHALL be driven by `docker compose watch`, exposed through the Makefile `watch` target. Each service in `docker-compose.yml` MUST declare a `develop.watch` entry with a `rebuild` action keyed on its source directories: `./sessiond/` for the sessions service; `./backend/`, `./shared/`, and `./sessiond/` (protocol dependency) for the backend; `./frontend/` and `./shared/` for the frontend. Editing backend or frontend source SHALL NOT rebuild the sessions service, so running claude sessions survive the dev loop. There SHALL NOT be a `docker-compose.dev.yml` file or a `make dev` target.
 
-#### Scenario: Watch rebuilds on backend source change
+#### Scenario: Watch rebuilds on backend source change without killing sessions
 - **WHEN** the developer runs `make watch` and then modifies a file under `./backend/`
-- **THEN** `docker compose watch` SHALL trigger the `rebuild` action for the backend service
-- **AND** the backend container SHALL be rebuilt and restarted from the updated source
+- **THEN** only the backend service SHALL be rebuilt and restarted, and running claude sessions SHALL keep running with viewers reconnecting automatically
+
+#### Scenario: Watch rebuilds on sessiond source change
+- **WHEN** the developer modifies a file under `./sessiond/`
+- **THEN** the sessions service SHALL be rebuilt (ending running sessions) and the backend SHALL be rebuilt (protocol dependency)
 
 #### Scenario: Watch rebuilds on frontend source change
-- **WHEN** the developer runs `make watch` and then modifies a file under `./frontend/`
-- **THEN** `docker compose watch` SHALL trigger the `rebuild` action for the frontend service
-- **AND** the frontend container SHALL be rebuilt and restarted from the updated source
-
-#### Scenario: No dev compose file or dev target exists
-- **WHEN** the repository is inspected
-- **THEN** there SHALL be no `docker-compose.dev.yml` file
-- **AND** there SHALL be no `make dev` target
+- **WHEN** the developer modifies a file under `./frontend/`
+- **THEN** only the frontend service SHALL be rebuilt and restarted
 
 ### Requirement: Makefile operational targets
-The Makefile SHALL provide targets for building, running, and operating the two-service stack. `make up` MUST build and start the backend and frontend services; `make down` MUST stop them; `make build` MUST build the images; `make rebuild` MUST build the images without cache; `make watch` MUST run `docker compose watch`; `make shell` MUST open a bash shell in the backend container; and `make restart-backend` and `make restart-frontend` MUST rebuild and restart only their respective service.
+The Makefile SHALL provide targets for building, running, and operating the stack. `make up` MUST build and start all services; `make down` MUST stop them; `make build` / `make rebuild` MUST build the images (without cache for rebuild); `make watch` MUST run `docker compose watch`; `make shell` MUST open a bash shell in the **sessions** container (where claude and the workspace tooling live); and `make restart-sessions`, `make restart-backend`, `make restart-frontend`, and `make restart-holesail` MUST rebuild and restart only their respective service.
 
 #### Scenario: Bring the stack up and down
 - **WHEN** the developer runs `make up`
-- **THEN** the backend and frontend services SHALL be built and started
+- **THEN** the sessions, backend, frontend, and holesail services SHALL be built and started
 - **WHEN** the developer runs `make down`
-- **THEN** both services SHALL be stopped
-
-#### Scenario: Build targets
-- **WHEN** the developer runs `make build`
-- **THEN** the service images SHALL be built
-- **WHEN** the developer runs `make rebuild`
-- **THEN** the service images SHALL be built without using the cache
+- **THEN** all services SHALL be stopped
 
 #### Scenario: Per-service restart and shell access
-- **WHEN** the developer runs `make restart-backend` or `make restart-frontend`
+- **WHEN** the developer runs `make restart-sessions`, `make restart-backend`, or `make restart-frontend`
 - **THEN** only the named service SHALL be rebuilt and restarted
 - **WHEN** the developer runs `make shell`
-- **THEN** a bash shell SHALL open inside the backend container
+- **THEN** a bash shell SHALL open inside the sessions container
 
 ### Requirement: Configurable dashboard port via environment variable
 The frontend dashboard server SHALL read a `DASHBOARD_PORT` environment variable to determine its listen port, defaulting to `8080` when unset. The published host port mapping in `docker-compose.yml` SHALL use `DASHBOARD_PORT` for both the host and container side, defaulting to `8080:8080` when unset. The backend SHALL listen on `BACKEND_PORT` (default `8081`) on the internal compose network with no published host ports.
