@@ -77,6 +77,7 @@ make up               # Auto-generate .env, build and start all services
 make watch            # docker compose watch (rebuild/sync on source change)
 make shell            # Open a bash shell in the sessions container
 make down             # Stop the containers
+make rebuild          # Full rebuild with no cache
 make restart-sessions # Rebuild + restart the session host (ENDS running sessions)
 make restart-backend  # Rebuild + restart just the backend (sessions keep running)
 make restart-frontend # Rebuild + restart just the frontend

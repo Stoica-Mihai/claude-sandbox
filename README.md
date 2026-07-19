@@ -55,7 +55,10 @@ make rebuild          # Full rebuild with no cache
 make restart-sessions # Rebuild the session host (ENDS running sessions)
 make restart-backend  # Rebuild the API (sessions keep running)
 make restart-frontend # Rebuild the dashboard UI
+make restart-holesail # Rebuild the share-tunnel sidecar
 ```
+
+The `Makefile` is the authoritative list of targets.
 
 Create and manage Claude Code sessions from the dashboard — direct CLI `claude`
 inside the container is disabled.
