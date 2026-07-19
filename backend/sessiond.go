@@ -21,6 +21,11 @@ type sessionHost interface {
 // transport failures, so Kill can treat it as already-dead.
 var errHostSession = errors.New("unknown to sessiond")
 
+// errSessiondUnreachable marks a control-socket transport failure (sessiond
+// down or mid-restart), so a handler can answer 502 rather than blaming the
+// client with a 400.
+var errSessiondUnreachable = errors.New("sessiond unreachable")
+
 // protocolHost talks to the real sessiond over the shared socket dir.
 type protocolHost struct {
 	sockDir string
@@ -29,7 +34,7 @@ type protocolHost struct {
 func (h *protocolHost) do(req protocol.Request) (protocol.Response, error) {
 	resp, err := protocol.Do(h.sockDir, req)
 	if err != nil {
-		return resp, fmt.Errorf("sessiond %s: %w", req.Op, err)
+		return resp, fmt.Errorf("%w: %s: %v", errSessiondUnreachable, req.Op, err)
 	}
 	return resp, nil
 }

@@ -155,7 +155,14 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		slog.Error("failed to start session", "cwd", req.CWD, "resume", req.Resume, "error", err)
-		writeErr(w, http.StatusBadRequest, err.Error())
+		switch {
+		case errors.Is(err, ErrUnknownSession):
+			writeErr(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, errSessiondUnreachable):
+			writeErr(w, http.StatusBadGateway, err.Error())
+		default:
+			writeErr(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 

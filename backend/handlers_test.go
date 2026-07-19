@@ -25,6 +25,20 @@ func newTestServer(t *testing.T, idx *SessionIndex) *Server {
 	}
 }
 
+func TestHandleSpawnUnknownResumeReturns404(t *testing.T) {
+	s := newTestServer(t, loadSessionIndexFresh(t))
+
+	// A well-formed uuid that isn't in the index resumes nothing.
+	body, _ := json.Marshal(api.SpawnRequest{Resume: testUUID2})
+	req := httptest.NewRequest(http.MethodPost, api.RouteSessions, bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.handleSpawn(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 for an unknown resume uuid", rec.Code)
+	}
+}
+
 func TestDecodeJSONRejectsOversizedBody(t *testing.T) {
 	s := newTestServer(t, loadSessionIndexFresh(t))
 
