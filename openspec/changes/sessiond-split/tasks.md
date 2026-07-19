@@ -16,10 +16,10 @@
 
 ## 3. Backend as bridge
 
-- [ ] 3.1 Protocol client package use in backend (replace directive → `../sessiond`); spawn/resume/kill/list in `lifecycle.go`/`session.go` delegate to control ops; index recording and validation (workspace, uuid regex) stay backend-side
-- [ ] 3.2 Rewrite the WS handler as the per-connection bridge: dial session socket on upgrade, ATTACH on first client resize, WS-binary↔DATA, WS-text↔CONTROL, sessiond CLOSE→WS 1000, dial failure/other termination→abnormal close
-- [ ] 3.3 Delete `relay.go`, `termstate.go` (moved), `discovery.go`, sidecar helpers in `paths.go`, `dtach` references; poll loop becomes 5s LIST reconciliation; `sessionstate.go` store keeps name/cwd/created/uuid fed from LIST + spawn replies
-- [ ] 3.4 Update backend tests: bridge tested against a fake sessiond socket (attach/snapshot/close-code mapping); DeleteHistory live-kill path now resolves via the store; drop dead relay/discovery tests
+- [x] 3.1 Protocol client package use in backend (replace directive → `../sessiond`); spawn/resume/kill/list in `lifecycle.go`/`session.go` delegate to control ops; index recording and validation (workspace, uuid regex) stay backend-side
+- [x] 3.2 Rewrite the WS handler as the per-connection bridge: dial session socket on upgrade, ATTACH on first client resize, WS-binary↔DATA, WS-text↔CONTROL, sessiond CLOSE→WS 1000, dial failure/other termination→abnormal close
+- [x] 3.3 Delete `relay.go`, `termstate.go` (moved), `discovery.go`, sidecar helpers in `paths.go`, `dtach` references; poll loop becomes 5s LIST reconciliation; `sessionstate.go` store keeps name/cwd/created/uuid fed from LIST + spawn replies
+- [x] 3.4 Update backend tests: bridge tested against a fake sessiond socket (attach/snapshot/close-code mapping); DeleteHistory live-kill path now resolves via the store; drop dead relay/discovery tests
 
 ## 4. Containers and compose
 

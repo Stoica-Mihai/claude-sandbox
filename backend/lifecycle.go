@@ -1,23 +1,21 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
-	"syscall"
 	"time"
 )
 
 // Spawn creates a new Claude Code conversation in cwd. It generates a uuid and
-// passes it to claude via --session-id so the dashboard owns the conversation id.
+// passes it to sessiond so the dashboard owns the conversation id.
 func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	absPath, err := validWorkspaceDir(cwd)
 	if err != nil {
 		return "", err
 	}
 	uuid := newUUID()
-	name, err := sm.spawnDtach(absPath, uuid, "--session-id "+uuid)
+	name, err := sm.spawn(absPath, uuid, false)
 	if err != nil {
 		return "", err
 	}
@@ -32,8 +30,8 @@ func (sm *SessionManager) Resume(uuid string) (string, error) {
 	if rec, ok := sm.store.byUUID(uuid); ok {
 		return rec.Name, nil
 	}
-	// The uuid reaches the dtach inner script; index membership gates it, and
-	// the format check makes shell-metacharacter values impossible outright.
+	// Index membership gates the uuid; the format check keeps malformed values
+	// out of the claude command line outright (defense in depth).
 	if !uuidRe.MatchString(uuid) {
 		return "", fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
 	}
@@ -45,13 +43,30 @@ func (sm *SessionManager) Resume(uuid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return sm.spawnDtach(absPath, uuid, "--resume "+uuid)
+	return sm.spawn(absPath, uuid, true)
+}
+
+// spawn delegates to sessiond and records the new session in the store.
+func (sm *SessionManager) spawn(absPath, uuid string, resume bool) (string, error) {
+	name, err := sm.sd.Spawn(absPath, uuid, resume)
+	if err != nil {
+		return "", err
+	}
+	sm.store.add(sessionRecord{
+		Name:      name,
+		CWD:       absPath,
+		Created:   time.Now(),
+		SessionID: uuid,
+	})
+	sm.broker.Publish()
+	slog.Info("spawned session", "session", name, "cwd", absPath, "uuid", uuid, "resume", resume)
+	return name, nil
 }
 
 // DeleteHistory removes a conversation from history: it verifies the uuid is in
-// the index, kills any live dtach session running that conversation, then drops
-// the index entry and its transcript. An unknown uuid is an error before any
-// kill or delete, so callers can map it to a 404.
+// the index, kills any live session running that conversation, then drops the
+// index entry and its transcript. An unknown uuid is an error before any kill
+// or delete, so callers can map it to a 404.
 func (sm *SessionManager) DeleteHistory(uuid string) error {
 	if _, ok := sm.index.cwd(uuid); !ok {
 		return fmt.Errorf("%w: %s", ErrUnknownSession, uuid)
@@ -69,98 +84,18 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 	return nil
 }
 
-// spawnDtach launches a dtach session running claude with the given flag
-// (`--session-id <uuid>` or `--resume <uuid>`), records the uuid in the meta
-// sidecar, starts the relay, and returns the dtach session name.
-func (sm *SessionManager) spawnDtach(absPath, uuid, claudeFlag string) (string, error) {
-	claudePath, err := exec.LookPath("claude")
-	if err != nil {
-		claudePath = "claude"
-	}
-
-	for i := 0; i < maxSpawnRetries; i++ {
-		sessionName := generateSessionName()
-		if _, statErr := os.Stat(sockPath(sessionName)); statErr == nil {
-			continue // name collision, retry
-		}
-
-		if err := writeSessionMeta(sessionName, absPath, uuid); err != nil {
-			slog.Warn("failed to write session metadata", "session", sessionName, "error", err)
-		}
-
-		innerScript := fmt.Sprintf("echo $$ > %q; exec %q %s --dangerously-skip-permissions",
-			pidPath(sessionName), claudePath, claudeFlag)
-		cmd := exec.Command("dtach", "-n", sockPath(sessionName), "-E", "-z",
-			"bash", "-c", innerScript)
-		cmd.Dir = absPath
-		cmd.Env = append(os.Environ(), "TERM="+termType)
-
-		if err := cmd.Run(); err != nil {
-			slog.Warn("dtach spawn failed, retrying",
-				"session", sessionName, "attempt", i+1, "error", err)
-			removeSessionFiles(sessionName)
-			continue
-		}
-
-		slog.Info("spawned session", "session", sessionName, "cwd", absPath, "uuid", uuid)
-
-		// Wait for the inner bash to write the PID sidecar (it does so before
-		// exec'ing claude) so the record carries a real PID for kill/liveness.
-		deadline := time.Now().Add(pidWaitTimeout)
-		for time.Now().Before(deadline) {
-			if _, statErr := os.Stat(pidPath(sessionName)); statErr == nil {
-				break
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-
-		// Store BEFORE the relay: the poll's reconcile stops any relay whose
-		// name is not in the store, so registering the relay first races it.
-		sm.store.add(sessionRecord{
-			Name:      sessionName,
-			CWD:       absPath,
-			Created:   time.Now(),
-			SessionID: uuid,
-			PID:       sessionPID(sessionName),
-		})
-		sm.relays.ensure(sessionName, sm.newRelay)
-		sm.broker.Publish()
-		return sessionName, nil
-	}
-
-	return "", fmt.Errorf("failed to create session after %d attempts", maxSpawnRetries)
-}
-
-// Kill terminates a session by signalling its process group.
+// Kill terminates a session via sessiond and drops it from the store. A
+// session sessiond no longer knows is treated as already dead.
 func (sm *SessionManager) Kill(sessionName string) error {
-	rec, ok := sm.store.get(sessionName)
-	if !ok {
+	if _, ok := sm.store.get(sessionName); !ok {
 		return fmt.Errorf("session not found: %s", sessionName)
 	}
 
-	pid := rec.PID
-	if pid == 0 {
-		pid = sessionPID(sessionName)
-	}
-	if pid > 0 {
-		// Signal the process group (negative pid); the inner bash is the session
-		// leader, so this reaps claude and any children it spawned.
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
-		deadline := time.Now().Add(killGracePeriod)
-		for time.Now().Before(deadline) {
-			if !processAlive(pid) {
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		if processAlive(pid) {
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
-		}
+	if err := sm.sd.Kill(sessionName); err != nil && !errors.Is(err, errHostSession) {
+		return err
 	}
 
 	slog.Info("killed session", "session", sessionName)
-
-	sm.relays.remove(sessionName)
 	sm.dropSession(sessionName)
 	sm.broker.Publish()
 	return nil

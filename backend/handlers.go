@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	api "claude-sandbox-api"
+	"claude-sandbox-sessiond/protocol"
 
 	"github.com/gorilla/websocket"
 )
@@ -215,8 +217,7 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check session exists
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil {
+	if _, ok := s.sm.GetSession(sessionName); !ok {
 		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
@@ -353,8 +354,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil {
+	if _, ok := s.sm.GetSession(sessionName); !ok {
 		writeErr(w, http.StatusNotFound, "session not found")
 		return
 	}
@@ -461,10 +461,15 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleWebSocket upgrades the HTTP connection to a WebSocket and registers
-// the viewer with the session's relay. Output comes from the relay's terminal
-// snapshot (replay) and the live attach PTY. Input is sent via the relay's
-// attach PTY.
+// preAttachInputMax bounds input buffered between WS open and the first
+// resize (which triggers the protocol ATTACH); the client resizes on open, so
+// this holds at most a few early keystrokes.
+const preAttachInputMax = 64 << 10
+
+// handleWebSocket upgrades the HTTP connection and bridges it to the
+// session's sessiond socket: WS binary ↔ DATA frames, WS text ↔ CONTROL
+// frames. The bridge holds no session state; sessiond owns the PTY, the
+// emulator, and the viewer fan-out.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	sessionName := r.PathValue("terminalId")
 	if sessionName == "" {
@@ -472,9 +477,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the relay for this session.
-	relay := s.sm.GetRelay(sessionName)
-	if relay == nil || relay.IsStopped() {
+	if _, ok := s.sm.GetSession(sessionName); !ok {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -484,56 +487,126 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		slog.Error("websocket upgrade failed", "session", sessionName, "error", err)
 		return
 	}
+	defer conn.Close()
 
-	slog.Info("websocket attached", "session", sessionName)
-
-	// Register viewer with the relay (sends reset + scrollback replay). On
-	// failure the viewer was never registered — close instead of consuming
-	// input from a client that will never see output.
-	if err := relay.AddViewer(conn); err != nil {
-		slog.Debug("failed to add viewer", "session", sessionName, "error", err)
-		_ = conn.Close()
+	sess, err := s.sm.DialSession(sessionName)
+	if err != nil {
+		// Already upgraded: signal failure with an abnormal close so the
+		// client retries with backoff (sessiond may be mid-restart).
+		slog.Warn("session dial failed", "session", sessionName, "error", err)
+		msg := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "session connection failed")
+		_ = conn.WriteMessage(websocket.CloseMessage, msg)
 		return
 	}
+	defer sess.Close()
 
-	// Read loop: WebSocket → relay (input/resize).
-	// This goroutine runs until the WebSocket disconnects or the relay stops.
-	defer func() {
-		relay.RemoveViewer(conn)
-		_ = conn.Close()
-		slog.Info("websocket detached", "session", sessionName)
+	slog.Info("websocket attached", "session", sessionName)
+	defer slog.Info("websocket detached", "session", sessionName)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		bridgeFramesToWS(sess, conn)
 	}()
+	bridgeWSToFrames(conn, sess, sessionName)
+	_ = sess.Close() // unblocks the frame reader
+	<-done
+}
+
+// bridgeWSToFrames pumps WS messages into protocol frames. The first resize
+// becomes the ATTACH handshake (carrying the viewer's dimensions, so the
+// snapshot renders at them); binary input arriving before it is buffered.
+func bridgeWSToFrames(conn *websocket.Conn, sess net.Conn, sessionName string) {
+	attached := false
+	var pending []byte
+
+	writeFrame := func(typ byte, payload []byte) bool {
+		_ = sess.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if err := protocol.WriteFrame(sess, typ, payload); err != nil {
+			slog.Debug("session write failed", "session", sessionName, "error", err)
+			return false
+		}
+		return true
+	}
 
 	for {
-		msgType, data, readErr := conn.ReadMessage()
-		if readErr != nil {
-			if websocket.IsUnexpectedCloseError(readErr,
+		msgType, data, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err,
 				websocket.CloseGoingAway,
 				websocket.CloseNormalClosure,
 			) {
-				slog.Debug("websocket read error", "session", sessionName, "error", readErr)
+				slog.Debug("websocket read error", "session", sessionName, "error", err)
 			}
 			return
 		}
 
 		switch msgType {
 		case websocket.TextMessage:
-			// JSON control message (resize, refresh).
 			var msg controlMessage
 			if err := json.Unmarshal(data, &msg); err != nil {
 				slog.Debug("invalid control message", "session", sessionName, "error", err)
 				continue
 			}
-			if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
-				relay.Resize(conn, msg.Cols, msg.Rows)
+			if msg.Type != "resize" || msg.Cols == 0 || msg.Rows == 0 {
+				continue
 			}
-		case websocket.BinaryMessage:
-			// Terminal input: unsuspends this viewer, makes it the active one
-			// (tmux "window-size latest"), and writes to the session.
-			if err := relay.Input(conn, data); err != nil {
-				slog.Debug("relay input failed", "session", sessionName, "error", err)
+			if !attached {
+				att, _ := json.Marshal(protocol.Attach{Cols: msg.Cols, Rows: msg.Rows})
+				if !writeFrame(protocol.FrameAttach, att) {
+					return
+				}
+				attached = true
+				if len(pending) > 0 {
+					if !writeFrame(protocol.FrameData, pending) {
+						return
+					}
+					pending = nil
+				}
+				continue
+			}
+			if !writeFrame(protocol.FrameControl, data) {
 				return
 			}
+		case websocket.BinaryMessage:
+			if !attached {
+				if len(pending)+len(data) <= preAttachInputMax {
+					pending = append(pending, data...)
+				}
+				continue
+			}
+			if !writeFrame(protocol.FrameData, data) {
+				return
+			}
+		}
+	}
+}
+
+// bridgeFramesToWS pumps protocol frames into WS messages. A CLOSE frame maps
+// to a normal WS closure (the session ended); any other stream end leaves the
+// socket to close abnormally, so the client's reconnect logic engages.
+func bridgeFramesToWS(sess net.Conn, conn *websocket.Conn) {
+	for {
+		typ, payload, err := protocol.ReadFrame(sess)
+		if err != nil {
+			return
+		}
+		switch typ {
+		case protocol.FrameSnapshot, protocol.FrameData:
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+				return
+			}
+		case protocol.FrameControl:
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+				return
+			}
+		case protocol.FrameClose:
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended")
+			_ = conn.WriteMessage(websocket.CloseMessage, msg)
+			return
 		}
 	}
 }

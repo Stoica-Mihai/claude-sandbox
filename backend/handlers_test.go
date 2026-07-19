@@ -17,8 +17,9 @@ import (
 // newTestServer builds a Server wired to a real Broker and a SessionManager
 // backed by the given index, with no polling goroutine.
 func newTestServer(idx *SessionIndex) *Server {
+	sm, _ := newTestManager(idx)
 	return &Server{
-		sm:     &SessionManager{index: idx, relays: newRelayRegistry(), store: newSessionStore()},
+		sm:     sm,
 		broker: NewBroker(),
 	}
 }

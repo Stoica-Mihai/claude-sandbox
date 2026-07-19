@@ -40,7 +40,7 @@ type SpawnRequest struct {
 	Resume string `json:"resume,omitempty"`
 }
 
-// SpawnResponse is the 201 payload; SessionName is the dtach terminal id.
+// SpawnResponse is the 201 payload; SessionName is the terminal id.
 type SpawnResponse struct {
 	SessionName string `json:"session_name"`
 }

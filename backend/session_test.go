@@ -2,119 +2,80 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"net"
 	"os"
-	"os/exec"
-	"strconv"
-	"syscall"
+	"sync"
 	"testing"
 	"time"
+
+	"claude-sandbox-sessiond/protocol"
 )
 
-// setSessionDirs points the sockDir/metaDir package globals at fresh temp dirs
-// for the duration of the test and restores them afterward.
-func setSessionDirs(t *testing.T) (sock, meta string) {
-	t.Helper()
-	prevSock, prevMeta := sockDir, metaDir
-	sock, meta = t.TempDir(), t.TempDir()
-	sockDir, metaDir = sock, meta
-	t.Cleanup(func() { sockDir, metaDir = prevSock, prevMeta })
-	return sock, meta
+// fakeHost is an in-memory sessionHost for tests.
+type fakeHost struct {
+	mu       sync.Mutex
+	sessions []protocol.SessionInfo
+	killed   []string
+	spawnErr error
+	killErr  error
+	dial     func(name string) (net.Conn, error)
 }
 
-// spawnLiveSession starts a real, killable child process in its own process
-// group and writes the pid + meta sidecars so adoptSessions lists it as a
-// live session whose SessionID is uuid. It returns the dtach session name and
-// the running command (already started).
-func spawnLiveSession(t *testing.T, uuid string) (string, *exec.Cmd) {
-	t.Helper()
-	name := generateSessionName()
-
-	cmd := exec.Command("sleep", "300")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start child: %v", err)
+func (f *fakeHost) Spawn(cwd, uuid string, resume bool) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.spawnErr != nil {
+		return "", f.spawnErr
 	}
-	// Reap the child in the background so that once Kill terminates it the PID
-	// is collected and processAlive (a signal-0 probe) stops seeing a zombie.
-	// In production init reaps the inner bash; the test must do it itself.
-	go func() { _, _ = cmd.Process.Wait() }()
-	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) })
-
-	if err := os.WriteFile(pidPath(name), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
-		t.Fatalf("write pid sidecar: %v", err)
-	}
-	if err := writeSessionMeta(name, "/workspace/a", uuid); err != nil {
-		t.Fatalf("write meta sidecar: %v", err)
-	}
-	// A socket file so the relay/aliveness fallbacks have something to find.
-	if err := os.WriteFile(sockPath(name), nil, 0o600); err != nil {
-		t.Fatalf("write socket file: %v", err)
-	}
-	return name, cmd
+	name := fmt.Sprintf("claude-fake%04d", len(f.sessions))
+	f.sessions = append(f.sessions, protocol.SessionInfo{Name: name, CWD: cwd, UUID: uuid, Created: time.Now().Unix()})
+	return name, nil
 }
 
-// TestRelayExitedCleansUpDeadSession: a relay stopping on its own with no live
-// session behind it must drop out of the registry, clean the session's files,
-// and publish an SSE update.
-func TestRelayExitedCleansUpDeadSession(t *testing.T) {
-	setSessionDirs(t)
+func (f *fakeHost) List() ([]protocol.SessionInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]protocol.SessionInfo(nil), f.sessions...), nil
+}
+
+func (f *fakeHost) Kill(name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.killed = append(f.killed, name)
+	return f.killErr
+}
+
+func (f *fakeHost) DialSession(name string) (net.Conn, error) {
+	if f.dial != nil {
+		return f.dial(name)
+	}
+	return nil, errors.New("no dial configured")
+}
+
+func (f *fakeHost) killedNames() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.killed...)
+}
+
+// newTestManager builds a SessionManager on a fakeHost with no poller.
+func newTestManager(idx *SessionIndex) (*SessionManager, *fakeHost) {
+	fh := &fakeHost{}
 	sm := &SessionManager{
-		relays: newRelayRegistry(),
+		sd:     fh,
 		store:  newSessionStore(),
-		index:  &SessionIndex{entries: map[string]indexEntry{}},
+		index:  idx,
 		broker: NewBroker(),
 	}
-	_, ch := sm.broker.Subscribe()
-
-	name := generateSessionName()
-	if err := os.WriteFile(metaPath(name), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	sm.store.add(sessionRecord{Name: name, CWD: "/workspace/a"})
-
-	relaySide, sessionSide := socketpairFiles(t)
-	relay := NewRelay(name)
-	relay.onExit = func() { sm.relayExited(name, relay) }
-	relay.begin(relaySide, nil)
-	sm.relays.ensure(name, func(string) *Relay { return relay })
-
-	sessionSide.Close() // attach EOF → session gone → relay stops → relayExited
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if sm.relays.get(name) == nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if sm.relays.get(name) != nil {
-		t.Fatal("relayExited did not drop the relay from the registry")
-	}
-	<-relay.exited
-	if _, err := os.Stat(metaPath(name)); !os.IsNotExist(err) {
-		t.Fatalf("relayExited did not remove session files: %v", err)
-	}
-	if _, ok := sm.store.get(name); ok {
-		t.Fatal("relayExited did not drop the store record")
-	}
-	select {
-	case <-ch:
-	case <-time.After(2 * time.Second):
-		t.Fatal("relayExited did not publish an SSE update")
-	}
+	return sm, fh
 }
 
 // TestResumeAlreadyLive: resuming a conversation that already has a live
 // session returns that session instead of spawning a second claude --resume
 // (two writers on one transcript).
 func TestResumeAlreadyLive(t *testing.T) {
-	setSessionDirs(t)
-	sm := &SessionManager{
-		relays: newRelayRegistry(),
-		store:  newSessionStore(),
-		index:  &SessionIndex{entries: map[string]indexEntry{}},
-		broker: NewBroker(),
-	}
+	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
 	sm.index.add(testUUID1, "/workspace/a", 100)
 	sm.store.add(sessionRecord{Name: "claude-live1234", CWD: "/workspace/a", SessionID: testUUID1})
 
@@ -125,73 +86,136 @@ func TestResumeAlreadyLive(t *testing.T) {
 	if name != "claude-live1234" {
 		t.Fatalf("Resume = %q, want the live session name", name)
 	}
+	if s, _ := fh.List(); len(s) != 0 {
+		t.Fatal("Resume of a live conversation must not spawn")
+	}
 }
 
 // TestResumeRejectsMalformedUUID: an index entry whose key is not an RFC-4122
-// uuid must never reach the shell-interpolated dtach script.
+// uuid must never reach the claude command line.
 func TestResumeRejectsMalformedUUID(t *testing.T) {
-	setSessionDirs(t)
 	bad := `x"; rm -rf /; echo "`
-	sm := &SessionManager{
-		relays: newRelayRegistry(),
-		store:  newSessionStore(),
-		index:  &SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}},
-		broker: NewBroker(),
-	}
+	sm, _ := newTestManager(&SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}})
 
 	if _, err := sm.Resume(bad); !errors.Is(err, ErrUnknownSession) {
 		t.Fatalf("Resume(malformed) err = %v, want ErrUnknownSession", err)
 	}
 }
 
+// TestSpawnDelegatesToHost: the inner spawn records the sessiond reply in the
+// store and publishes an SSE update.
+func TestSpawnDelegatesToHost(t *testing.T) {
+	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	_, ch := sm.broker.Subscribe()
+
+	name, err := sm.spawn("/workspace/a", testUUID1, false)
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	rec, ok := sm.store.get(name)
+	if !ok || rec.SessionID != testUUID1 || rec.CWD != "/workspace/a" {
+		t.Fatalf("store record = %+v ok=%v", rec, ok)
+	}
+	if s, _ := fh.List(); len(s) != 1 {
+		t.Fatalf("host sessions = %d, want 1", len(s))
+	}
+	select {
+	case <-ch:
+	default:
+		t.Fatal("spawn did not publish an SSE update")
+	}
+}
+
+// TestKillDelegatesToHost: Kill asks sessiond, drops the record, publishes.
+func TestKillDelegatesToHost(t *testing.T) {
+	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm.store.add(sessionRecord{Name: "claude-k1", CWD: "/workspace/a", SessionID: testUUID1})
+	_, ch := sm.broker.Subscribe()
+
+	if err := sm.Kill("claude-k1"); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if got := fh.killedNames(); len(got) != 1 || got[0] != "claude-k1" {
+		t.Fatalf("host killed = %v", got)
+	}
+	if _, ok := sm.store.get("claude-k1"); ok {
+		t.Fatal("Kill did not drop the store record")
+	}
+	select {
+	case <-ch:
+	default:
+		t.Fatal("Kill did not publish an SSE update")
+	}
+
+	if err := sm.Kill("claude-nope"); err == nil {
+		t.Fatal("Kill of unknown session must error")
+	}
+}
+
+// TestKillTreatsUnknownHostSessionAsDead: sessiond not knowing the session is
+// not a failure — the record is dropped anyway.
+func TestKillTreatsUnknownHostSessionAsDead(t *testing.T) {
+	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	fh.killErr = fmt.Errorf("%w: session not found", errHostSession)
+	sm.store.add(sessionRecord{Name: "claude-gone", CWD: "/workspace/a"})
+
+	if err := sm.Kill("claude-gone"); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, ok := sm.store.get("claude-gone"); ok {
+		t.Fatal("record not dropped for a host-unknown session")
+	}
+}
+
 // TestDeleteHistoryKillsLiveSession covers the branch where the store holds a
-// live session whose SessionID matches the uuid: DeleteHistory must invoke
-// Kill (terminating the process group), then drop the index entry and
-// transcript. The store is seeded through adoptSessions, covering the boot
-// adoption path against real sidecars too.
+// live session whose SessionID matches the uuid: DeleteHistory must kill it
+// via sessiond, then drop the index entry and transcript.
 func TestDeleteHistoryKillsLiveSession(t *testing.T) {
-	setSessionDirs(t)
 	uuid := testUUID1
 	_, tx := seedTranscript(t, uuid, "/workspace/a")
 
-	name, cmd := spawnLiveSession(t, uuid)
-
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	sm := &SessionManager{index: idx, relays: newRelayRegistry(), store: newSessionStore(), broker: NewBroker()}
-	for _, rec := range adoptSessions() {
-		sm.store.add(rec)
-	}
-
-	// Precondition: adoption saw the live session by its uuid.
-	if rec, ok := sm.store.byUUID(uuid); !ok || rec.Name != name || rec.PID != cmd.Process.Pid {
-		t.Fatalf("setup: adoptSessions did not record the live session: %+v ok=%v", rec, ok)
-	}
+	sm, fh := newTestManager(idx)
+	sm.store.add(sessionRecord{Name: "claude-live9999", CWD: "/workspace/a", SessionID: uuid})
 
 	if err := sm.DeleteHistory(uuid); err != nil {
 		t.Fatalf("DeleteHistory returned error: %v", err)
 	}
 
-	// The child's process group must have been signalled and exited.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if !processAlive(cmd.Process.Pid) {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	if got := fh.killedNames(); len(got) != 1 || got[0] != "claude-live9999" {
+		t.Fatalf("host killed = %v, want the live session", got)
 	}
-	if processAlive(cmd.Process.Pid) {
-		t.Fatal("DeleteHistory did not kill the live session's process")
-	}
-
 	if _, ok := idx.cwd(uuid); ok {
 		t.Fatal("DeleteHistory did not drop the index entry")
 	}
 	if _, err := os.Stat(tx); !os.IsNotExist(err) {
 		t.Fatalf("DeleteHistory did not remove the transcript: stat err = %v", err)
 	}
-	// Sidecars for the killed session are gone.
-	if _, err := os.Stat(pidPath(name)); !os.IsNotExist(err) {
-		t.Fatalf("Kill did not remove the pid sidecar: stat err = %v", err)
+	if _, ok := sm.store.byUUID(uuid); ok {
+		t.Fatal("DeleteHistory left the store record")
+	}
+}
+
+// TestRefreshFromList reconciles the store against the host's live list in
+// both directions and reports change correctly.
+func TestRefreshFromList(t *testing.T) {
+	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm.store.add(sessionRecord{Name: "claude-stale", CWD: "/workspace/old"})
+	fh.sessions = []protocol.SessionInfo{{Name: "claude-new", CWD: "/workspace/new", UUID: testUUID2, Created: 1234}}
+
+	if !sm.refreshFromList() {
+		t.Fatal("refresh with drift must report change")
+	}
+	if _, ok := sm.store.get("claude-stale"); ok {
+		t.Fatal("stale record survived reconciliation")
+	}
+	rec, ok := sm.store.get("claude-new")
+	if !ok || rec.SessionID != testUUID2 || rec.CWD != "/workspace/new" || rec.Created.Unix() != 1234 {
+		t.Fatalf("new record = %+v ok=%v", rec, ok)
+	}
+
+	if sm.refreshFromList() {
+		t.Fatal("refresh with no drift must report no change")
 	}
 }

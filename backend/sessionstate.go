@@ -9,103 +9,13 @@ import (
 	api "claude-sandbox-api"
 )
 
-// relayRegistry owns the live session-name → relay map and its concurrency,
-// separate from the session-list cache so the two no longer share one lock.
-type relayRegistry struct {
-	mu     sync.RWMutex
-	relays map[string]*Relay
-}
-
-func newRelayRegistry() *relayRegistry {
-	return &relayRegistry{relays: make(map[string]*Relay)}
-}
-
-// get returns the relay for a session, or nil if absent.
-func (r *relayRegistry) get(name string) *Relay {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.relays[name]
-}
-
-// ensure starts and registers a relay for name if none exists. The (blocking)
-// start runs outside the lock so a slow attach can't freeze get/remove; if a
-// concurrent ensure won the race, the extra relay is stopped.
-func (r *relayRegistry) ensure(name string, start func(string) *Relay) {
-	r.mu.RLock()
-	_, exists := r.relays[name]
-	r.mu.RUnlock()
-	if exists {
-		return
-	}
-	relay := start(name)
-	if relay == nil {
-		return
-	}
-	r.mu.Lock()
-	if _, ok := r.relays[name]; ok {
-		r.mu.Unlock()
-		relay.Stop()
-		return
-	}
-	r.relays[name] = relay
-	r.mu.Unlock()
-}
-
-// remove stops and drops a relay if present.
-func (r *relayRegistry) remove(name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if relay, ok := r.relays[name]; ok {
-		relay.Stop()
-		delete(r.relays, name)
-	}
-}
-
-// dropIf removes the entry for name only when it still maps to relay,
-// reporting whether it did. It does not stop the relay (used for relays that
-// already stopped on their own).
-func (r *relayRegistry) dropIf(name string, relay *Relay) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.relays[name] != relay {
-		return false
-	}
-	delete(r.relays, name)
-	return true
-}
-
-// reconcile stops+drops relays whose name is absent from alive, then ensures
-// a relay for every name in alive. Relay starts happen outside the lock (see
-// ensure) so a slow dtach attach can't block the registry.
-func (r *relayRegistry) reconcile(alive map[string]bool, start func(name string) *Relay) {
-	r.mu.Lock()
-	var missing []string
-	for name := range alive {
-		if _, ok := r.relays[name]; !ok {
-			missing = append(missing, name)
-		}
-	}
-	for name, relay := range r.relays {
-		if !alive[name] {
-			relay.Stop()
-			delete(r.relays, name)
-		}
-	}
-	r.mu.Unlock()
-
-	for _, name := range missing {
-		r.ensure(name, start)
-	}
-}
-
-// sessionRecord is the authoritative in-memory state of one live session.
-// Sidecar files exist only to rebuild these records at boot (adoptSessions).
+// sessionRecord is the backend's view of one live session, fed by sessiond
+// spawn replies and LIST reconciliation.
 type sessionRecord struct {
 	Name      string
 	CWD       string
 	Created   time.Time
 	SessionID string // claude conversation uuid
-	PID       int    // inner bash PID; 0 if the sidecar was never written
 }
 
 // display converts a record to its API view.
@@ -120,17 +30,8 @@ func (rec sessionRecord) display() api.DisplaySession {
 	}
 }
 
-// alive probes the session's inner process, preferring the recorded PID and
-// falling back to the sidecar/socket check when it was never captured.
-func (rec sessionRecord) alive() bool {
-	if rec.PID > 0 {
-		return processAlive(rec.PID)
-	}
-	return sessionAlive(rec.Name)
-}
-
-// sessionStore is the in-memory session registry, mutated by spawn/kill/exit
-// events and seeded once at boot.
+// sessionStore is the in-memory session registry, mutated by spawn/kill events
+// and the sessiond LIST reconciliation.
 type sessionStore struct {
 	mu sync.RWMutex
 	m  map[string]sessionRecord
