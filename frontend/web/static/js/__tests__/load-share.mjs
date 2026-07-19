@@ -63,6 +63,8 @@ function loadShare({ fetchResponses = [] } = {}) {
     const timers = makeTimers();
 
     globalThis.document = document;
+    // Mirror layout.html's injection of the shared share-state vocabulary.
+    globalThis.window = { SHARE_STATE: { private: 'private', publishing: 'publishing', public: 'public', error: 'error' } };
     globalThis.setTimeout = timers.setTimeout;
     globalThis.clearTimeout = timers.clearTimeout;
     globalThis.fetch = fetchImpl;

@@ -10,6 +10,15 @@ import { copyToClipboard } from './ui-utils.js';
 const SHARE_HINT = 'Tunnel may take a few seconds to become reachable';
 const SHARE_HINT_PUBLIC = 'The tunnel stays up until you go private';
 
+// Share-tunnel state vocabulary, injected by layout.html from shared/types.go
+// (window.SHARE_STATE) so this consumer branches on the same values the holesail
+// producer emits, without re-typing them. Read lazily so tests that install the
+// global after import still see it.
+function shareStates() {
+    const s = (typeof window !== 'undefined' && window.SHARE_STATE) || {};
+    return { PRIVATE: s.private, PUBLISHING: s.publishing, PUBLIC: s.public, ERROR: s.error };
+}
+
 function shareEl(id) { return document.getElementById(id); }
 
 function showShare(id, on) {
@@ -21,8 +30,9 @@ function showShare(id, on) {
 // a status object {state, url, error}.
 export function renderShare(st) {
     if (!st || !st.state) return;
-    const pub = st.state === 'public';
-    const publishing = st.state === 'publishing';
+    const S = shareStates();
+    const pub = st.state === S.PUBLIC;
+    const publishing = st.state === S.PUBLISHING;
     const priv = !pub && !publishing;
 
     showShare('statePrivate', priv);
@@ -39,7 +49,7 @@ export function renderShare(st) {
 
     const hint = shareEl('shareHint');
     if (hint) {
-        if (st.state === 'error') {
+        if (st.state === S.ERROR) {
             hint.textContent = st.error || 'Something went wrong';
             hint.classList.add('err');
         } else {
@@ -72,14 +82,14 @@ export async function shareAction(btn, path, optimistic) {
         const res = await fetch(path, { method: 'POST' });
         renderShare(await res.json());
     } catch (e) {
-        renderShare({ state: 'error', error: 'Request failed — is the holesail service running?' });
+        renderShare({ state: shareStates().ERROR, error: 'Request failed — is the holesail service running?' });
     } finally {
         delete btn.dataset.busy;
     }
 }
 
 export function goPublic() {
-    shareAction(shareEl('goPublicBtn'), '/api/share/start', 'publishing');
+    shareAction(shareEl('goPublicBtn'), '/api/share/start', shareStates().PUBLISHING);
 }
 
 export function goPrivate() {

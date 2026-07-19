@@ -162,6 +162,18 @@ func templateFuncs() template.FuncMap {
 		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
 		"sseEvent":          func() string { return api.SSEEventUpdate },
+		// shareStateJSON injects the share-tunnel state vocabulary
+		// (window.SHARE_STATE) so share.js branches on the shared Go contract
+		// instead of re-typed literals.
+		"shareStateJSON": func() (template.JS, error) {
+			b, err := json.Marshal(map[string]string{
+				"private":    string(api.SharePrivate),
+				"publishing": string(api.SharePublishing),
+				"public":     string(api.SharePublic),
+				"error":      string(api.ShareError),
+			})
+			return template.JS(b), err
+		},
 		// wsControlJSON injects the WS control vocabulary (window.WS_CONTROL) so
 		// the browser JS speaks the same control protocol as sessiond/protocol
 		// without re-typing the literals.
