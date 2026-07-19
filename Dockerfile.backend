@@ -1,7 +1,9 @@
 # ── Builder stage: compile the Go backend binary ──
 FROM debian:bookworm-slim AS builder
 
-ARG GO_VERSION=1.26.1
+# Supplied by the compose build arg (single-sourced in docker-compose.yml's
+# x-go-version anchor).
+ARG GO_VERSION
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

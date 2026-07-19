@@ -1,5 +1,7 @@
-# Pinned Go version; each stage re-declares `ARG GO_VERSION` to inherit it.
-ARG GO_VERSION=1.26.1
+# Go toolchain version — supplied by the compose build arg (single-sourced in
+# docker-compose.yml's x-go-version anchor). Each stage re-declares `ARG
+# GO_VERSION` to inherit it.
+ARG GO_VERSION
 
 # ── Builder stage: compile the sessiond binary ──
 FROM debian:bookworm-slim AS builder
@@ -15,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Shared API-contract module (resolved via sessiond's go.mod replace => ../shared).
+COPY shared/ /src/shared/
 
 # Pre-download Go modules (cached unless go.mod/go.sum change)
 COPY sessiond/go.mod sessiond/go.sum /src/sessiond/

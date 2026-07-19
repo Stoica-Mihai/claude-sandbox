@@ -9,14 +9,33 @@ x-healthcheck: &healthcheck
   timeout: 5s
   retries: 3
 
+# Single-sourced Go toolchain version for every Go service's build.
+x-go-version: &go-version "1.26.1"
+
+# Host UID/GID build args, shared by the two containers that write the mounted
+# socket/upload/config volumes (so files stay owned by the host user).
+x-uidgid: &uidgid
+  UID: ${UID:-1000}
+  GID: ${GID:-1000}
+
+# The mounts the sessions and backend containers share: workspace, the scoped
+# Claude config dir, the read-write settings file, and the claude-state volume
+# (sessiond sockets + uploads). Both must agree on the claude-state mount, so
+# it lives here once.
+x-claude-volumes: &claude-volumes
+  - ${WORKSPACE_PATH:-../}:/workspace
+  - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
+  - ./container-settings.json:/home/claude/container-settings.json
+  - claude-state:/home/claude/.local/state/claude
+
 services:
   sessions:
     build:
       context: .
       dockerfile: Dockerfile.sessions
       args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        <<: *uidgid
+        GO_VERSION: *go-version
     container_name: claude_sessions
     tty: true
     stdin_open: true
@@ -42,17 +61,7 @@ services:
       - net.ipv6.conf.all.disable_ipv6=1
       - net.ipv6.conf.default.disable_ipv6=1
 
-    volumes:
-      # Project files
-      - ${WORKSPACE_PATH:-../}:/workspace
-      # Scoped Claude config (auth + sessions persist here, isolated from the
-      # host's real ~/.claude). Seeded with plugins on first run by entrypoint.
-      - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
-      # Container settings; entrypoint copies this into the scoped config dir.
-      - ./container-settings.json:/home/claude/container-settings.json
-      # Shared state: sessiond sockets + image-paste uploads (backend writes,
-      # claude reads).
-      - claude-state:/home/claude/.local/state/claude
+    volumes: *claude-volumes
 
     environment:
       - HOME=/home/claude
@@ -81,8 +90,8 @@ services:
       context: .
       dockerfile: Dockerfile.backend
       args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        <<: *uidgid
+        GO_VERSION: *go-version
     container_name: claude_backend
     restart: unless-stopped
     develop:
@@ -96,15 +105,7 @@ services:
         - action: rebuild
           path: ./sessiond/
 
-    volumes:
-      # Directory picker browsing + new-project creation.
-      - ${WORKSPACE_PATH:-../}:/workspace
-      # Session index, ui prefs, settings.json refresh, transcript delete.
-      - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
-      # Settings editor source file (GET/PUT /api/settings).
-      - ./container-settings.json:/home/claude/container-settings.json
-      # Shared state: sessiond sockets (control + per-session attach) + uploads.
-      - claude-state:/home/claude/.local/state/claude
+    volumes: *claude-volumes
 
     environment:
       - HOME=/home/claude
@@ -129,6 +130,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        GO_VERSION: *go-version
     container_name: claude_frontend
     restart: unless-stopped
     develop:
