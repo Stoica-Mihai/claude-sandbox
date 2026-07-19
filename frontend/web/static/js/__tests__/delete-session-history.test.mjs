@@ -142,7 +142,7 @@ test('confirm on a 204 delete re-renders the list (no .failed flash)', async () 
     };
 
     const act = new FakeElement('div');
-    await env.sandbox.dpDelConfirmed(act, '/workspace/proj', 'aaaaaaaa-1111-2222-3333-444444444444');
+    await env.sandbox.dpDelConfirmed(act, '/workspace/proj', 'aaaaaaaa-1111-2222-3333-444444444444', env.sandbox.dpRenderHistory);
 
     assert.equal(act.classList.contains('failed'), false, 'no .failed on a successful 204');
     const after = actionRows(env).filter(c => c.classList.contains('row-host')).length;

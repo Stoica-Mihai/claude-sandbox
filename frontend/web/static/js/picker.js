@@ -276,7 +276,7 @@ export async function dpRenderHistory(path) {
             // buttons, so nothing nests a button inside a button.
             const act = document.createElement('div');
             act.className = 'row-act';
-            dpDelToIdle(act, path, s.uuid);
+            dpDelToIdle(act, path, s.uuid, dpRenderHistory);
 
             wrap.appendChild(row);
             wrap.appendChild(act);

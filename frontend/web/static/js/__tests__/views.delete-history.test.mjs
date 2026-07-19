@@ -177,7 +177,7 @@ test('Confirm fires DELETE to the history endpoint and re-renders on 204', async
     };
 
     const act = new FakeElement('div');
-    env.sandbox.dpDelToConfirm(act, '/workspace/p', 'dead-beef');
+    env.sandbox.dpDelToConfirm(act, '/workspace/p', 'dead-beef', env.sandbox.dpRenderHistory);
     const yes = act.children.find(c => c.classList.contains('confirm-yes'));
 
     await yes.onclick(clickEvent());
