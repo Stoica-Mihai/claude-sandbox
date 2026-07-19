@@ -16,8 +16,9 @@ import (
 
 // newTestServer builds a Server wired to a real Broker and a SessionManager
 // backed by the given index, with no polling goroutine.
-func newTestServer(idx *SessionIndex) *Server {
-	sm, _ := newTestManager(idx)
+func newTestServer(t *testing.T, idx *SessionIndex) *Server {
+	t.Helper()
+	sm, _ := newTestManager(t, idx)
 	return &Server{
 		sm:     sm,
 		broker: NewBroker(),
@@ -25,7 +26,7 @@ func newTestServer(idx *SessionIndex) *Server {
 }
 
 func TestHandleDeleteHistoryMissingUUID(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	// No PathValue set on the request: the {uuid} segment is empty.
 	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/history/", nil)
@@ -36,10 +37,7 @@ func TestHandleDeleteHistoryMissingUUID(t *testing.T) {
 }
 
 func TestHandleDeleteHistoryUnknownUUID(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-	idx := loadSessionIndex()
-	s := newTestServer(idx)
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("DELETE /api/sessions/history/{uuid}", s.handleDeleteHistory)
@@ -59,7 +57,7 @@ func TestHandleDeleteHistorySuccess(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	s := newTestServer(idx)
+	s := newTestServer(t, idx)
 
 	// Subscribe so we can assert the handler published an SSE update.
 	subID, ch := s.broker.Subscribe()
@@ -93,7 +91,7 @@ func TestHandleDeleteHistorySuccess(t *testing.T) {
 }
 
 func TestHandleUploadMissingSession(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions//upload", nil)
 	rec := httptest.NewRecorder()
@@ -105,7 +103,7 @@ func TestHandleUploadMissingSession(t *testing.T) {
 }
 
 func TestHandleUploadPathTraversal(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
@@ -120,7 +118,7 @@ func TestHandleUploadPathTraversal(t *testing.T) {
 }
 
 func TestHandleUploadUnknownSession(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
@@ -142,7 +140,7 @@ func TestHandleUploadUnknownSession(t *testing.T) {
 // not injectable). The tests below reach them wherever workspaceRoot is writable
 // (the container) and t.Skip on hosts where /workspace is absent/read-only.
 func TestHandleCreateDirectoryValidation(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
@@ -182,7 +180,7 @@ func TestHandleCreateDirectoryValidation(t *testing.T) {
 // TestHandleCreateDirectoryInvalidBody covers the 400 branch when the request
 // body is not valid JSON (the decode fails before any filesystem access).
 func TestHandleCreateDirectoryInvalidBody(t *testing.T) {
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/directories", s.handleCreateDirectory)
@@ -227,7 +225,7 @@ func postCreateDirectory(t *testing.T, s *Server, req api.CreateDirectoryRequest
 // rel path is computed, and CreateDirectoryResponse is written with no warning.
 func TestHandleCreateDirectorySuccess(t *testing.T) {
 	parent := writableWorkspaceParent(t)
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "proj", Path: parent})
 
@@ -257,7 +255,7 @@ func TestHandleCreateDirectoryConflict(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(workspaceRoot, parent, "dup"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "dup", Path: parent})
 
@@ -276,7 +274,7 @@ func TestHandleCreateDirectoryMkdirError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(absParent, 0o755) })
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "proj", Path: parent})
 
@@ -290,7 +288,7 @@ func TestHandleCreateDirectoryGitInit(t *testing.T) {
 		t.Skip("git not available")
 	}
 	parent := writableWorkspaceParent(t)
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "repo", Path: parent, GitInit: true})
 
@@ -326,7 +324,7 @@ func TestHandleCreateDirectoryGitInitFailure(t *testing.T) {
 		t.Skipf("stub git not first on PATH (resolved %q); cannot force failure", got)
 	}
 
-	s := newTestServer(loadSessionIndexFresh(t))
+	s := newTestServer(t, loadSessionIndexFresh(t))
 	rec := postCreateDirectory(t, s, api.CreateDirectoryRequest{Name: "repo", Path: parent, GitInit: true})
 
 	if rec.Code != http.StatusCreated {
@@ -342,12 +340,4 @@ func TestHandleCreateDirectoryGitInitFailure(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(workspaceRoot, parent, "repo")); err != nil || !info.IsDir() {
 		t.Fatalf("folder should survive git failure: info=%v err=%v", info, err)
 	}
-}
-
-// loadSessionIndexFresh returns an index backed by an isolated temp config dir,
-// for tests that don't otherwise set CLAUDE_CONFIG_DIR.
-func loadSessionIndexFresh(t *testing.T) *SessionIndex {
-	t.Helper()
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	return loadSessionIndex()
 }

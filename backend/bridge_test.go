@@ -116,7 +116,7 @@ func dialBridgeWS(t *testing.T, s *Server) *websocket.Conn {
 
 func newBridgeServer(t *testing.T, dial func(string) (net.Conn, error)) *Server {
 	t.Helper()
-	sm, fh := newTestManager(loadSessionIndexFresh(t))
+	sm, fh := newTestManager(t, loadSessionIndexFresh(t))
 	fh.dial = dial
 	sm.store.add(sessionRecord{Name: "claude-b1", CWD: "/workspace/a", SessionID: testUUID1})
 	return &Server{sm: sm, broker: NewBroker(), upgrader: websocket.Upgrader{
@@ -240,7 +240,7 @@ func TestBridgeDialFailureClosesAbnormally(t *testing.T) {
 
 // TestBridgeUnknownSession404s before upgrading.
 func TestBridgeUnknownSession404s(t *testing.T) {
-	sm, _ := newTestManager(loadSessionIndexFresh(t))
+	sm, _ := newTestManager(t, loadSessionIndexFresh(t))
 	s := &Server{sm: sm, broker: NewBroker()}
 
 	mux := http.NewServeMux()

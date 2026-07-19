@@ -59,8 +59,12 @@ func (f *fakeHost) killedNames() []string {
 	return append([]string(nil), f.killed...)
 }
 
-// newTestManager builds a SessionManager on a fakeHost with no poller.
-func newTestManager(idx *SessionIndex) (*SessionManager, *fakeHost) {
+// newTestManager builds a SessionManager on a fakeHost with no poller, on an
+// isolated config dir (SessionIndex.save() writes there; without isolation a
+// test mutation would clobber the developer's real dashboard-sessions.json).
+func newTestManager(t *testing.T, idx *SessionIndex) (*SessionManager, *fakeHost) {
+	t.Helper()
+	testConfigDir(t)
 	fh := &fakeHost{}
 	sm := &SessionManager{
 		sd:     fh,
@@ -75,7 +79,7 @@ func newTestManager(idx *SessionIndex) (*SessionManager, *fakeHost) {
 // session returns that session instead of spawning a second claude --resume
 // (two writers on one transcript).
 func TestResumeAlreadyLive(t *testing.T) {
-	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	sm.index.add(testUUID1, "/workspace/a", 100)
 	sm.store.add(sessionRecord{Name: "claude-live1234", CWD: "/workspace/a", SessionID: testUUID1})
 
@@ -95,7 +99,7 @@ func TestResumeAlreadyLive(t *testing.T) {
 // uuid must never reach the claude command line.
 func TestResumeRejectsMalformedUUID(t *testing.T) {
 	bad := `x"; rm -rf /; echo "`
-	sm, _ := newTestManager(&SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}})
+	sm, _ := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}})
 
 	if _, err := sm.Resume(bad); !errors.Is(err, ErrUnknownSession) {
 		t.Fatalf("Resume(malformed) err = %v, want ErrUnknownSession", err)
@@ -105,7 +109,7 @@ func TestResumeRejectsMalformedUUID(t *testing.T) {
 // TestSpawnDelegatesToHost: the inner spawn records the sessiond reply in the
 // store and publishes an SSE update.
 func TestSpawnDelegatesToHost(t *testing.T) {
-	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	_, ch := sm.broker.Subscribe()
 
 	name, err := sm.spawn("/workspace/a", testUUID1, false)
@@ -128,7 +132,7 @@ func TestSpawnDelegatesToHost(t *testing.T) {
 
 // TestKillDelegatesToHost: Kill asks sessiond, drops the record, publishes.
 func TestKillDelegatesToHost(t *testing.T) {
-	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	sm.store.add(sessionRecord{Name: "claude-k1", CWD: "/workspace/a", SessionID: testUUID1})
 	_, ch := sm.broker.Subscribe()
 
@@ -155,7 +159,7 @@ func TestKillDelegatesToHost(t *testing.T) {
 // TestKillTreatsUnknownHostSessionAsDead: sessiond not knowing the session is
 // not a failure — the record is dropped anyway.
 func TestKillTreatsUnknownHostSessionAsDead(t *testing.T) {
-	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	fh.killErr = fmt.Errorf("%w: session not found", errHostSession)
 	sm.store.add(sessionRecord{Name: "claude-gone", CWD: "/workspace/a"})
 
@@ -176,7 +180,7 @@ func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 
 	idx := loadSessionIndex()
 	idx.add(uuid, "/workspace/a", 100)
-	sm, fh := newTestManager(idx)
+	sm, fh := newTestManager(t, idx)
 	sm.store.add(sessionRecord{Name: "claude-live9999", CWD: "/workspace/a", SessionID: uuid})
 
 	if err := sm.DeleteHistory(uuid); err != nil {
@@ -200,7 +204,7 @@ func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 // TestRefreshFromList reconciles the store against the host's live list in
 // both directions and reports change correctly.
 func TestRefreshFromList(t *testing.T) {
-	sm, fh := newTestManager(&SessionIndex{entries: map[string]indexEntry{}})
+	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	sm.store.add(sessionRecord{Name: "claude-stale", CWD: "/workspace/old"})
 	fh.sessions = []protocol.SessionInfo{{Name: "claude-new", CWD: "/workspace/new", UUID: testUUID2, Created: 1234}}
 

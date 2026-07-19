@@ -14,12 +14,31 @@ const (
 	testUUID2 = "22222222-2222-4222-8222-222222222222"
 )
 
-// seedTranscript points CLAUDE_CONFIG_DIR at a fresh temp dir, creates the
-// project dir derived from cwd, and writes a stub transcript for uuid.
+// testConfigDir is the single owner of CLAUDE_CONFIG_DIR test isolation:
+// every index/transcript write in a test lands in a temp dir, never the real
+// ~/.claude-sandbox. Idempotent — a test that already isolated keeps its dir.
+func testConfigDir(t *testing.T) string {
+	t.Helper()
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" && strings.HasPrefix(d, os.TempDir()) {
+		return d
+	}
+	d := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", d)
+	return d
+}
+
+// loadSessionIndexFresh returns an index backed by an isolated config dir.
+func loadSessionIndexFresh(t *testing.T) *SessionIndex {
+	t.Helper()
+	testConfigDir(t)
+	return loadSessionIndex()
+}
+
+// seedTranscript isolates the config dir, creates the project dir derived
+// from cwd, and writes a stub transcript for uuid.
 func seedTranscript(t *testing.T, uuid, cwd string) (projDir, txPath string) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	dir := testConfigDir(t)
 	projDir = filepath.Join(dir, "projects", strings.ReplaceAll(cwd, "/", "-"))
 	if err := os.MkdirAll(projDir, 0o700); err != nil {
 		t.Fatal(err)

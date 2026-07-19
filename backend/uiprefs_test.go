@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
 func TestUIPrefsRoundTrip(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	testConfigDir(t)
 	s := &Server{}
 
 	// Unset: GET returns empty strings.
@@ -41,13 +40,13 @@ func TestUIPrefsRoundTrip(t *testing.T) {
 		t.Fatalf("GET after PUT: expected Cyan/light, got %+v", got)
 	}
 
-	if _, err := os.Stat(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "dashboard-ui.json")); err != nil {
+	if _, err := os.Stat(dashboardPrefsPath()); err != nil {
 		t.Fatalf("prefs file not written: %v", err)
 	}
 }
 
 func TestUIPrefsRejectsInvalid(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	testConfigDir(t)
 	s := &Server{}
 
 	cases := []uiPrefs{
@@ -64,7 +63,7 @@ func TestUIPrefsRejectsInvalid(t *testing.T) {
 		}
 	}
 	// A rejected PUT must not create the file.
-	if _, err := os.Stat(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "dashboard-ui.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(dashboardPrefsPath()); !os.IsNotExist(err) {
 		t.Fatalf("rejected PUT should not write the prefs file")
 	}
 }

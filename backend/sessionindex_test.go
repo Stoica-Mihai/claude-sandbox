@@ -32,7 +32,7 @@ func TestNewUUIDFormat(t *testing.T) {
 }
 
 func TestSessionIndex(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	testConfigDir(t)
 
 	idx := loadSessionIndex()
 	idx.add("u1", "/workspace/a", 100)
@@ -74,7 +74,7 @@ func TestSessionIndex(t *testing.T) {
 }
 
 func TestSessionIndexRemovePersists(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	testConfigDir(t)
 
 	idx := loadSessionIndex()
 	idx.add("u1", "/workspace/a", 100)
