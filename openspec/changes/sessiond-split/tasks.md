@@ -31,7 +31,7 @@
 
 ## 5. Verify end-to-end
 
-- [ ] 5.1 `make up`; spawn/kill/resume/rename/history-delete from the dashboard; two-viewer active-size takeover; image paste upload
-- [ ] 5.2 The headline scenario: start a session, produce scrollback, `make restart-backend` — session survives, viewer reconnects, exact repaint with scrollback, no blank terminal, no size flap
-- [ ] 5.3 Claude `/exit` → WS close 1000 "[Session ended]"; sessions-container restart → clean slate, stale sockets gone; `go test -race` green in backend and sessiond
-- [ ] 5.4 Kill dtach: confirm no references remain in code, Dockerfiles, specs, or CLAUDE.md; remove the package from images
+- [x] 5.1 `make up`; spawn/kill/resume/rename/history-delete from the dashboard; two-viewer active-size takeover; image paste upload
+- [x] 5.2 The headline scenario: start a session, produce scrollback, `make restart-backend` — session survives, viewer reconnects, exact repaint with scrollback, no blank terminal, no size flap
+- [x] 5.3 Claude `/exit` → WS close 1000 "[Session ended]"; sessions-container restart → clean slate, stale sockets gone; `go test -race` green in backend and sessiond
+- [x] 5.4 Kill dtach: confirm no references remain in code, Dockerfiles, specs, or CLAUDE.md; remove the package from images

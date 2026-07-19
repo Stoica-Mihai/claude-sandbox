@@ -16,8 +16,11 @@ down:
 	docker compose down
 
 # Not in .PHONY: make skips implicit/pattern-rule search for phony targets.
+# --no-deps: restarting one service must not recreate its dependencies
+# (restart-backend would otherwise take the sessions container — and every
+# running claude session — down with it).
 restart-%:
-	docker compose up -d --build $*
+	docker compose up -d --build --no-deps $*
 
 watch:
 	docker compose watch
