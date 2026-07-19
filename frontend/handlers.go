@@ -22,6 +22,10 @@ import (
 	api "claude-sandbox-api"
 )
 
+// maxProxyJSONBody caps a JSON body the frontend buffers before forwarding it
+// to the backend (which enforces its own, authoritative limit).
+const maxProxyJSONBody = 64 << 10
+
 // Server is the HTTP server serving the dashboard frontend.
 // It renders HTML templates with data fetched from the backend API,
 // and proxies WebSocket, SSE, and healthz requests to the backend.
@@ -405,8 +409,9 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the JSON body and forward it to the backend.
-	body, err := io.ReadAll(r.Body)
+	// Read the JSON body and forward it to the backend. Cap it so the proxy
+	// never buffers an unbounded body before the backend's own limit applies.
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxProxyJSONBody))
 	if err != nil {
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return

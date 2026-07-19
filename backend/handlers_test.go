@@ -25,6 +25,18 @@ func newTestServer(t *testing.T, idx *SessionIndex) *Server {
 	}
 }
 
+func TestDecodeJSONRejectsOversizedBody(t *testing.T) {
+	s := newTestServer(t, loadSessionIndexFresh(t))
+
+	// A body past maxJSONBody must be rejected at decode, not buffered whole.
+	big := `{"path":"","name":"` + strings.Repeat("a", maxJSONBody) + `"}`
+	req := httptest.NewRequest(http.MethodPost, api.RouteDirectories, strings.NewReader(big))
+	rec := httptest.NewRecorder()
+	s.handleCreateDirectory(rec, req)
+
+	assertErrorBody(t, rec, http.StatusBadRequest, "invalid request body")
+}
+
 func TestHandleDeleteHistoryMissingUUID(t *testing.T) {
 	s := newTestServer(t, loadSessionIndexFresh(t))
 

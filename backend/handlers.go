@@ -33,6 +33,10 @@ const (
 	// maxSessionNameLen caps custom session names (bytes) — the index file
 	// persists them, so unbounded names mean unbounded index growth.
 	maxSessionNameLen = 120
+	// maxJSONBody caps request bodies decoded as JSON. Every such route carries
+	// a small object (a cwd, a name, a prefs subset), so a generous cap still
+	// rejects a body sent to exhaust memory.
+	maxJSONBody = 64 << 10
 )
 
 // newDirNameRe restricts new project folder names to a single safe path
@@ -100,6 +104,7 @@ func writeWorkspaceDirErr(w http.ResponseWriter, err error) {
 // decodeJSON decodes the request body into dst, writing a 400 with errMsg and
 // returning false on failure.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, errMsg string) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeErr(w, http.StatusBadRequest, errMsg)
 		return false
