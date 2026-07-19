@@ -51,59 +51,59 @@ func (s *SessionIndex) save() error {
 	return nil
 }
 
-// add records a new conversation (no-op if the uuid already exists). On a
-// persist failure the in-memory entry is rolled back so it never diverges from
-// disk.
-func (s *SessionIndex) add(uuid, cwd string, created int64) error {
+// mutateAndSave applies mutate under mu, persists, and rolls back via the undo
+// closure mutate returns if the persist fails — so a caller reporting failure
+// and the on-disk state always agree. A nil undo means the mutation was a no-op
+// (precondition not met, e.g. unknown/duplicate uuid); nothing is persisted.
+func (s *SessionIndex) mutateAndSave(mutate func() (undo func())) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.entries[uuid]; ok {
+	undo := mutate()
+	if undo == nil {
 		return nil
 	}
-	s.entries[uuid] = indexEntry{CWD: cwd, Created: created}
 	if err := s.save(); err != nil {
-		delete(s.entries, uuid)
+		undo()
 		return err
 	}
 	return nil
+}
+
+// add records a new conversation (no-op if the uuid already exists).
+func (s *SessionIndex) add(uuid, cwd string, created int64) error {
+	return s.mutateAndSave(func() func() {
+		if _, ok := s.entries[uuid]; ok {
+			return nil
+		}
+		s.entries[uuid] = indexEntry{CWD: cwd, Created: created}
+		return func() { delete(s.entries, uuid) }
+	})
 }
 
 // remove deletes a conversation from the index (no-op if the uuid is absent).
-// A persist failure restores the entry so a caller reporting failure and the
-// on-disk state agree.
 func (s *SessionIndex) remove(uuid string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.entries[uuid]
-	if !ok {
-		return nil
-	}
-	delete(s.entries, uuid)
-	if err := s.save(); err != nil {
-		s.entries[uuid] = e
-		return err
-	}
-	return nil
+	return s.mutateAndSave(func() func() {
+		e, ok := s.entries[uuid]
+		if !ok {
+			return nil
+		}
+		delete(s.entries, uuid)
+		return func() { s.entries[uuid] = e }
+	})
 }
 
-// setName sets or clears a conversation's custom name. A persist failure
-// restores the previous name.
+// setName sets or clears a conversation's custom name (no-op if unknown).
 func (s *SessionIndex) setName(uuid, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.entries[uuid]
-	if !ok {
-		return nil
-	}
-	prev := e.Name
-	e.Name = name
-	s.entries[uuid] = e
-	if err := s.save(); err != nil {
-		e.Name = prev
+	return s.mutateAndSave(func() func() {
+		e, ok := s.entries[uuid]
+		if !ok {
+			return nil
+		}
+		prev := e.Name
+		e.Name = name
 		s.entries[uuid] = e
-		return err
-	}
-	return nil
+		return func() { e.Name = prev; s.entries[uuid] = e }
+	})
 }
 
 // name returns a conversation's custom name, or "" if unset/unknown.
