@@ -34,6 +34,25 @@ func loadSessionIndexFresh(t *testing.T) *SessionIndex {
 	return loadSessionIndex()
 }
 
+// freezeIndexWrites makes the session-index file and its config dir unwritable
+// so every persist path fails (temp+rename needs a writable dir, the in-place
+// fallback needs a writable file), exercising the index's rollback-on-error
+// paths. Restores permissions on cleanup.
+func freezeIndexWrites(t *testing.T, dir string) {
+	t.Helper()
+	file := filepath.Join(dir, "dashboard-sessions.json")
+	if err := os.Chmod(file, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(dir, 0o700)
+		_ = os.Chmod(file, 0o600)
+	})
+}
+
 // seedTranscript isolates the config dir, creates the project dir derived
 // from cwd, and writes a stub transcript for uuid.
 func seedTranscript(t *testing.T, uuid, cwd string) (projDir, txPath string) {

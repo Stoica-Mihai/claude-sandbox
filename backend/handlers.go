@@ -230,7 +230,11 @@ func (s *Server) handleSetSessionName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.sm.SetSessionName(sessionName, req.Name)
+	if err := s.sm.SetSessionName(sessionName, req.Name); err != nil {
+		slog.Error("failed to persist session name", "session", sessionName, "error", err)
+		writeErr(w, http.StatusInternalServerError, "failed to save name")
+		return
+	}
 	s.broker.Publish()
 	w.WriteHeader(http.StatusNoContent)
 }

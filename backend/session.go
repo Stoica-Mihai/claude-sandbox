@@ -62,12 +62,12 @@ func (sm *SessionManager) DialSession(name string) (net.Conn, error) {
 
 // SetSessionName stores a custom name on the live session's conversation (keyed
 // by its uuid in the persistent index), so it shows in the sidebar and resume list.
-func (sm *SessionManager) SetSessionName(sessionName, displayName string) {
+func (sm *SessionManager) SetSessionName(sessionName, displayName string) error {
 	rec, ok := sm.store.get(sessionName)
 	if !ok || rec.SessionID == "" {
-		return
+		return nil
 	}
-	sm.index.setName(rec.SessionID, displayName)
+	return sm.index.setName(rec.SessionID, displayName)
 }
 
 // History returns the previous RESUMABLE sessions for a folder (newest first).

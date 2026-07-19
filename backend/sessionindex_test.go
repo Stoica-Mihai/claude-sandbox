@@ -97,6 +97,59 @@ func TestSessionIndexRemovePersists(t *testing.T) {
 	}
 }
 
+func TestSessionIndexRemovePersistFailureRollsBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory write permissions")
+	}
+	dir := testConfigDir(t)
+
+	idx := loadSessionIndex()
+	if err := idx.add("u1", "/workspace/a", 100); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	// Block both persist paths: read-only dir defeats the temp+rename, read-only
+	// file defeats the in-place fallback.
+	freezeIndexWrites(t, dir)
+
+	if err := idx.remove("u1"); err == nil {
+		t.Fatal("remove should error when the index can't be persisted")
+	}
+	// Rollback: the in-memory entry survives, matching the untouched disk file.
+	if _, ok := idx.cwd("u1"); !ok {
+		t.Fatal("a failed remove must not drop the in-memory entry")
+	}
+
+	_ = os.Chmod(dir, 0o700)
+	if _, ok := loadSessionIndex().cwd("u1"); !ok {
+		t.Fatal("entry must still be on disk after a failed remove")
+	}
+}
+
+func TestSessionIndexSetNamePersistFailureRollsBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory write permissions")
+	}
+	dir := testConfigDir(t)
+
+	idx := loadSessionIndex()
+	if err := idx.add("u1", "/workspace/a", 100); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := idx.setName("u1", "first"); err != nil {
+		t.Fatalf("setName: %v", err)
+	}
+
+	freezeIndexWrites(t, dir)
+
+	if err := idx.setName("u1", "second"); err == nil {
+		t.Fatal("setName should error when the index can't be persisted")
+	}
+	if got := idx.name("u1"); got != "first" {
+		t.Fatalf("name = %q, want the rolled-back \"first\"", got)
+	}
+}
+
 func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
 	// No meta dir in the tempdir, so DeleteHistory's discover/kill step is a
 	// no-op and only the index entry + transcript are touched.

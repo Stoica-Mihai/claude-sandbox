@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"os"
 	"sort"
 	"sync"
@@ -40,47 +40,70 @@ func loadSessionIndex() *SessionIndex {
 }
 
 // save writes the index atomically. Caller holds mu.
-func (s *SessionIndex) save() {
+func (s *SessionIndex) save() error {
 	data, err := json.MarshalIndent(s.entries, "", "  ")
 	if err != nil {
-		slog.Warn("failed to marshal session index", "error", err)
-		return
+		return fmt.Errorf("marshal session index: %w", err)
 	}
 	if err := writeFileAtomic(sessionIndexPath(), data); err != nil {
-		slog.Warn("failed to write session index", "error", err)
+		return fmt.Errorf("write session index: %w", err)
 	}
+	return nil
 }
 
-// add records a new conversation (no-op if the uuid already exists).
-func (s *SessionIndex) add(uuid, cwd string, created int64) {
+// add records a new conversation (no-op if the uuid already exists). On a
+// persist failure the in-memory entry is rolled back so it never diverges from
+// disk.
+func (s *SessionIndex) add(uuid, cwd string, created int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.entries[uuid]; ok {
-		return
+		return nil
 	}
 	s.entries[uuid] = indexEntry{CWD: cwd, Created: created}
-	s.save()
+	if err := s.save(); err != nil {
+		delete(s.entries, uuid)
+		return err
+	}
+	return nil
 }
 
 // remove deletes a conversation from the index (no-op if the uuid is absent).
-func (s *SessionIndex) remove(uuid string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.entries, uuid)
-	s.save()
-}
-
-// setName sets or clears a conversation's custom name.
-func (s *SessionIndex) setName(uuid, name string) {
+// A persist failure restores the entry so a caller reporting failure and the
+// on-disk state agree.
+func (s *SessionIndex) remove(uuid string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.entries[uuid]
 	if !ok {
-		return
+		return nil
 	}
+	delete(s.entries, uuid)
+	if err := s.save(); err != nil {
+		s.entries[uuid] = e
+		return err
+	}
+	return nil
+}
+
+// setName sets or clears a conversation's custom name. A persist failure
+// restores the previous name.
+func (s *SessionIndex) setName(uuid, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.entries[uuid]
+	if !ok {
+		return nil
+	}
+	prev := e.Name
 	e.Name = name
 	s.entries[uuid] = e
-	s.save()
+	if err := s.save(); err != nil {
+		e.Name = prev
+		s.entries[uuid] = e
+		return err
+	}
+	return nil
 }
 
 // name returns a conversation's custom name, or "" if unset/unknown.

@@ -197,6 +197,13 @@ func writeFileAtomic(path string, data []byte) error {
 		os.Remove(tmpName)
 		return err
 	}
+	// fsync the temp before the rename publishes it, so a crash can't leave a
+	// zero-length/truncated file in place of the old one.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
 		return err
@@ -205,11 +212,38 @@ func writeFileAtomic(path string, data []byte) error {
 		os.Remove(tmpName)
 		return writeInPlace(path, data)
 	}
+	// fsync the parent dir so the rename itself survives a crash (POSIX: a
+	// renamed file in an un-fsynced dir can revert). Best-effort.
+	syncDir(dir)
 	return nil
 }
 
+// syncDir fsyncs a directory so a rename within it is durable. Best-effort:
+// some filesystems reject dir fsync, and the rename already succeeded.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer d.Close()
+	_ = d.Sync()
+}
+
 // writeInPlace overwrites path's contents directly (needed for bind-mounted
-// files, which cannot be replaced by rename).
+// files, which cannot be replaced by rename). It fsyncs before returning so a
+// completed write is durable.
 func writeInPlace(path string, data []byte) error {
-	return os.WriteFile(path, data, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }

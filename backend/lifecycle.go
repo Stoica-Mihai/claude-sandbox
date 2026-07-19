@@ -19,7 +19,11 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sm.index.add(uuid, absPath, time.Now().Unix())
+	if err := sm.index.add(uuid, absPath, time.Now().Unix()); err != nil {
+		// The session is already live; a failed index write only costs its
+		// resume-history entry, so log rather than orphan a working session.
+		slog.Warn("failed to persist session index entry", "uuid", uuid, "error", err)
+	}
 	return name, nil
 }
 
@@ -79,7 +83,9 @@ func (sm *SessionManager) DeleteHistory(uuid string) error {
 		}
 	}
 
-	sm.index.remove(uuid)
+	if err := sm.index.remove(uuid); err != nil {
+		return err
+	}
 	deleteTranscript(uuid)
 	return nil
 }
