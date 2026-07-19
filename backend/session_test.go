@@ -181,10 +181,7 @@ func TestKillTreatsUnknownHostSessionAsDead(t *testing.T) {
 // via sessiond, then drop the index entry and transcript.
 func TestDeleteHistoryKillsLiveSession(t *testing.T) {
 	uuid := testUUID1
-	_, tx := seedTranscript(t, uuid, "/workspace/a")
-
-	idx := loadSessionIndex()
-	idx.add(uuid, "/workspace/a", 100)
+	idx, tx := seedIndexedTranscript(t, uuid, "/workspace/a")
 	sm, fh := newTestManager(t, idx)
 	sm.store.add(sessionRecord{Name: "claude-live9999", CWD: "/workspace/a", SessionID: uuid})
 
@@ -264,9 +261,7 @@ func TestSweepOrphanUploads(t *testing.T) {
 // exited and finished flushing), or the dying process would re-create it.
 func TestDeleteHistoryWaitsForSessionExit(t *testing.T) {
 	uuid := testUUID1
-	_, tx := seedTranscript(t, uuid, "/workspace/a")
-	idx := loadSessionIndex()
-	idx.add(uuid, "/workspace/a", 100)
+	idx, tx := seedIndexedTranscript(t, uuid, "/workspace/a")
 	sm, fh := newTestManager(t, idx)
 	sm.store.add(sessionRecord{Name: "claude-live", CWD: "/workspace/a", SessionID: uuid})
 

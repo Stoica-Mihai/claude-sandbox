@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -11,33 +10,14 @@ import (
 	api "claude-sandbox-api"
 )
 
-// renderLayout parses the embedded templates the same way NewServer does and
-// renders layout.html with the given sessions.
+// renderLayout renders layout.html with the given sessions.
 func renderLayout(t *testing.T, sessions []api.DisplaySession) string {
-	t.Helper()
-	tmpl, err := parseTemplates()
-	if err != nil {
-		t.Fatalf("parsing templates: %v", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, "layout.html", DashboardData{Sessions: sessions}); err != nil {
-		t.Fatalf("rendering layout.html: %v", err)
-	}
-	return buf.String()
+	return renderNamed(t, "layout.html", DashboardData{Sessions: sessions})
 }
 
 // renderFragment renders the sessions fragment with the given sessions.
 func renderFragment(t *testing.T, sessions []api.DisplaySession) string {
-	t.Helper()
-	tmpl, err := parseTemplates()
-	if err != nil {
-		t.Fatalf("parsing templates: %v", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, "sessions", DashboardData{Sessions: sessions}); err != nil {
-		t.Fatalf("rendering sessions fragment: %v", err)
-	}
-	return buf.String()
+	return renderNamed(t, "sessions", DashboardData{Sessions: sessions})
 }
 
 // sessionDataRe extracts the #session-data JSON payload from the fragment.

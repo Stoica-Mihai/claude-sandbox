@@ -118,6 +118,21 @@ func readOneFrame(t *testing.T, conn net.Conn) (byte, []byte) {
 	return typ, payload
 }
 
+// waitForSnapshot polls the session's rendered snapshot up to 3s until it
+// contains want. The emulator renders asynchronously after a PTY write, so a
+// test must wait for the output to land before attaching a viewer.
+func waitForSnapshot(t *testing.T, s *session, want string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if bytes.Contains(s.term.Snapshot(), []byte(want)) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("snapshot never contained %q within 3s", want)
+}
+
 // TestSessionBroadcastAndInput drives the full path: program output reaches a
 // viewer (after the snapshot) and viewer input reaches the program.
 func TestSessionBroadcastAndInput(t *testing.T) {
@@ -156,13 +171,7 @@ func TestSessionScrollbackReplay(t *testing.T) {
 	if _, err := programSide.Write([]byte("early output")); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if bytes.Contains(s.term.Snapshot(), []byte("early output")) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSnapshot(t, s, "early output")
 
 	client := attachTestViewer(t, s, 100, 30)
 	readFrameUntil(t, client, "early output")
@@ -179,10 +188,7 @@ func TestSnapshotRenderedAtJoiningViewerWidth(t *testing.T) {
 	if _, err := programSide.Write([]byte(wide)); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !bytes.Contains(s.term.Snapshot(), []byte("XXX")) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSnapshot(t, s, "XXX")
 
 	narrow := attachTestViewer(t, s, 44, 48)
 	typ, snap := readOneFrame(t, narrow)
@@ -431,17 +437,14 @@ func TestStaleResizeCannotSteerPTY(t *testing.T) {
 	if _, err := programSide.Write([]byte(strings.Repeat("X", 100))); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !bytes.Contains(s.term.Snapshot(), []byte("X")) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSnapshot(t, s, "X")
 	assertMaxRenderedWidth(t, s.term.Snapshot(), 44)
 
 	// The registered viewer must still be able to resize (it is the active one).
 	if err := protocol.WriteJSONFrame(viewer, protocol.FrameControl, protocol.Control{Type: "resize", Cols: 60, Rows: 20}); err != nil {
 		t.Fatal(err)
 	}
-	deadline = time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if w := s.termWidth(); w == 60 {
 			return

@@ -79,10 +79,7 @@ func TestHandleDeleteHistorySuccess(t *testing.T) {
 	// Empty store: the kill step is a no-op and the handler exercises the
 	// 204 + Publish path.
 	uuid := testUUID1
-	_, tx := seedTranscript(t, uuid, "/workspace/a")
-
-	idx := loadSessionIndex()
-	idx.add(uuid, "/workspace/a", 100)
+	idx, tx := seedIndexedTranscript(t, uuid, "/workspace/a")
 	s := newTestServer(t, idx)
 
 	// Subscribe so we can assert the handler published an SSE update.

@@ -69,6 +69,18 @@ func seedTranscript(t *testing.T, uuid, cwd string) (projDir, txPath string) {
 	return projDir, txPath
 }
 
+// seedIndexedTranscript isolates the config dir, writes a stub transcript for
+// uuid under cwd, and returns a freshly loaded index with that uuid recorded
+// (created=100) plus the transcript path — the arrange block the DeleteHistory
+// tests share.
+func seedIndexedTranscript(t *testing.T, uuid, cwd string) (idx *SessionIndex, txPath string) {
+	t.Helper()
+	_, txPath = seedTranscript(t, uuid, cwd)
+	idx = loadSessionIndex()
+	idx.add(uuid, cwd, 100)
+	return idx, txPath
+}
+
 // assertErrorBody asserts the recorder's status code and its JSON {"error":…} body.
 func assertErrorBody(t *testing.T, rec *httptest.ResponseRecorder, wantCode int, wantErr string) {
 	t.Helper()

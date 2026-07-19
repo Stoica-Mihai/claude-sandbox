@@ -154,10 +154,7 @@ func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
 	// No meta dir in the tempdir, so DeleteHistory's discover/kill step is a
 	// no-op and only the index entry + transcript are touched.
 	uuid := testUUID1
-	_, tx := seedTranscript(t, uuid, "/workspace/a")
-
-	idx := loadSessionIndex()
-	idx.add(uuid, "/workspace/a", 100)
+	idx, tx := seedIndexedTranscript(t, uuid, "/workspace/a")
 	sm := &SessionManager{index: idx, store: newSessionStore()}
 
 	if err := sm.DeleteHistory(uuid); err != nil {
@@ -174,10 +171,7 @@ func TestDeleteHistoryRemovesEntryAndTranscript(t *testing.T) {
 func TestDeleteHistoryUnknownUUIDErrors(t *testing.T) {
 	known := testUUID1
 	unknown := testUUID2
-	_, tx := seedTranscript(t, known, "/workspace/a")
-
-	idx := loadSessionIndex()
-	idx.add(known, "/workspace/a", 100)
+	idx, tx := seedIndexedTranscript(t, known, "/workspace/a")
 	sm := &SessionManager{index: idx, store: newSessionStore()}
 
 	if err := sm.DeleteHistory(unknown); err == nil {
