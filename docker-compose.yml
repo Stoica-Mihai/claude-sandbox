@@ -10,24 +10,23 @@ x-healthcheck: &healthcheck
   retries: 3
 
 services:
-  backend:
+  sessions:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: Dockerfile.sessions
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
-    container_name: claude_backend
+    container_name: claude_sessions
     tty: true
     stdin_open: true
     init: true
     restart: unless-stopped
     develop:
       watch:
+        # Rebuilding this service ends running sessions — sessiond source only.
         - action: rebuild
-          path: ./backend/
-        - action: rebuild
-          path: ./shared/
+          path: ./sessiond/
     security_opt:
       # seccomp must stay unconfined: Claude Code's bubblewrap sandbox needs
       # unprivileged user namespaces, which Docker's default seccomp profile
@@ -50,20 +49,22 @@ services:
       # host's real ~/.claude). Seeded with plugins on first run by entrypoint.
       - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
       # Container settings; entrypoint copies this into the scoped config dir.
-      # Read-write so the in-dashboard settings editor can persist edits.
       - ./container-settings.json:/home/claude/container-settings.json
+      # sessiond sockets (shared with the backend bridge).
+      - claude-sock:/home/claude/.local/state/claude
+      # Image-paste uploads: written by the backend, read by claude here.
+      - claude-uploads:/tmp/uploads
 
     environment:
       - HOME=/home/claude
-      - BACKEND_PORT=${BACKEND_PORT:-8081}
 
-    # No exposed ports — only reachable via internal network
+    # No exposed ports — sessiond speaks unix sockets only
     networks:
       - claude-net
 
     healthcheck:
       <<: *healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8081}/healthz"]
+      test: ["CMD", "/home/claude/sessiond", "-ping"]
       start_period: 15s
 
     deploy:
@@ -75,6 +76,57 @@ services:
     logging: *logging
 
     working_dir: /workspace
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: claude_backend
+    restart: unless-stopped
+    develop:
+      watch:
+        # Backend rebuilds do NOT touch running sessions (they live in the
+        # sessions container); sessiond/ is watched for the protocol package.
+        - action: rebuild
+          path: ./backend/
+        - action: rebuild
+          path: ./shared/
+        - action: rebuild
+          path: ./sessiond/
+
+    volumes:
+      # Directory picker browsing + new-project creation.
+      - ${WORKSPACE_PATH:-../}:/workspace
+      # Session index, ui prefs, settings.json refresh, transcript delete.
+      - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
+      # Settings editor source file (GET/PUT /api/settings).
+      - ./container-settings.json:/home/claude/container-settings.json
+      # sessiond sockets (control + per-session attach).
+      - claude-sock:/home/claude/.local/state/claude
+      # Image-paste uploads (written here, read by claude in sessions).
+      - claude-uploads:/tmp/uploads
+
+    environment:
+      - HOME=/home/claude
+      - BACKEND_PORT=${BACKEND_PORT:-8081}
+
+    # No exposed ports — only reachable via internal network
+    networks:
+      - claude-net
+
+    depends_on:
+      sessions:
+        condition: service_healthy
+
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8081}/healthz"]
+      start_period: 5s
+
+    logging: *logging
 
   frontend:
     build:
@@ -154,4 +206,6 @@ networks:
     driver: bridge
 
 volumes:
+  claude-sock:
+  claude-uploads:
   holesail-share-key:

@@ -23,11 +23,11 @@
 
 ## 4. Containers and compose
 
-- [ ] 4.1 `Dockerfile.sessions`: today's backend runtime stage minus dtach, running sessiond; entrypoint.sh (config-dir seeding) moves here
-- [ ] 4.2 Slim `Dockerfile.backend`: builder + binary + curl + ca-certificates, shared UID/GID user, no claude/npm/Go/dtach
-- [ ] 4.3 docker-compose.yml: add `sessions` service (heavy limits, seccomp/IPv6 settings move from backend, healthcheck `sessiond -ping`, watch `./sessiond/`); backend gets socket volume + `/workspace` + config-dir mounts, `depends_on: sessions: service_healthy`, watch `./backend/ ./shared/ ./sessiond/`; named volume for `$CLAUDE_SOCK_DIR`
-- [ ] 4.4 Makefile: `restart-sessions` (pattern rule already covers it — verify), `make shell` targets the sessions container
-- [ ] 4.5 Update CLAUDE.md architecture section (four services, sessiond protocol, persistence semantics, no dtach)
+- [x] 4.1 `Dockerfile.sessions`: today's backend runtime stage minus dtach, running sessiond; entrypoint.sh (config-dir seeding) moves here
+- [x] 4.2 Slim `Dockerfile.backend`: builder + binary + curl + ca-certificates, shared UID/GID user, no claude/npm/Go/dtach
+- [x] 4.3 docker-compose.yml: add `sessions` service (heavy limits, seccomp/IPv6 settings move from backend, healthcheck `sessiond -ping`, watch `./sessiond/`); backend gets socket volume + `/workspace` + config-dir mounts, `depends_on: sessions: service_healthy`, watch `./backend/ ./shared/ ./sessiond/`; named volume for `$CLAUDE_SOCK_DIR`
+- [x] 4.4 Makefile: `restart-sessions` (pattern rule already covers it — verify), `make shell` targets the sessions container
+- [x] 4.5 Update CLAUDE.md architecture section (four services, sessiond protocol, persistence semantics, no dtach)
 
 ## 5. Verify end-to-end
 

@@ -23,7 +23,7 @@ watch:
 	docker compose watch
 
 shell:
-	docker exec -it claude_backend bash
+	docker exec -it claude_sessions bash
 
 claude:
 	@echo "Direct CLI claude is disabled — sessions are created from the dashboard:"

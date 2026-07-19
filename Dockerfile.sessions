@@ -1,0 +1,125 @@
+# Pinned Go version; each stage re-declares `ARG GO_VERSION` to inherit it.
+ARG GO_VERSION=1.26.1
+
+# ── Builder stage: compile the sessiond binary ──
+FROM debian:bookworm-slim AS builder
+
+ARG GO_VERSION
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libc6-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Pre-download Go modules (cached unless go.mod/go.sum change)
+COPY sessiond/go.mod sessiond/go.sum /src/sessiond/
+RUN cd /src/sessiond && go mod download
+
+# Copy source and build (busts cache on any source file change)
+COPY sessiond/ /src/sessiond/
+RUN cd /src/sessiond && go build -o /sessiond .
+
+# ── Runtime stage: the heavy session environment (claude + workspace tooling) ──
+FROM debian:bookworm-slim
+
+ARG GO_VERSION
+
+# Runtime packages — everything Claude Code sessions need
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    git \
+    curl \
+    bubblewrap \
+    qrencode \
+    npm \
+    ca-certificates \
+    gcc \
+    make \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install RTK (static musl binary — no deps)
+RUN curl -fsSL https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-unknown-linux-musl.tar.gz \
+    | tar -xz -C /usr/local/bin
+
+# Go toolchain — needed for go test -race and dev workflow
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# UTF-8 locale for Unicode rendering
+ENV LANG=C.UTF-8
+
+# Create a non-root user with matching host UID
+ARG UID
+ARG GID
+RUN groupadd -g ${GID} claude && \
+    useradd -m -u ${UID} -g claude claude
+USER claude
+
+# sessiond socket storage (shared with the backend via a named volume)
+ENV CLAUDE_SOCK_DIR=/home/claude/.local/state/claude/sock
+RUN mkdir -p /home/claude/.local/state/claude/sock
+
+# Install Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install OpenSpec
+RUN npm install -g --prefix /home/claude/.local @fission-ai/openspec@latest
+
+ENV PATH="/home/claude/.local/bin:${PATH}"
+ENV DO_NOT_TRACK=1
+ENV FORCE_AUTOUPDATE_PLUGINS=true
+
+# Pre-install Context7 MCP server
+RUN npm install -g --prefix /home/claude/.local @upstash/context7-mcp
+
+# Register marketplaces and install plugins
+RUN claude plugin marketplace add anthropics/claude-plugins-official && \
+    claude plugin marketplace add anthropics/skills && \
+    claude plugin marketplace add HKUDS/CLI-Anything && \
+    claude plugin marketplace add Stoica-Mihai/claude-skills && \
+    claude plugin marketplace add JuliusBrussee/caveman && \
+    claude plugin install superpowers@claude-plugins-official && \
+    claude plugin install skill-creator@claude-plugins-official && \
+    claude plugin install claude-api@anthropic-agent-skills && \
+    claude plugin install document-skills@anthropic-agent-skills && \
+    claude plugin install example-skills@anthropic-agent-skills && \
+    claude plugin install cli-anything@cli-anything && \
+    claude plugin install cli-anything-go@claude-skills && \
+    claude plugin install opsx-ext@claude-skills && \
+    claude plugin install caveman@caveman
+
+# Shell function: direct CLI `claude` is disabled — sessions are created and
+# managed from the dashboard, which asks sessiond to spawn the real binary.
+RUN cat >> /home/claude/.bashrc <<'BASHEOF'
+claude() {
+  cat >&2 <<'MSG'
+Direct `claude` sessions are disabled in this container.
+Create and open sessions from the dashboard:
+  http://localhost:8080  (or the host's DASHBOARD_PORT)
+MSG
+  return 1
+}
+BASHEOF
+
+# Scoped, host-isolated Claude config dir (mounted from the host, persists auth
+# and sessions for this sandbox without touching the host's real ~/.claude).
+ENV CLAUDE_CONFIG_DIR=/home/claude/.claude-sandbox
+
+# Copy the pre-built sessiond binary + entrypoint (seeds the scoped config dir)
+COPY --from=builder /sessiond /home/claude/sessiond
+COPY --chown=claude:claude entrypoint.sh /home/claude/entrypoint.sh
+RUN chmod +x /home/claude/entrypoint.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/home/claude/entrypoint.sh"]
+CMD ["/home/claude/sessiond"]
