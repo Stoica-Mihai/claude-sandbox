@@ -127,26 +127,12 @@ func TestLayoutMobileKeysUseKeycapClasses(t *testing.T) {
 	}
 }
 
-// TestLayoutControlsCarryDataAction asserts the static controls wired through
-// the delegated dispatcher keep their data-action attribute. A control that
-// loses its data-action is a dead button the JS unit tests can't catch (they
-// build FakeElements, not the rendered template), so pin it here.
-func TestLayoutControlsCarryDataAction(t *testing.T) {
-	out := renderLayout(t, nil)
-
-	for _, action := range []string{
-		"open-settings", "flip-theme", "toggle-sidebar", "collapse-sidebar", "new-session",
-		"save-settings", "settings-cat", "toggle-thinking",
-		"share-go-public", "share-go-private", "share-copy", "share-regen",
-	} {
-		if !strings.Contains(out, `data-action="`+action+`"`) {
-			t.Errorf("rendered layout missing a control with data-action=%q", action)
-		}
-	}
-
-	// The migration must leave no inline onclick handlers in the template.
-	if strings.Contains(out, "onclick=") {
-		t.Error("rendered layout still contains an inline onclick handler")
+// TestLayoutHasNoInlineOnclick pins the delegated-dispatch migration: the
+// template wires actions via data-action, never inline onclick. The
+// data-action <-> register() coverage lives in TestActionRegistrationMatchesTemplates.
+func TestLayoutHasNoInlineOnclick(t *testing.T) {
+	if strings.Contains(renderLayout(t, nil), "onclick=") {
+		t.Error("rendered layout contains an inline onclick handler")
 	}
 }
 
