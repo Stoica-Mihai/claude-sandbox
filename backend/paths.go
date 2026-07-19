@@ -15,14 +15,20 @@ import (
 // container).
 var sockDir string
 
-// initPaths resolves the sessiond socket directory from the protocol package
-// (the single owner of the rendezvous path).
+// initPaths resolves the sessiond socket directory and the upload directory
+// from the protocol package (the single owner of the shared-volume paths), so
+// sockets and uploads always share one claude-state root.
 func initPaths() error {
 	d, err := protocol.SockDir()
 	if err != nil {
 		return err
 	}
 	sockDir = d
+	state, err := protocol.StateDir()
+	if err != nil {
+		return err
+	}
+	uploadDir = filepath.Join(state, "uploads")
 	return nil
 }
 

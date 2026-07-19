@@ -37,9 +37,11 @@ const (
 )
 
 // uploadDir lives on the claude-state volume shared with the sessions
-// container, so claude can read pasted-image paths the backend writes. A var so
-// tests can redirect it.
-var uploadDir = "/home/claude/.local/state/claude/uploads"
+// container, so claude can read pasted-image paths the backend writes. Resolved
+// at startup by initPaths from protocol.StateDir (sibling of the socket dir) so
+// it follows a mount move instead of being stranded off-volume. A var so tests
+// can redirect it.
+var uploadDir string
 
 // newDirNameRe restricts new project folder names to a single safe path
 // segment. The pattern is shared with the client-side pre-check via shared/enums.

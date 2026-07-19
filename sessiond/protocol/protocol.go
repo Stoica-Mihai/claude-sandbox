@@ -127,6 +127,18 @@ func SockDir() (string, error) {
 	return filepath.Join(base, "claude", "sock"), nil
 }
 
+// StateDir is the claude-state root holding the socket dir and the backend's
+// upload dir as siblings (sock/ and uploads/) on the shared volume, so a mount
+// move relocates both together. It is the parent of SockDir — resolving both
+// from one place keeps uploads from being stranded off-volume.
+func StateDir() (string, error) {
+	dir, err := SockDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(dir), nil
+}
+
 // ControlSock returns the control socket path under the socket dir.
 func ControlSock(dir string) string { return filepath.Join(dir, "control.sock") }
 
