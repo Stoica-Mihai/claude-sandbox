@@ -8,3 +8,6 @@ backend/claude-sandbox-backend
 
 .superpowers/
 docs/
+
+# Compiled Go binaries (built in-container; never commit)
+/claude-sandbox-backend
