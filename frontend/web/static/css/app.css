@@ -120,6 +120,12 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .side.expanded .shead{justify-content:space-between;height:auto;padding:14px 14px 12px}
 .side.expanded .shead .kick{display:block;letter-spacing:3px}
 .side.expanded .shead .btn-new{display:inline-flex}
+/* D19: collapsed rail toggle is de-framed (drop the .iconbtn border + surf fill)
+   — a bordered button centered inside the bordered rail/head read as a
+   box-in-a-box. Just the glyph at rest; the kit hover-fill stays as the click
+   cue. Expanded, the toggle sits in the wider head beside the label, so it
+   keeps its frame. */
+.side:not(.expanded) #sidebarToggle{border:none;background:transparent}
 .side .list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
 .side.expanded .list{padding:12px;gap:12px}
 
