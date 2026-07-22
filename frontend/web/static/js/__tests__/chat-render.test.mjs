@@ -255,3 +255,46 @@ test('a finalized Read tool block highlights its output with the file language',
         assert.deepEqual(calls.filter(c => c === 'java').length >= 1, true);
     });
 });
+
+test('stableMarkdownBoundary respects fences and blank lines', async () => {
+    const { stableMarkdownBoundary } = await import('../chat-render.js');
+    assert.equal(stableMarkdownBoundary('para one\n\npara two'), 'para one\n\n'.length);
+    assert.equal(stableMarkdownBoundary('no blank lines yet'), 0);
+    // A blank line inside an open fence is NOT a stable boundary.
+    const fenced = 'intro\n\n```js\ncode\n\nmore code';
+    assert.equal(stableMarkdownBoundary(fenced), 'intro\n\n'.length);
+});
+
+test('streaming parses each stable segment once and only re-parses the tail', () => {
+    withDocument(() => {
+        const parsed = [];
+        globalThis.window = {
+            marked: { parse: (t) => { parsed.push(t); return t; } },
+            DOMPurify: { sanitize: (h) => h },
+        };
+        const list = new FakeElement('div');
+        const block = { type: 'text', text: 'para one\n\npar', done: false };
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block },
+        ]);
+        block.text = 'para one\n\npara two\n\npar';
+        applyPatches(list, [{ kind: 'append-text', messageId: 'm1', blockIndex: 0, block }]);
+        block.text = 'para one\n\npara two\n\npara three';
+        applyPatches(list, [{ kind: 'append-text', messageId: 'm1', blockIndex: 0, block }]);
+
+        // 'para one' must have been parsed exactly once as a stable segment.
+        const parsesContainingParaOne = parsed.filter(t => t.includes('para one')).length;
+        assert.equal(parsesContainingParaOne, 1);
+
+        // Rendered output still contains everything.
+        const blockEl = list.children[0].children[0];
+        assert.ok(blockEl.innerHTML.includes('para one'));
+        assert.ok(blockEl.innerHTML.includes('para three'));
+
+        // Finalize does one full authoritative parse.
+        block.done = true;
+        applyPatches(list, [{ kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block }]);
+        assert.equal(parsed[parsed.length - 1], 'para one\n\npara two\n\npara three');
+    });
+});

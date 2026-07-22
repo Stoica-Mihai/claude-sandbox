@@ -105,14 +105,49 @@ function findOrCreateBlockEl(msgEl, blockKey, type) {
     return el;
 }
 
-// renderTextBlock renders a text block's current (possibly partial) content
-// as markdown — re-parsed on every append, which is simple and correct; for
-// pathologically long single messages a future pass could diff instead.
+// stableMarkdownBoundary returns the end index of the last blank line that
+// sits OUTSIDE any code fence. Text before it is "stable" — appending more
+// text can no longer change how it parses (paragraph-level granularity) — so
+// streaming re-renders only the open tail. Exported for tests.
+export function stableMarkdownBoundary(text) {
+    const src = String(text || '');
+    let inFence = false;
+    let boundary = 0;
+    let pos = 0;
+    for (const line of src.split('\n')) {
+        if (/^(```|~~~)/.test(line.trimStart())) inFence = !inFence;
+        pos += line.length + 1;
+        if (!inFence && line.trim() === '') boundary = Math.min(pos, src.length);
+    }
+    return boundary;
+}
+
+// renderTextBlock renders a text block's current (possibly partial) content.
+// Streaming is incremental: stable paragraphs are parsed once and their HTML
+// cached cumulatively; each delta re-parses only the open tail — O(n) total
+// instead of re-parsing the whole text per delta. Segment-isolated parsing
+// can differ from a whole-text parse for constructs spanning blank lines
+// (loose lists), so finalize does one authoritative full parse.
 function renderTextBlock(el, block) {
-    el.innerHTML = renderMarkdown(block.text);
-    // Highlight only once the block stops streaming — re-highlighting every
-    // delta re-render would burn CPU on long messages for no visible gain.
-    if (block.done) highlightFences(el);
+    if (block.done) {
+        el._md = null;
+        el.innerHTML = renderMarkdown(block.text);
+        // Highlight only once the block stops streaming — re-highlighting
+        // every delta would burn CPU for no visible gain.
+        highlightFences(el);
+        return;
+    }
+    const text = block.text || '';
+    const boundary = stableMarkdownBoundary(text);
+    const stable = text.slice(0, boundary);
+    if (!el._md || !stable.startsWith(el._md.src)) {
+        el._md = { src: '', html: '' }; // fresh block (streams are append-only)
+    }
+    if (stable.length > el._md.src.length) {
+        el._md.html += renderMarkdown(stable.slice(el._md.src.length));
+        el._md.src = stable;
+    }
+    el.innerHTML = el._md.html + renderMarkdown(text.slice(boundary));
 }
 
 // renderThinkingBlock renders a collapsed-by-default thinking block with an
