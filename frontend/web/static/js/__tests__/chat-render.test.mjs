@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
-import { applyPatches, appendSystemNotice, appendUserMessage, resetView } from '../chat-render.js';
+import { applyPatches, appendSystemNotice, appendUserMessage, resetView, showPending } from '../chat-render.js';
 
 function withDocument(fn) {
     const prevDoc = globalThis.document;
@@ -296,5 +296,30 @@ test('streaming parses each stable segment once and only re-parses the tail', ()
         block.done = true;
         applyPatches(list, [{ kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block }]);
         assert.equal(parsed[parsed.length - 1], 'para one\n\npara two\n\npara three');
+    });
+});
+
+test('pending indicator: shown once, cleared by the first content patch, replay-safe', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        showPending(list);
+        showPending(list); // no duplicate
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
+
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'hi' } },
+        ]);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 0);
+
+        // A mirrored co-viewer send shows it again.
+        applyPatches(list, [{ kind: 'user-message', text: 'other viewer asks' }]);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
+
+        // resetView drops the tracked ref so a rebuild can show a fresh one.
+        resetView(list);
+        assert.equal(list.children.length, 0);
+        showPending(list);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
     });
 });

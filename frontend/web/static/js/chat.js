@@ -4,7 +4,7 @@
 
 import { SessionSocket } from './session-socket.js';
 import { createChatState, applyEvent, composeUserInput, transcriptUserText } from './chat-events.js';
-import { applyPatches, appendUserMessage, appendSystemNotice, resetView } from './chat-render.js';
+import { applyPatches, appendUserMessage, appendSystemNotice, resetView, showPending, clearPending } from './chat-render.js';
 import { createStickyScroll } from './chat-scroll.js';
 import { createInputBar } from './chat-input.js';
 import { sessionTranscriptPath, sessionPath, sessionModePath } from './routes.js';
@@ -101,6 +101,7 @@ export const ChatManager = {
                 }
                 if (!text && !imagePath) return;
                 appendUserMessage(instance.flow, imagePath ? (text ? text + ' 📎' : '📎 image attached') : text);
+                showPending(instance.flow);
                 instance.sticky.engage();
                 instance.socket?.sendControl(composeUserInput(text, imagePath));
             },
@@ -133,6 +134,7 @@ export const ChatManager = {
                 });
             },
             onStatus: (status) => {
+                clearPending(flow); // whatever happened, the turn is no longer just pending
                 if (status === 'ended') appendSystemNotice(flow, '[Session ended]');
                 else if (status === 'reconnecting') appendSystemNotice(flow, '[Reconnecting…]');
                 else if (status === 'lost') appendSystemNotice(flow, '[Connection lost — send a message to retry]');

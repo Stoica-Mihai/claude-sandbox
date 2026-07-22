@@ -263,6 +263,27 @@ function renderBlock(msgEl, messageId, blockIndex, block) {
 export function resetView(listEl) {
     listEl.innerHTML = '';
     listEl._chatMessageEls = null;
+    listEl._chatPending = null;
+}
+
+// showPending/clearPending: the "thinking…" row between a user's send and the
+// first streamed content. Shown explicitly on live sends (local echo via
+// chat.js, mirrored co-viewer sends via the user-message patch) — never on
+// history replay, where a conversation that died on a user turn would
+// otherwise dangle a forever-pending row.
+export function showPending(listEl) {
+    if (listEl._chatPending) return;
+    const el = document.createElement('div');
+    el.className = 'chat-pending';
+    el.textContent = 'thinking…';
+    listEl.appendChild(el);
+    listEl._chatPending = el;
+}
+
+export function clearPending(listEl) {
+    if (!listEl._chatPending) return;
+    listEl._chatPending.remove();
+    listEl._chatPending = null;
 }
 
 // appendSystemNotice renders a plain system line (e.g. after /clear).
@@ -295,6 +316,7 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'tool-input-progress':
             case 'finalize-block':
             case 'tool-result': {
+                clearPending(listEl);
                 const msgEl = findOrCreateMessageEl(listEl, p.messageId, 'assistant');
                 renderBlock(msgEl, p.messageId, p.blockIndex, p.block);
                 break;
@@ -302,10 +324,12 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'finalize-message':
                 break;
             case 'system-notice':
+                clearPending(listEl);
                 appendSystemNotice(listEl, p.text);
                 break;
             case 'user-message':
                 appendUserMessage(listEl, p.text);
+                showPending(listEl); // a co-viewer sent; their turn is now running
                 break;
             case 'header':
                 callbacks.onHeader?.(p.header);

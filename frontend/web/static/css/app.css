@@ -524,9 +524,13 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-msg-user{align-self:flex-end;max-width:80%;padding:10px 12px;background:var(--accent);
   color:var(--on-accent);border:2px solid var(--accent)}
 .chat-msg-assistant{align-self:stretch;position:relative;padding-left:26px}
-.chat-msg-assistant::before{content:'✱';position:absolute;left:0;top:2px;width:16px;height:16px;
+.chat-msg-assistant::before,.chat-pending::before{content:'✱';position:absolute;left:0;top:2px;width:16px;height:16px;
   background:var(--accent);color:var(--on-accent);font-size:10px;line-height:16px;text-align:center;
   transform:skewX(-8deg)}
+/* Pending row: turn accepted, first content not yet streamed. */
+.chat-pending{align-self:stretch;position:relative;padding-left:26px;
+  color:var(--muted);font-style:italic;font-size:13px;line-height:1.5}
+.chat-pending::before{animation:var(--blink)}
 .chat-msg-system{align-self:center;max-width:100%;padding:6px 12px;border:2px dashed var(--line);
   background:transparent;color:var(--muted);
   font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:center}
