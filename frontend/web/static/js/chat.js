@@ -170,7 +170,7 @@ export const ChatManager = {
                 appendUserMessage(instance.list, userText);
                 continue;
             }
-            const patches = applyEvent(instance.state, evt);
+            const patches = applyEvent(instance.state, evt, { replay: true });
             applyPatches(instance.list, patches, {
                 onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },
                 onUsage: (u) => { instance.headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },

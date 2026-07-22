@@ -194,3 +194,31 @@ test('transcriptUserText rejects non-user, meta, and tool_result records', async
     assert.equal(transcriptUserText({ type: 'user', message: { content: [] } }), null);
     assert.equal(transcriptUserText(null), null);
 });
+
+test('replay appends fragmented same-id assistant records instead of index-dropping them', () => {
+    const state = createChatState();
+    const mk = (cb) => ({ type: 'assistant', message: { id: 'msg_A', content: [cb] } });
+    applyEvent(state, mk({ type: 'thinking', thinking: 'hmm' }), { replay: true });
+    applyEvent(state, mk({ type: 'text', text: 'the answer' }), { replay: true });
+    applyEvent(state, mk({ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/x' } }), { replay: true });
+    assert.equal(state.messages.length, 1);
+    assert.deepEqual(state.messages[0].blocks.map(b => b.type), ['thinking', 'text', 'tool']);
+    assert.equal(state.messages[0].blocks[1].text, 'the answer');
+});
+
+test('live full assistant events still index-match streamed blocks (no replay flag)', () => {
+    const state = createChatState();
+    applyEvent(state, { type: 'stream_event', event: { type: 'message_start', message: { id: 'msg_B' } } });
+    applyEvent(state, { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } });
+    applyEvent(state, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'streamed' } } });
+    applyEvent(state, { type: 'stream_event', event: { type: 'content_block_stop', index: 0 } });
+    applyEvent(state, { type: 'assistant', message: { id: 'msg_B', content: [{ type: 'text', text: 'streamed' }] } });
+    assert.equal(state.messages.length, 1);
+    assert.equal(state.messages[0].blocks.length, 1); // full event did not duplicate the streamed block
+});
+
+test('transcriptUserText renders attachment markers as a paperclip', async () => {
+    const { transcriptUserText } = await import('../chat-events.js');
+    const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'did i attach something?\n\n[Attached image: /home/claude/.local/state/claude/uploads/x/y.jpg]' }] } };
+    assert.equal(transcriptUserText(evt), 'did i attach something? 📎');
+});

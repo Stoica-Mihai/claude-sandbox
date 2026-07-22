@@ -36,7 +36,7 @@ function findMessage(state, id) {
 // changed, for the renderer to apply. Unrecognized event types produce no
 // patches (forward-compatible: an unknown event is silently ignored, matching
 // the "frontend owns the protocol brain but is not exhaustive" design stance).
-export function applyEvent(state, evt) {
+export function applyEvent(state, evt, opts) {
     if (!evt || typeof evt !== 'object') return [];
 
     switch (evt.type) {
@@ -45,7 +45,7 @@ export function applyEvent(state, evt) {
         case 'stream_event':
             return applyStreamEvent(state, evt);
         case 'assistant':
-            return applyFullMessage(state, evt, 'assistant');
+            return applyFullMessage(state, evt, 'assistant', !!opts?.replay);
         case 'user':
             return applyUserEvent(state, evt);
         case 'result':
@@ -137,7 +137,11 @@ function applyStreamEvent(state, evt) {
 // non-streamed turn, be the only signal. Blocks already rendered via deltas
 // are left as-is (same id, already finalized); any block missing from the
 // streamed state is added so nothing is lost if a delta was missed.
-function applyFullMessage(state, evt, role) {
+// Replay differs: transcripts fragment one message into several records that
+// share message.id, each carrying one block at index 0 — so replay APPENDS
+// blocks instead of index-matching (which would drop every record after the
+// first).
+function applyFullMessage(state, evt, role, replay) {
     const msg = evt.message;
     if (!msg || !msg.id) return [];
     let existing = findMessage(state, msg.id);
@@ -148,7 +152,8 @@ function applyFullMessage(state, evt, role) {
         patches.push({ kind: 'new-message', messageId: msg.id, role });
     }
     (msg.content || []).forEach((cb, i) => {
-        if (existing.blocks[i] && existing.blocks[i].done) return; // already rendered via deltas
+        if (replay) i = existing.blocks.length;
+        else if (existing.blocks[i] && existing.blocks[i].done) return; // already rendered via deltas
         let block;
         if (cb.type === 'tool_use') {
             block = newBlock('tool', { toolName: cb.name || '', toolUseId: cb.id || '', input: cb.input, done: true });
@@ -229,7 +234,10 @@ export function transcriptUserText(evt) {
     if (typeof content === 'string') return content || null;
     if (!Array.isArray(content)) return null;
     if (content.some((cb) => cb.type === 'tool_result')) return null;
-    const text = content.filter((cb) => cb.type === 'text').map((cb) => cb.text || '').join('\n');
+    let text = content.filter((cb) => cb.type === 'text').map((cb) => cb.text || '').join('\n');
+    // Render attachment markers the way the live echo does (chat.js): 📎, not
+    // the raw upload path composeUserInput embeds.
+    text = text.replace(/\s*\[Attached image: [^\]]*\]/g, ' 📎').trim();
     return text || null;
 }
 
