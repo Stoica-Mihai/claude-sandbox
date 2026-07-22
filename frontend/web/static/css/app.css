@@ -62,6 +62,12 @@
    #efe9dc) in BOTH themes instead of tokens: a machine-readable artifact never
    themes (scanners want dark-on-light on carbon too), per the kit's
    machine-readable-artifacts rule. The 2px frame border stays tokenized. */
+/* D20: .hljs-* — syntax-highlight palette for chat code blocks (vendored
+   highlight.js). Multi-hue by nature, which diverges from the single-accent
+   law — deliberately exempt as CONTENT color, not chrome: the same reasoning
+   that lets xterm render its full ANSI palette and the QR block paint fixed
+   hexes (D16). Hues are desaturated to sit on paper/carbon; both themes get
+   their own values via the --syn-* tokens below. */
 /* D17: body.sharing-public .hdr .mark — ambient "tunnel is public" cue as an
    accent glow pulse on the logo mark, instead of a dedicated header glyph.
    Same-hue accent (law 4 holds); reduced-motion drops to a static glow. The
@@ -469,6 +475,20 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .mode-opt+.mode-opt{border-left:2px solid var(--line)}
 .mode-opt:hover{color:var(--ink)}
 .mode-opt.active{background:var(--accent);color:var(--on-accent)}
+
+/* ===== Syntax highlighting (D20) — content palette, not chrome ===== */
+:root{--syn-kw:#8a4d2e;--syn-str:#55763f;--syn-num:#7a5aa0;--syn-fn:#2e6a8a;--syn-type:#8a6d2e}
+[data-theme="dark"]{--syn-kw:#e0956e;--syn-str:#9ec49a;--syn-num:#c9aee8;--syn-fn:#7ec3e8;--syn-type:#d9c27e}
+.hljs{background:transparent}
+.hljs-keyword,.hljs-built_in,.hljs-selector-tag,.hljs-tag{color:var(--syn-kw)}
+.hljs-string,.hljs-regexp,.hljs-addition{color:var(--syn-str)}
+.hljs-number,.hljs-literal,.hljs-symbol{color:var(--syn-num)}
+.hljs-comment,.hljs-quote,.hljs-deletion{color:var(--muted);font-style:italic}
+.hljs-title,.hljs-name,.hljs-section{color:var(--syn-fn)}
+.hljs-type,.hljs-class,.hljs-attr,.hljs-attribute,.hljs-variable,.hljs-template-variable{color:var(--syn-type)}
+.hljs-meta,.hljs-doctag{color:var(--muted)}
+.hljs-emphasis{font-style:italic}
+.hljs-strong{font-weight:700}
 
 /* ===== Chat surface shell ===== */
 .chat-bg{background:var(--bg)}

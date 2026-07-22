@@ -19,6 +19,51 @@ function escapeText(str) {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ---- Syntax highlighting (vendored highlight.js; optional at runtime) ----
+
+// langFromPath maps a file extension to a highlight.js language id, or ''.
+// Exported for tests.
+export function langFromPath(path) {
+    const ext = String(path || '').match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || '';
+    const map = {
+        js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+        ts: 'typescript', tsx: 'typescript',
+        py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin',
+        c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp', cs: 'csharp',
+        sh: 'bash', bash: 'bash', zsh: 'bash',
+        json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini', ini: 'ini',
+        html: 'xml', xml: 'xml', css: 'css', scss: 'scss', sql: 'sql',
+        md: 'markdown', php: 'php', swift: 'swift', dart: 'dart',
+    };
+    return map[ext] || '';
+}
+
+// highlightCode highlights one pre/code-ish element's text content in place.
+// lang '' = highlight.js auto-detect. No-op without the vendored lib.
+function highlightCode(el, lang) {
+    const hljs = typeof window !== 'undefined' && window.hljs;
+    if (!hljs || el._highlighted) return;
+    try {
+        const text = el.textContent;
+        const res = lang && hljs.getLanguage(lang)
+            ? hljs.highlight(text, { language: lang })
+            : hljs.highlightAuto(text);
+        el.innerHTML = res.value; // hljs output is escaped span markup
+        el.classList.add('hljs');
+        el._highlighted = true;
+    } catch (e) { /* leave plain text */ }
+}
+
+// highlightFences highlights every fenced code block under a rendered
+// markdown container (language hint from the fence's language-* class).
+function highlightFences(container) {
+    if (typeof window === 'undefined' || !window.hljs || !container.querySelectorAll) return;
+    for (const code of container.querySelectorAll('pre code')) {
+        const lang = [...code.classList].find(c => c.startsWith('language-'))?.slice(9) || '';
+        highlightCode(code, lang);
+    }
+}
+
 // Element lookup uses a plain cache keyed off the list/message element
 // itself, not a CSS attribute-selector query — a query string built from an
 // event id would need selector-escaping to be robust, and repeated attribute
@@ -65,6 +110,9 @@ function findOrCreateBlockEl(msgEl, blockKey, type) {
 // pathologically long single messages a future pass could diff instead.
 function renderTextBlock(el, block) {
     el.innerHTML = renderMarkdown(block.text);
+    // Highlight only once the block stops streaming — re-highlighting every
+    // delta re-render would burn CPU on long messages for no visible gain.
+    if (block.done) highlightFences(el);
 }
 
 // renderThinkingBlock renders a collapsed-by-default thinking block with an
@@ -138,24 +186,32 @@ function renderToolBlock(el, block) {
     el.appendChild(body);
 
     const input = block.input;
+    const fileLang = langFromPath(input?.file_path);
     if (block.toolName === 'Edit' || block.toolName === 'Write') {
-        body.appendChild(renderEditDiff(input));
+        const diff = renderEditDiff(input);
+        body.appendChild(diff);
+        if (fileLang) for (const pane of diff.children) highlightCode(pane, fileLang);
     } else if (block.toolName === 'Bash') {
         const cmd = document.createElement('pre');
         cmd.className = 'chat-tool-cmd';
         cmd.textContent = (input && input.command) || '';
         body.appendChild(cmd);
+        if (block.done) highlightCode(cmd, 'bash');
     } else {
         const raw = document.createElement('pre');
         raw.className = 'chat-tool-input';
         raw.textContent = input ? JSON.stringify(input, null, 2) : (block.inputRaw || '');
         body.appendChild(raw);
+        if (block.done && input) highlightCode(raw, 'json');
     }
     if (block.resultText) {
         const out = document.createElement('pre');
         out.className = 'chat-tool-output';
         out.textContent = block.resultText;
         body.appendChild(out);
+        // Read excerpts get the file's language; other outputs stay plain
+        // (auto-detect on arbitrary tool output guesses wrong too often).
+        if (block.toolName === 'Read' && fileLang) highlightCode(out, fileLang);
     }
 }
 

@@ -224,3 +224,34 @@ test('a user-message patch appends a user bubble', () => {
         assert.equal(list.children[0].textContent, 'hello from co-viewer');
     });
 });
+
+test('langFromPath maps extensions to highlight.js language ids', async () => {
+    const { langFromPath } = await import('../chat-render.js');
+    assert.equal(langFromPath('/workspace/x/MyHostApduService.java'), 'java');
+    assert.equal(langFromPath('a/b/handlers.go'), 'go');
+    assert.equal(langFromPath('view.tsx'), 'typescript');
+    assert.equal(langFromPath('Makefile'), '');
+    assert.equal(langFromPath(undefined), '');
+});
+
+test('a finalized Read tool block highlights its output with the file language', () => {
+    withDocument(() => {
+        const calls = [];
+        globalThis.window = {
+            hljs: {
+                getLanguage: (l) => l === 'java',
+                highlight: (text, opts) => { calls.push(opts.language); return { value: '<span class="hljs-keyword">x</span>' }; },
+                highlightAuto: (text) => { calls.push('auto'); return { value: text }; },
+            },
+        };
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            {
+                kind: 'tool-result', messageId: 'm1', blockIndex: 0,
+                block: { type: 'tool', toolName: 'Read', done: true, input: { file_path: '/x/A.java' }, resultText: 'class A {}' },
+            },
+        ]);
+        assert.deepEqual(calls.filter(c => c === 'java').length >= 1, true);
+    });
+});
