@@ -152,6 +152,9 @@ function applyFullMessage(state, evt, role, replay) {
         patches.push({ kind: 'new-message', messageId: msg.id, role });
     }
     (msg.content || []).forEach((cb, i) => {
+        // Transcripts persist thinking blocks with empty text (shell only) —
+        // nothing to show, so don't render a dead toggle.
+        if (cb.type === 'thinking' && !cb.thinking) return;
         if (replay) i = existing.blocks.length;
         else if (existing.blocks[i] && existing.blocks[i].done) return; // already rendered via deltas
         let block;

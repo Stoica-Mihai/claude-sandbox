@@ -536,13 +536,15 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 /* ===== Blocks within an assistant message ===== */
 .chat-block+.chat-block{margin-top:8px}
 
-.chat-thinking-toggle,.chat-tool-toggle{width:100%;text-align:left;border:2px solid var(--line);background:var(--surf);
+/* Toggles are borderless text rows and bodies hang off a left rule — full
+   boxes here would nest borders inside the message box (boxes-in-boxes). */
+.chat-thinking-toggle,.chat-tool-toggle{width:100%;text-align:left;border:none;background:transparent;
   color:var(--muted);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;
-  padding:6px 10px;cursor:pointer}
+  padding:3px 0;cursor:pointer}
 .chat-thinking-toggle:hover,.chat-tool-toggle:hover{color:var(--ink)}
-.chat-thinking-body{border:2px solid var(--line);border-top:none;background:var(--surf);color:var(--muted);
-  padding:8px 10px;font-size:12px;white-space:pre-wrap}
-.chat-tool-body{border:2px solid var(--line);border-top:none;background:var(--field);padding:8px}
+.chat-thinking-body{border-left:3px solid var(--line);background:transparent;color:var(--muted);
+  padding:6px 10px;font-size:12px;white-space:pre-wrap}
+.chat-tool-body{border-left:3px solid var(--line);background:transparent;padding:6px 10px}
 .chat-tool-body.hidden{display:none}
 .chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word}
 .chat-tool-cmd{color:var(--ink)}

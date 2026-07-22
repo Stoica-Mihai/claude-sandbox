@@ -73,7 +73,7 @@ function renderThinkingBlock(el, block) {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'chat-thinking-toggle';
-    toggle.textContent = block.collapsed ? 'Show thinking' : 'Hide thinking';
+    toggle.textContent = (block.collapsed ? '▸' : '▾') + ' thinking';
     toggle.onclick = () => {
         block.collapsed = !block.collapsed;
         renderThinkingBlock(el, block);
@@ -119,10 +119,17 @@ function renderToolBlock(el, block) {
     const header = document.createElement('button');
     header.type = 'button';
     header.className = 'chat-tool-toggle';
-    header.textContent = (block.toolName || 'tool') + (block.done ? '' : '…');
+    // Open-state lives on the block (not the DOM) so a re-render on
+    // tool-result arrival doesn't snap an opened body shut.
+    const label = () => (block.open ? '▾ ' : '▸ ') + (block.toolName || 'tool') + (block.done ? '' : '…');
+    header.textContent = label();
     const body = document.createElement('div');
-    body.className = 'chat-tool-body hidden';
-    header.onclick = () => body.classList.toggle('hidden');
+    body.className = 'chat-tool-body' + (block.open ? '' : ' hidden');
+    header.onclick = () => {
+        block.open = !block.open;
+        body.classList.toggle('hidden', !block.open);
+        header.textContent = label();
+    };
     el.appendChild(header);
     el.appendChild(body);
 

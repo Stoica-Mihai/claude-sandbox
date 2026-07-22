@@ -222,3 +222,10 @@ test('transcriptUserText renders attachment markers as a paperclip', async () =>
     const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'did i attach something?\n\n[Attached image: /home/claude/.local/state/claude/uploads/x/y.jpg]' }] } };
     assert.equal(transcriptUserText(evt), 'did i attach something? 📎');
 });
+
+test('empty thinking shells (transcript form) produce no block', () => {
+    const state = createChatState();
+    applyEvent(state, { type: 'assistant', message: { id: 'msg_C', content: [{ type: 'thinking', thinking: '' }] } }, { replay: true });
+    applyEvent(state, { type: 'assistant', message: { id: 'msg_C', content: [{ type: 'text', text: 'visible' }] } }, { replay: true });
+    assert.deepEqual(state.messages[0].blocks.map(b => b.type), ['text']);
+});
