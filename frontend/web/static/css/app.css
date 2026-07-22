@@ -199,6 +199,9 @@ html,body{height:100dvh;margin:0;overflow:hidden;overscroll-behavior-y:none}
    wants flex, so scope the compound override per the kit's own guidance rather
    than a bare .only-desktop/.only-mobile rule. */
 .keyhint.only-mobile{display:flex}
+/* .keyhint's own display:flex ties the kit's .only-desktop hide (0,1,0) and
+   wins on source order — the hide must be restated at compound specificity. */
+.keyhint.only-desktop{display:none}
 
 /* ===== Directory-picker breadcrumb (renamed off kit .crumb — see step-1 commit) ===== */
 .dp-crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:11px;overflow-x:auto}
@@ -384,6 +387,7 @@ input.err-flash{outline:3px solid var(--accent)}
 @media (min-width:768px){
   :root{--is-mobile:0}
   .keyhint.only-desktop{display:flex}
+  .keyhint.only-mobile{display:none}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
   .themewrap span{display:inline}
@@ -575,4 +579,6 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   .chat-msg{max-width:92%}
   .chat-header{font-size:10px;gap:6px}
   .chat-header-mode,.chat-header-kill{padding:5px 8px}
+  /* No room for the model id next to cwd + two buttons at phone width. */
+  .chat-header-model{display:none}
 }

@@ -26,7 +26,11 @@ export function createInputBar({ onSend, terminalId }) {
 
     const textarea = document.createElement('textarea');
     textarea.className = 'chat-input-text';
-    textarea.placeholder = 'Message… (/clear resets context, same folder)';
+    // Long placeholder wraps and clips at phone width — keep the /clear hint
+    // desktop-only (title tooltip carries it everywhere).
+    const compact = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+    textarea.placeholder = compact ? 'Message…' : 'Message… (/clear resets context, same folder)';
+    textarea.title = '/clear resets context, same folder';
     textarea.rows = 1;
 
     const fileInput = document.createElement('input');
