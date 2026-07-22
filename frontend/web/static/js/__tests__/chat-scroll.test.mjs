@@ -142,3 +142,18 @@ test('suppressNext skips the resize pin burst, later growth pins again', async (
         }, 220));
     });
 });
+
+test('suppression is one-shot: the very next growth after the toggle burst pins', () => {
+    withRO(() => {
+        const el = fakeScrollEl();
+        const sticky = createStickyScroll(el, {});
+        el.scrollTop = 800;
+        sticky.suppressNext();
+        el.scrollHeight = 3000;
+        FakeResizeObserver.last.fire(); // toggle burst — suppressed, consumed
+        assert.equal(el.scrollTop, 800);
+        el.scrollHeight = 3500;
+        FakeResizeObserver.last.fire(); // streamed output moments later — pins
+        assert.equal(el.scrollTop, 3500);
+    });
+});

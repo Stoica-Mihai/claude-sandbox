@@ -38,7 +38,14 @@ export function createStickyScroll(scrollEl, contentEl) {
     let observer = null;
     if (typeof ResizeObserver !== 'undefined') {
         observer = new ResizeObserver(() => {
-            if (Date.now() < suppressUntil) return;
+            // One-shot: the toggle's layout burst is a single callback, so
+            // consume the suppression immediately — streamed growth arriving
+            // right after a toggle still pins instead of being eaten by a
+            // wall-clock window.
+            if (Date.now() < suppressUntil) {
+                suppressUntil = 0;
+                return;
+            }
             if (follow) pin();
         });
         observer.observe(contentEl);
