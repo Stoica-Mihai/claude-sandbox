@@ -30,9 +30,15 @@ export function createStickyScroll(scrollEl, contentEl) {
     };
     scrollEl.addEventListener('scroll', onScroll);
 
+    // User-initiated expansion (tool/thinking toggles) grows content but is
+    // not output — following it would yank the opened body past the viewport.
+    // Suppression is a lazily-checked window, not a timer.
+    let suppressUntil = 0;
+
     let observer = null;
     if (typeof ResizeObserver !== 'undefined') {
         observer = new ResizeObserver(() => {
+            if (Date.now() < suppressUntil) return;
             if (follow) pin();
         });
         observer.observe(contentEl);
@@ -48,6 +54,11 @@ export function createStickyScroll(scrollEl, contentEl) {
         // disengage: user intent to read away from the bottom (load earlier).
         disengage() {
             follow = false;
+        },
+        // suppressNext: ignore resize-driven pins for the burst caused by a
+        // user-initiated layout change (expand/collapse toggles).
+        suppressNext() {
+            suppressUntil = Date.now() + 200;
         },
         isFollowing() {
             return follow;

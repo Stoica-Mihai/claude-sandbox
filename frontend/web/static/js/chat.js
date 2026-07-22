@@ -84,6 +84,11 @@ export const ChatManager = {
         };
 
         loadMoreBtn.addEventListener('click', () => this._renderMoreHistory(terminalId));
+        // Expand/collapse toggles change content height by user action, not
+        // output — suppress the follow pin for that resize burst.
+        list.addEventListener('click', (e) => {
+            if (e.target.closest?.('.chat-tool-toggle, .chat-thinking-toggle')) instance.sticky.suppressNext();
+        });
         killBtn.addEventListener('click', () => {
             fetch(sessionPath(terminalId), { method: 'DELETE' }).catch(() => {});
         });

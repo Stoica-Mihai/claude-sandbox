@@ -122,3 +122,23 @@ test('works without ResizeObserver (test/jsdom-less environments)', () => {
         if (prev) globalThis.ResizeObserver = prev;
     }
 });
+
+test('suppressNext skips the resize pin burst, later growth pins again', async () => {
+    withRO(() => {
+        const el = fakeScrollEl();
+        const sticky = createStickyScroll(el, {});
+        el.scrollTop = 800; // at bottom, following
+
+        sticky.suppressNext();
+        el.scrollHeight = 3000; // user expanded a tool body
+        FakeResizeObserver.last.fire();
+        assert.equal(el.scrollTop, 800); // no yank
+
+        return new Promise(r => setTimeout(() => {
+            el.scrollHeight = 4000; // streamed output later
+            FakeResizeObserver.last.fire();
+            assert.equal(el.scrollTop, 4000);
+            r();
+        }, 220));
+    });
+});
