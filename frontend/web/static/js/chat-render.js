@@ -201,7 +201,7 @@ function ensureFollowTracking(listEl) {
     });
 }
 
-function scrollIfFollowing(listEl) {
+export function scrollIfFollowing(listEl) {
     ensureFollowTracking(listEl);
     if (listEl._chatFollow) listEl.scrollTop = listEl.scrollHeight;
 }

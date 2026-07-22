@@ -4,7 +4,7 @@
 
 import { SessionSocket } from './session-socket.js';
 import { createChatState, applyEvent, composeUserInput, transcriptUserText } from './chat-events.js';
-import { applyPatches, appendUserMessage, appendSystemNotice } from './chat-render.js';
+import { applyPatches, appendUserMessage, appendSystemNotice, scrollIfFollowing } from './chat-render.js';
 import { createInputBar } from './chat-input.js';
 import { sessionTranscriptPath, sessionPath, sessionModePath } from './routes.js';
 import { getSession } from './store.js';
@@ -145,6 +145,15 @@ export const ChatManager = {
         instance.transcriptLines = lines;
         const from = Math.max(0, lines.length - TAIL_INITIAL_LINES);
         this._rebuildFromTranscript(terminalId, from);
+        // Late layout shifts (font/emoji swap, slow devices) can move the
+        // bottom after the rebuild's scroll — re-assert once the frame settles
+        // and again when fonts finish. No-ops if the user already scrolled up.
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => scrollIfFollowing(instance.list));
+        }
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+            document.fonts.ready.then(() => scrollIfFollowing(instance.list));
+        }
     },
 
     // _rebuildFromTranscript clears and replays the message list from a given
