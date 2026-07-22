@@ -491,8 +491,10 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   padding:8px 0;cursor:pointer}
 .chat-load-more:hover{color:var(--ink)}
 
-.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;
-  display:flex;flex-direction:column;gap:10px}
+/* list = scroll container; flow = observed content (chat-scroll.js re-pins
+   on its size changes). Padding lives on flow so content height is honest. */
+.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.chat-message-flow{display:flex;flex-direction:column;gap:10px;padding:14px}
 
 /* ===== Message rows — square, list-row language, not chat bubbles ===== */
 .chat-msg{max-width:80%;padding:10px 12px;border:2px solid var(--line);font-size:13px;line-height:1.5}

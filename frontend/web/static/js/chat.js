@@ -4,7 +4,8 @@
 
 import { SessionSocket } from './session-socket.js';
 import { createChatState, applyEvent, composeUserInput, transcriptUserText } from './chat-events.js';
-import { applyPatches, appendUserMessage, appendSystemNotice, scrollIfFollowing } from './chat-render.js';
+import { applyPatches, appendUserMessage, appendSystemNotice, resetView } from './chat-render.js';
+import { createStickyScroll } from './chat-scroll.js';
 import { createInputBar } from './chat-input.js';
 import { sessionTranscriptPath, sessionPath, sessionModePath } from './routes.js';
 import { getSession } from './store.js';
@@ -61,10 +62,17 @@ export const ChatManager = {
 
         const list = document.createElement('div');
         list.className = 'chat-message-list';
+        // flow is the render target; list is the scroll container. The split
+        // exists so chat-scroll.js can observe content size independently.
+        const flow = document.createElement('div');
+        flow.className = 'chat-message-flow';
+        list.appendChild(flow);
 
         const instance = {
             root,
             list,
+            flow,
+            sticky: createStickyScroll(list, flow),
             headerCwd,
             headerModel,
             headerCost,
@@ -87,7 +95,8 @@ export const ChatManager = {
                     return;
                 }
                 if (!text && !imagePath) return;
-                appendUserMessage(list, imagePath ? (text ? text + ' 📎' : '📎 image attached') : text);
+                appendUserMessage(instance.flow, imagePath ? (text ? text + ' 📎' : '📎 image attached') : text);
+                instance.sticky.engage();
                 instance.socket?.sendControl(composeUserInput(text, imagePath));
             },
         });
@@ -109,19 +118,19 @@ export const ChatManager = {
     _connect(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
-        const { list, headerCwd, headerModel, headerCost } = instance;
+        const { flow, headerCwd, headerModel, headerCost } = instance;
         const socket = new SessionSocket(terminalId, {
             onControl: (evt) => {
                 const patches = applyEvent(instance.state, evt);
-                applyPatches(list, patches, {
+                applyPatches(flow, patches, {
                     onHeader: (h) => { headerCwd.textContent = h.cwd; headerModel.textContent = h.model; },
                     onUsage: (u) => { headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
                 });
             },
             onStatus: (status) => {
-                if (status === 'ended') appendSystemNotice(list, '[Session ended]');
-                else if (status === 'reconnecting') appendSystemNotice(list, '[Reconnecting…]');
-                else if (status === 'lost') appendSystemNotice(list, '[Connection lost — send a message to retry]');
+                if (status === 'ended') appendSystemNotice(flow, '[Session ended]');
+                else if (status === 'reconnecting') appendSystemNotice(flow, '[Reconnecting…]');
+                else if (status === 'lost') appendSystemNotice(flow, '[Connection lost — send a message to retry]');
             },
         });
         instance.socket = socket;
@@ -145,15 +154,6 @@ export const ChatManager = {
         instance.transcriptLines = lines;
         const from = Math.max(0, lines.length - TAIL_INITIAL_LINES);
         this._rebuildFromTranscript(terminalId, from);
-        // Late layout shifts (font/emoji swap, slow devices) can move the
-        // bottom after the rebuild's scroll — re-assert once the frame settles
-        // and again when fonts finish. No-ops if the user already scrolled up.
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => scrollIfFollowing(instance.list));
-        }
-        if (typeof document !== 'undefined' && document.fonts?.ready) {
-            document.fonts.ready.then(() => scrollIfFollowing(instance.list));
-        }
     },
 
     // _rebuildFromTranscript clears and replays the message list from a given
@@ -162,7 +162,7 @@ export const ChatManager = {
     _rebuildFromTranscript(terminalId, from) {
         const instance = this.instances[terminalId];
         if (!instance) return;
-        instance.list.innerHTML = '';
+        resetView(instance.flow);
         instance.state = createChatState();
         instance.transcriptRenderedFrom = from;
         for (let i = from; i < instance.transcriptLines.length; i++) {
@@ -176,11 +176,11 @@ export const ChatManager = {
             // echoes them locally and the stream never carries them back).
             const userText = transcriptUserText(evt);
             if (userText !== null) {
-                appendUserMessage(instance.list, userText);
+                appendUserMessage(instance.flow, userText);
                 continue;
             }
             const patches = applyEvent(instance.state, evt, { replay: true });
-            applyPatches(instance.list, patches, {
+            applyPatches(instance.flow, patches, {
                 onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },
                 onUsage: (u) => { instance.headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
             });
@@ -192,9 +192,9 @@ export const ChatManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
         const from = Math.max(0, instance.transcriptRenderedFrom - TAIL_CHUNK);
-        // Reading earlier history: don't let the rebuild's renders snap the
+        // Reading earlier history: don't let content-growth re-pins snap the
         // list back to the bottom.
-        instance.list._chatFollow = false;
+        instance.sticky.disengage();
         this._rebuildFromTranscript(terminalId, from);
     },
 
@@ -202,6 +202,7 @@ export const ChatManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
         instance.socket?.close();
+        instance.sticky.destroy();
         delete this.instances[terminalId];
     },
 

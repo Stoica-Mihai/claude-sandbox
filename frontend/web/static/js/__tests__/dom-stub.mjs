@@ -50,7 +50,11 @@ class FakeElement {
     // literal text with children on the same node (always clears one before
     // appending the other), so children-present implies "reflect them".
     get textContent() { return this.children.length ? this.children.map(c => c.textContent).join('') : this._textContent; }
-    set innerHTML(v) { this._innerHTML = String(v); }
+    set innerHTML(v) {
+        this._innerHTML = String(v);
+        // Mirror the real DOM: writing innerHTML replaces all children.
+        if (this._innerHTML === '') this.children = [];
+    }
     get innerHTML() { return this._innerHTML; }
     appendChild(child) { this.children.push(child); child.parentNode = this; return child; }
     remove() {

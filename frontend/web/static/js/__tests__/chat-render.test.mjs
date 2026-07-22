@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
-import { applyPatches, appendSystemNotice, appendUserMessage } from '../chat-render.js';
+import { applyPatches, appendSystemNotice, appendUserMessage, resetView } from '../chat-render.js';
 
 function withDocument(fn) {
     const prevDoc = globalThis.document;
@@ -198,31 +198,20 @@ test('a thinking block with no text renders no toggle at all', () => {
     });
 });
 
-test('renders auto-scroll while following; a send re-engages the follow', () => {
+test('resetView clears the element caches so a rebuild renders fresh nodes', () => {
     withDocument(() => {
         const list = new FakeElement('div');
-        Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
-        Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-        list.scrollTop = 0;
-
-        // Default state follows: a render batch scrolls to bottom.
         applyPatches(list, [
             { kind: 'new-message', messageId: 'm1', role: 'assistant' },
-            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'x' } },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'first pass' } },
         ]);
-        assert.equal(list.scrollTop, 1000);
-
-        // User scrolled up (follow off): renders leave the position alone.
-        list._chatFollow = false;
-        list.scrollTop = 100;
+        resetView(list);
+        assert.equal(list.children.length, 0);
         applyPatches(list, [
-            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'xy' } },
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'second pass' } },
         ]);
-        assert.equal(list.scrollTop, 100);
-
-        // Sending always jumps to bottom and turns the follow back on.
-        appendUserMessage(list, 'question');
-        assert.equal(list.scrollTop, list.scrollHeight);
-        assert.equal(list._chatFollow, true);
+        assert.equal(list.children.length, 1); // rendered into the DOM, not a detached cached node
+        assert.ok(list.children[0].children[0].innerHTML.includes('second pass'));
     });
 });

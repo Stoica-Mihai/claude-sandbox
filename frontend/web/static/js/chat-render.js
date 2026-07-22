@@ -1,7 +1,8 @@
 // DOM rendering for the chat message list: markdown, streaming text, tool
 // step rows (diff for Edit/Write, command+output for Bash), collapsed
 // thinking blocks, and system notices. Consumes the patches chat-events.js
-// produces; owns no event-vocabulary knowledge itself.
+// produces; owns no event-vocabulary knowledge itself. Scroll behavior is
+// deliberately NOT here — chat-scroll.js owns it (observation-driven).
 
 // renderMarkdown converts markdown to sanitized HTML. Falls back to escaped
 // plain text if the vendored markdown/sanitizer libs are not loaded (e.g. a
@@ -165,13 +166,20 @@ function renderBlock(msgEl, messageId, blockIndex, block) {
     else renderTextBlock(el, block);
 }
 
+// resetView empties a render container AND its element caches — clearing
+// innerHTML alone would leave the message cache pointing at detached nodes,
+// so a rebuild would render into elements no longer in the DOM.
+export function resetView(listEl) {
+    listEl.innerHTML = '';
+    listEl._chatMessageEls = null;
+}
+
 // appendSystemNotice renders a plain system line (e.g. after /clear).
 export function appendSystemNotice(listEl, text) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-system';
     el.textContent = text;
     listEl.appendChild(el);
-    scrollIfFollowing(listEl);
 }
 
 // appendUserMessage renders the user's own message optimistically on send —
@@ -182,28 +190,6 @@ export function appendUserMessage(listEl, text) {
     el.className = 'chat-msg chat-msg-user';
     el.textContent = text;
     listEl.appendChild(el);
-    // Sending re-engages the follow no matter where the user had scrolled.
-    ensureFollowTracking(listEl);
-    listEl._chatFollow = true;
-    listEl.scrollTop = listEl.scrollHeight;
-}
-
-// Sticky follow: the list auto-scrolls while the user sits at the bottom and
-// stops when they scroll up to read. State comes from scroll events — never
-// from measuring after an append (a single chunk taller than the threshold
-// would land the measurement "far from bottom" and break the follow for good).
-function ensureFollowTracking(listEl) {
-    if (listEl._chatFollowBound) return;
-    listEl._chatFollowBound = true;
-    if (listEl._chatFollow === undefined) listEl._chatFollow = true;
-    listEl.addEventListener('scroll', () => {
-        listEl._chatFollow = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 120;
-    });
-}
-
-export function scrollIfFollowing(listEl) {
-    ensureFollowTracking(listEl);
-    if (listEl._chatFollow) listEl.scrollTop = listEl.scrollHeight;
 }
 
 // applyPatches renders one batch of chat-events.js patches into listEl.
@@ -237,5 +223,4 @@ export function applyPatches(listEl, patches, callbacks = {}) {
                 break;
         }
     }
-    if (patches.length) scrollIfFollowing(listEl);
 }
