@@ -1,4 +1,4 @@
-// App init: keyboard shortcuts, pull-to-refresh, and load-time bootstrap.
+// App init: keyboard shortcuts and load-time bootstrap.
 
 import { applySidebar } from './sidebar.js';
 import { isMobile } from './ui-utils.js';
@@ -41,63 +41,8 @@ export function handleShortcuts(e) {
     }
 }
 
-// ===== Pull to refresh =====
-export function initPullToRefresh() {
-    const body = document.body;
-    const indicator = document.getElementById('pullIndicator');
-    if (!indicator) return;
-    const label = indicator.querySelector('.pull-label');
-
-    const threshold = 80;   // px pull to arm a refresh
-    const maxPull = 100;    // px where the bar reaches full height
-    const barHeight = 40;   // px bar height when fully revealed
-    let startY = 0;
-    let pulling = false;
-
-    const reset = () => {
-        indicator.style.height = '0';
-        indicator.style.setProperty('--pull', '0');
-        indicator.classList.remove('armed', 'refreshing');
-    };
-
-    body.addEventListener('touchstart', (e) => {
-        // Don't activate inside terminals, open dialogs, or the sidebar drawer
-        if (e.target.closest('.xterm') || e.target.closest('#singleTerminal')) return;
-        if (document.querySelector('dialog[open]')) return;
-        if (e.target.closest('#sidebar')) return;
-        startY = e.touches[0].clientY;
-        pulling = true;
-    }, { passive: true });
-
-    body.addEventListener('touchmove', (e) => {
-        if (!pulling) return;
-        const dy = e.touches[0].clientY - startY;
-        if (dy < 0) { pulling = false; reset(); return; }
-        const clamped = Math.min(dy, maxPull);
-        indicator.style.height = (clamped / maxPull * barHeight) + 'px';
-        indicator.style.setProperty('--pull', String(Math.min(dy / threshold, 1)));
-        const armed = dy >= threshold;
-        indicator.classList.toggle('armed', armed);
-        if (label) label.textContent = armed ? 'Release to refresh' : 'Pull to refresh';
-    }, { passive: true });
-
-    body.addEventListener('touchend', () => {
-        if (!pulling) return;
-        pulling = false;
-        if (indicator.classList.contains('armed')) {
-            indicator.classList.add('refreshing');
-            indicator.style.height = barHeight + 'px';
-            if (label) label.textContent = 'Refreshing';
-            setTimeout(() => location.reload(), 400);
-        } else {
-            reset();
-        }
-    });
-}
-
 export function init() {
     applySidebar(localStorage.getItem('sidebar') === 'expanded');
-    initPullToRefresh();
 
     // Header session badge follows the store.
     subscribe((sessions) => {

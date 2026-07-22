@@ -41,18 +41,6 @@
 /* D10 retired: the accent picker moved out of the header into the Appearance
    settings panel (see .acc-row / .settings-* below), so the .accpick wrapper
    alignment override is gone. */
-/* D11: #pullIndicator — pull-to-refresh; built independently from kit idioms
-   (fd-march/.skel barber-pole, --on-accent label, forced-colors fallback,
-   role=status/aria-live) before the kit shipped its own fdPull() (0.6.17+).
-   Convergent, not derived — same shape (barber-pole reuse, --pull custom
-   property, armed/refreshing states), kept as our own hand-rolled JS/CSS
-   rather than switching to fdPull, consistent with this app driving all its
-   own interaction logic instead of loading futurism.js. See '#pullIndicator'. */
-/* D12: #pullIndicator .pull-fill uses transition:width 60ms linear, not
-   var(--ease) (Law #5) — deliberate: the fill 1:1-tracks a touchmove finger
-   position every frame, and the kit's cubic-bezier lags visibly behind a fast
-   drag. Linear keeps the fill glued to the finger; --ease is for discrete
-   state transitions (open/close, hover), not live-drag following. */
 /* D14: .newrow — the "+ NEW PROJECT…" row pinned under the folder list; the kit
    has no "row pinned under a list" component. Reuses the app's own list-row
    language (top 2px var(--line) divider, --hover-bg on hover, muted→ink text)
@@ -81,9 +69,7 @@
    'body.sharing-public' rule below. */
 
 /* ===== App shell ===== */
-/* overscroll-behavior: an app-like dashboard — browser pull-to-refresh from
-   scrolling a session view would tear down live terminals/chats. */
-html,body{height:100dvh;margin:0;overflow:hidden;overscroll-behavior-y:none}
+html,body{height:100dvh;margin:0;overflow:hidden}
 .app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 
 /* ===== Header ===== */
@@ -279,25 +265,6 @@ html,body{height:100dvh;margin:0;overflow:hidden;overscroll-behavior-y:none}
 }
 [data-theme-base="light"] .grain::after{opacity:.005}
 
-/* ===== Pull to refresh ===== */
-/* D11: pull-to-refresh — square accent bar that fills L→R as you pull, then marches
-   the kit barber-pole (fd-march, same as .skel) while refreshing. --pull (0..1)
-   is set from views.js. */
-#pullIndicator{position:relative;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
-  background:var(--surf);border-bottom:var(--border) solid var(--line);transition:height var(--med) var(--ease)}
-#pullIndicator .pull-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--pull,0) * 100%);
-  background:var(--accent);transition:width 60ms linear}
-#pullIndicator.armed .pull-fill{width:100%}
-/* Barber-pole recipe pinned to the kit .skel rule (fd-march, --skel-stripe,
-   22px tile, 1s) — keep in sync if the kit retunes it. */
-#pullIndicator.refreshing .pull-fill{width:100%;background-color:var(--accent);
-  background-image:linear-gradient(45deg,var(--skel-stripe) 25%,transparent 25% 50%,var(--skel-stripe) 50% 75%,transparent 75%);
-  background-size:22px 22px;animation:fd-march 1s linear infinite}
-#pullIndicator .pull-label{position:relative;z-index:1;font-family:var(--font);font-weight:800;font-style:italic;
-  font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
-/* Filled states put the label on the accent — use the kit's text-on-accent token. */
-#pullIndicator.armed .pull-label,#pullIndicator.refreshing .pull-label{color:var(--on-accent)}
-
 /* ===== Terminal background (driven by --terminal-bg/--terminal-fg, set in terminal.js) ===== */
 .terminal-bg{background:var(--terminal-bg)}
 /* Per-tab terminal container fills the flex:1 #singleTerminal so the fit addon
@@ -358,7 +325,6 @@ input.err-flash{outline:3px solid var(--accent)}
   .tab.on,.scard.active,.arow.sel,.sa-sel{outline:2px solid Highlight;outline-offset:-2px}
   .statpill .dot,.scard .live:not(.dead){background:Highlight}
   .scard .live.dead{background:GrayText}
-  #pullIndicator .pull-fill{background:Highlight}
 }
 
 /* ===== Reduced motion — static ring on the app's live dots (kit disables animation globally) ===== */
@@ -525,8 +491,8 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   padding:8px 0;cursor:pointer}
 .chat-load-more:hover{color:var(--ink)}
 
-.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
-  padding:14px;display:flex;flex-direction:column;gap:10px}
+.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;
+  display:flex;flex-direction:column;gap:10px}
 
 /* ===== Message rows — square, list-row language, not chat bubbles ===== */
 .chat-msg{max-width:80%;padding:10px 12px;border:2px solid var(--line);font-size:13px;line-height:1.5}
