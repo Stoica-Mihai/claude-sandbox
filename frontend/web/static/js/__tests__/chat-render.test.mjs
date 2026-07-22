@@ -197,3 +197,32 @@ test('a thinking block with no text renders no toggle at all', () => {
         assert.equal(list.children[0].children[0].children.length, 0);
     });
 });
+
+test('renders auto-scroll while following; a send re-engages the follow', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
+        Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
+        list.scrollTop = 0;
+
+        // Default state follows: a render batch scrolls to bottom.
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'x' } },
+        ]);
+        assert.equal(list.scrollTop, 1000);
+
+        // User scrolled up (follow off): renders leave the position alone.
+        list._chatFollow = false;
+        list.scrollTop = 100;
+        applyPatches(list, [
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'xy' } },
+        ]);
+        assert.equal(list.scrollTop, 100);
+
+        // Sending always jumps to bottom and turns the follow back on.
+        appendUserMessage(list, 'question');
+        assert.equal(list.scrollTop, list.scrollHeight);
+        assert.equal(list._chatFollow, true);
+    });
+});

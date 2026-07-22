@@ -171,7 +171,7 @@ export function appendSystemNotice(listEl, text) {
     el.className = 'chat-msg chat-msg-system';
     el.textContent = text;
     listEl.appendChild(el);
-    scrollToBottomIfNear(listEl);
+    scrollIfFollowing(listEl);
 }
 
 // appendUserMessage renders the user's own message optimistically on send —
@@ -182,14 +182,28 @@ export function appendUserMessage(listEl, text) {
     el.className = 'chat-msg chat-msg-user';
     el.textContent = text;
     listEl.appendChild(el);
-    scrollToBottomIfNear(listEl);
+    // Sending re-engages the follow no matter where the user had scrolled.
+    ensureFollowTracking(listEl);
+    listEl._chatFollow = true;
+    listEl.scrollTop = listEl.scrollHeight;
 }
 
-function scrollToBottomIfNear(listEl) {
-    const nearBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 120;
-    if (nearBottom || listEl.children.length <= 1) {
-        listEl.scrollTop = listEl.scrollHeight;
-    }
+// Sticky follow: the list auto-scrolls while the user sits at the bottom and
+// stops when they scroll up to read. State comes from scroll events — never
+// from measuring after an append (a single chunk taller than the threshold
+// would land the measurement "far from bottom" and break the follow for good).
+function ensureFollowTracking(listEl) {
+    if (listEl._chatFollowBound) return;
+    listEl._chatFollowBound = true;
+    if (listEl._chatFollow === undefined) listEl._chatFollow = true;
+    listEl.addEventListener('scroll', () => {
+        listEl._chatFollow = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 120;
+    });
+}
+
+function scrollIfFollowing(listEl) {
+    ensureFollowTracking(listEl);
+    if (listEl._chatFollow) listEl.scrollTop = listEl.scrollHeight;
 }
 
 // applyPatches renders one batch of chat-events.js patches into listEl.
@@ -223,5 +237,5 @@ export function applyPatches(listEl, patches, callbacks = {}) {
                 break;
         }
     }
-    if (patches.length) scrollToBottomIfNear(listEl);
+    if (patches.length) scrollIfFollowing(listEl);
 }

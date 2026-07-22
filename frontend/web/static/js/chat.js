@@ -183,6 +183,9 @@ export const ChatManager = {
         const instance = this.instances[terminalId];
         if (!instance) return;
         const from = Math.max(0, instance.transcriptRenderedFrom - TAIL_CHUNK);
+        // Reading earlier history: don't let the rebuild's renders snap the
+        // list back to the bottom.
+        instance.list._chatFollow = false;
         this._rebuildFromTranscript(terminalId, from);
     },
 
