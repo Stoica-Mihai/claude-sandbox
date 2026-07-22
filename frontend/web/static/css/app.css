@@ -530,7 +530,7 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:center}
 .chat-msg-assistant p:first-child{margin-top:0}
 .chat-msg-assistant p:last-child{margin-bottom:0}
-.chat-msg-assistant pre{background:var(--surf);border:2px solid var(--line);padding:8px;overflow-x:auto;font-family:var(--mono);font-size:12px}
+.chat-block-text pre{background:var(--surf);border:2px solid var(--line);padding:8px;overflow-x:auto;font-family:var(--mono);font-size:12px}
 .chat-msg-assistant code{font-family:var(--mono);font-size:12px}
 
 /* ===== Blocks within an assistant message ===== */

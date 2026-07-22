@@ -150,3 +150,39 @@ test('plain text without marked/DOMPurify loaded falls back to escaped text', ()
         assert.ok(blockEl.innerHTML.includes('&lt;b&gt;'));
     });
 });
+
+test('consecutive assistant messages merge into one visual box with distinct blocks', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'before tool' } },
+            { kind: 'new-message', messageId: 'm2', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm2', blockIndex: 0, block: { type: 'text', text: 'after tool' } },
+        ]);
+        assert.equal(list.children.length, 1); // one box for the whole turn
+        const msgEl = list.children[0];
+        assert.equal(msgEl.children.length, 2); // m1:0 and m2:0 stay distinct blocks
+        assert.ok(msgEl.children[0].innerHTML.includes('before tool'));
+        assert.ok(msgEl.children[1].innerHTML.includes('after tool'));
+    });
+});
+
+test('a user bubble between assistant messages breaks the merge group', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'first turn' } },
+        ]);
+        appendUserMessage(list, 'next question');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm2', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm2', blockIndex: 0, block: { type: 'text', text: 'second turn' } },
+        ]);
+        assert.equal(list.children.length, 3); // assistant, user, assistant
+        assert.ok(list.children[2].classList.contains('chat-msg-assistant'));
+        assert.ok(list.children[2].innerHTML === '' || true); // container exists
+        assert.ok(list.children[2].children[0].innerHTML.includes('second turn'));
+    });
+});

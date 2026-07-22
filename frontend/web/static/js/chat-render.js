@@ -29,6 +29,14 @@ function escapeText(str) {
 function findOrCreateMessageEl(listEl, messageId, role) {
     const cache = listEl._chatMessageEls || (listEl._chatMessageEls = {});
     if (cache[messageId]) return cache[messageId];
+    // One turn spans several engine messages (around tool calls); consecutive
+    // assistant messages share one visual box. Any other element appended
+    // between them (user bubble, system notice) breaks the group.
+    const last = listEl.children[listEl.children.length - 1];
+    if (role === 'assistant' && last && last.classList.contains('chat-msg-assistant')) {
+        cache[messageId] = last;
+        return last;
+    }
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-' + role;
     el.setAttribute('data-message-id', messageId);
@@ -37,16 +45,17 @@ function findOrCreateMessageEl(listEl, messageId, role) {
     return el;
 }
 
-// findOrCreateBlockEl returns blockIndex's element within msgEl (block indices
-// are scoped to their message, per the Anthropic content-block vocabulary).
-function findOrCreateBlockEl(msgEl, blockIndex, type) {
+// findOrCreateBlockEl returns blockKey's element within msgEl. Block indices
+// are scoped to their engine message, and merged turns put several messages
+// in one msgEl, so the key is messageId-qualified.
+function findOrCreateBlockEl(msgEl, blockKey, type) {
     const cache = msgEl._chatBlockEls || (msgEl._chatBlockEls = {});
-    if (cache[blockIndex]) return cache[blockIndex];
+    if (cache[blockKey]) return cache[blockKey];
     const el = document.createElement('div');
     el.className = 'chat-block chat-block-' + type;
-    el.setAttribute('data-block-index', String(blockIndex));
+    el.setAttribute('data-block-index', String(blockKey));
     msgEl.appendChild(el);
-    cache[blockIndex] = el;
+    cache[blockKey] = el;
     return el;
 }
 
@@ -139,8 +148,8 @@ function renderToolBlock(el, block) {
     }
 }
 
-function renderBlock(msgEl, blockIndex, block) {
-    const el = findOrCreateBlockEl(msgEl, blockIndex, block.type);
+function renderBlock(msgEl, messageId, blockIndex, block) {
+    const el = findOrCreateBlockEl(msgEl, messageId + ':' + blockIndex, block.type);
     if (block.type === 'thinking') renderThinkingBlock(el, block);
     else if (block.type === 'tool') renderToolBlock(el, block);
     else renderTextBlock(el, block);
@@ -186,7 +195,7 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'finalize-block':
             case 'tool-result': {
                 const msgEl = findOrCreateMessageEl(listEl, p.messageId, 'assistant');
-                renderBlock(msgEl, p.blockIndex, p.block);
+                renderBlock(msgEl, p.messageId, p.blockIndex, p.block);
                 break;
             }
             case 'finalize-message':
