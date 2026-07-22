@@ -309,6 +309,20 @@ func (s *chatSession) handleInput(c chatCmdInput) {
 				s.dropViewer(c.conn)
 			}
 		}
+		return
+	}
+	// Mirror the accepted input to every OTHER viewer: the engine never echoes
+	// user turns on its stream, and the sender already rendered its own
+	// message locally — without this, co-viewers never see the user side of
+	// the conversation.
+	for conn, v := range s.viewers {
+		if conn == c.conn {
+			continue
+		}
+		if !s.enqueue(v, viewerMsg{protocol.FrameData, c.data}) {
+			slog.Debug("chat viewer queue full, evicting", "session", s.name)
+			s.dropViewer(conn)
+		}
 	}
 }
 

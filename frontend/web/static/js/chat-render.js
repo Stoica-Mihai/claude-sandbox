@@ -213,6 +213,9 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'system-notice':
                 appendSystemNotice(listEl, p.text);
                 break;
+            case 'user-message':
+                appendUserMessage(listEl, p.text);
+                break;
             case 'header':
                 callbacks.onHeader?.(p.header);
                 break;

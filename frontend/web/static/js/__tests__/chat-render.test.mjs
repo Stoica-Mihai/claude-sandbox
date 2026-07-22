@@ -215,3 +215,12 @@ test('resetView clears the element caches so a rebuild renders fresh nodes', () 
         assert.ok(list.children[0].children[0].innerHTML.includes('second pass'));
     });
 });
+
+test('a user-message patch appends a user bubble', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [{ kind: 'user-message', text: 'hello from co-viewer' }]);
+        assert.ok(list.children[0].classList.contains('chat-msg-user'));
+        assert.equal(list.children[0].textContent, 'hello from co-viewer');
+    });
+});

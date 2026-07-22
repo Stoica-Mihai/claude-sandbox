@@ -250,3 +250,30 @@ func TestChatSessionConcurrentAccessRaceFree(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+// TestChatSessionInputMirroredToCoViewersOnly: the engine never echoes user
+// turns on its stream, so the actor mirrors accepted input to every viewer
+// except the sender (who rendered its own message locally). sleep as the
+// child = no stdout traffic, so the mirror is the only possible frame.
+func TestChatSessionInputMirroredToCoViewersOnly(t *testing.T) {
+	s := startTestChatSession(t, exec.Command("sleep", "30"))
+	sender := attachTestChatViewer(t, s, 0, 0)
+	watcher := attachTestChatViewer(t, s, 0, 0)
+
+	msg := []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"from phone"}]}}`)
+	if err := protocol.WriteFrame(sender, protocol.FrameData, msg); err != nil {
+		t.Fatal(err)
+	}
+
+	typ, payload, err := readOneChatFrame(t, watcher, 3*time.Second)
+	if err != nil {
+		t.Fatalf("co-viewer read: %v", err)
+	}
+	if typ != protocol.FrameData || !bytes.Equal(payload, msg) {
+		t.Fatalf("co-viewer got type 0x%02x payload %q, want the mirrored input", typ, payload)
+	}
+
+	if typ, payload, err := readOneChatFrame(t, sender, 300*time.Millisecond); err == nil {
+		t.Fatalf("sender received its own mirror: type 0x%02x payload %q", typ, payload)
+	}
+}

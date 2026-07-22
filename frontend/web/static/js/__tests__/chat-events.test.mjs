@@ -100,10 +100,10 @@ test('user event with a tool_result attaches it to the matching tool block by id
     assert.equal(patches[0].kind, 'tool-result');
 });
 
-test('user event with plain text produces no patches (optimistic local echo already shown)', () => {
+test('user event with plain text renders a bubble (sessiond mirrors co-viewer sends; the sender never receives its own)', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hello' }] } });
-    assert.deepEqual(patches, []);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'hello' }]);
 });
 
 test('user event with a tool_result for an unknown tool_use_id is ignored', () => {
@@ -228,4 +228,18 @@ test('empty thinking shells (transcript form) produce no block', () => {
     applyEvent(state, { type: 'assistant', message: { id: 'msg_C', content: [{ type: 'thinking', thinking: '' }] } }, { replay: true });
     applyEvent(state, { type: 'assistant', message: { id: 'msg_C', content: [{ type: 'text', text: 'visible' }] } }, { replay: true });
     assert.deepEqual(state.messages[0].blocks.map(b => b.type), ['text']);
+});
+
+test('a mirrored plain-text user event renders as a user bubble patch', () => {
+    const state = createChatState();
+    const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'from the phone\n\n[Attached image: /up/x.jpg]' }] } });
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'from the phone 📎' }]);
+});
+
+test('tool_result user events never produce a user bubble', () => {
+    const state = createChatState();
+    applyEvent(state, { type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
+    const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'out' }] } });
+    assert.equal(patches.length, 1);
+    assert.equal(patches[0].kind, 'tool-result');
 });

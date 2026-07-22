@@ -174,9 +174,10 @@ function applyFullMessage(state, evt, role, replay) {
 }
 
 // applyUserEvent handles the "user" top-level event: tool_result blocks are
-// matched to their tool call by tool_use_id; plain user text is NOT
-// re-rendered here — the input bar renders the user's own message optimistically
-// on send, so echoing it again would duplicate it (see chat-input.js).
+// matched to their tool call by tool_use_id. Plain user text on the live
+// stream can only be ANOTHER viewer's send — the engine never echoes user
+// turns, sessiond mirrors them to co-viewers only, and the sender renders
+// its own message locally (see chat-input.js) — so it renders as a bubble.
 function applyUserEvent(state, evt) {
     const content = evt.message?.content;
     if (!Array.isArray(content)) return [];
@@ -189,6 +190,9 @@ function applyUserEvent(state, evt) {
         found.block.resultText = toolResultText(cb.content);
         patches.push({ kind: 'tool-result', messageId: found.messageId, blockIndex: found.blockIndex, block: found.block });
     }
+    if (patches.length) return patches;
+    const text = transcriptUserText(evt);
+    if (text !== null) return [{ kind: 'user-message', text }];
     return patches;
 }
 
