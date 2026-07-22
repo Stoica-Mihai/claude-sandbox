@@ -186,3 +186,14 @@ test('a user bubble between assistant messages breaks the merge group', () => {
         assert.ok(list.children[2].children[0].innerHTML.includes('second turn'));
     });
 });
+
+test('a thinking block with no text renders no toggle at all', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'new-block', messageId: 'm1', blockIndex: 0, block: { type: 'thinking', text: '', collapsed: true } },
+        ]);
+        assert.equal(list.children[0].children[0].children.length, 0);
+    });
+});

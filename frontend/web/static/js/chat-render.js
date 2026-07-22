@@ -70,6 +70,9 @@ function renderTextBlock(el, block) {
 // expand affordance.
 function renderThinkingBlock(el, block) {
     el.innerHTML = '';
+    // No text yet (still streaming) or none ever (redacted / transcript
+    // shell): render nothing rather than a toggle over an empty body.
+    if (!block.text) return;
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'chat-thinking-toggle';
