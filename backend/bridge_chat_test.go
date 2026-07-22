@@ -232,6 +232,28 @@ func TestChatBridgeUnrelatedEventsDoNotRekey(t *testing.T) {
 	}
 }
 
+// TestChatBridgeFiltersHookNoise: system hook_* lifecycle events are
+// engine-internal and never forwarded; the event right after them still is.
+func TestChatBridgeFiltersHookNoise(t *testing.T) {
+	fake := newFakeChatSessionSocket(t)
+	s, _ := newChatBridgeServer(t, fake.dial)
+	client := dialChatBridgeWS(t, s)
+	waitAttached(t, fake.attached)
+
+	fake.out <- []byte(`{"type":"system","subtype":"hook_started","hook_name":"SessionStart"}`)
+	fake.out <- []byte(`{"type":"system","subtype":"hook_response","output":"big payload"}`)
+	fake.out <- []byte(`{"type":"system","subtype":"init","session_id":"sid"}`)
+
+	_ = client.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, msg, err := client.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(msg), `"init"`) {
+		t.Fatalf("first forwarded message = %q, want the init event (hook noise filtered)", msg)
+	}
+}
+
 // TestChatBridgeCloseMapsToNormalClosure: a CLOSE frame from sessiond closes
 // the chat WS normally, same as the terminal bridge.
 func TestChatBridgeCloseMapsToNormalClosure(t *testing.T) {

@@ -783,7 +783,9 @@ func bridgeChatFramesToWS(sess net.Conn, conn *websocket.Conn, sm *SessionManage
 		}
 		switch typ {
 		case protocol.FrameData:
-			tap.observe(sm, sessionName, payload)
+			if !tap.observe(sm, sessionName, payload) {
+				continue // engine-internal noise; viewers never need it
+			}
 			if !writeWS(websocket.TextMessage, payload) {
 				return
 			}
@@ -821,12 +823,18 @@ type chatStreamEvent struct {
 }
 
 // observe inspects one forwarded line for conversation_reset/system-init and
-// re-keys the session on completing the sequence. Never fails the bridge —
-// a malformed or unrelated line is silently ignored.
-func (t *chatResetTap) observe(sm *SessionManager, sessionName string, payload []byte) {
+// re-keys the session on completing the sequence, and decides whether the
+// line is worth forwarding at all: hook lifecycle events (system/hook_*) are
+// engine-internal noise — kilobytes per spawn that every client would just
+// drop. Never fails the bridge — a malformed line forwards untouched.
+func (t *chatResetTap) observe(sm *SessionManager, sessionName string, payload []byte) (forward bool) {
+	forward = true
 	var evt chatStreamEvent
 	if err := json.Unmarshal(payload, &evt); err != nil {
 		return
+	}
+	if evt.Type == api.ChatEventSystem && strings.HasPrefix(evt.Subtype, "hook_") {
+		return false
 	}
 	switch {
 	case evt.Type == api.ChatEventConversationReset:
@@ -844,4 +852,5 @@ func (t *chatResetTap) observe(sm *SessionManager, sessionName string, payload [
 		}
 		slog.Info("chat session re-keyed after conversation_reset", "session", sessionName, "old", t.oldUUID, "new", newUUID)
 	}
+	return
 }
