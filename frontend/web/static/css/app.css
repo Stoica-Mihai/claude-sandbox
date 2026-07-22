@@ -81,7 +81,9 @@
    'body.sharing-public' rule below. */
 
 /* ===== App shell ===== */
-html,body{height:100dvh;margin:0;overflow:hidden}
+/* overscroll-behavior: an app-like dashboard — browser pull-to-refresh from
+   scrolling a session view would tear down live terminals/chats. */
+html,body{height:100dvh;margin:0;overflow:hidden;overscroll-behavior-y:none}
 .app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 
 /* ===== Header ===== */
@@ -519,8 +521,8 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   padding:8px 0;cursor:pointer}
 .chat-load-more:hover{color:var(--ink)}
 
-.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;
-  display:flex;flex-direction:column;gap:10px}
+.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
+  padding:14px;display:flex;flex-direction:column;gap:10px}
 
 /* ===== Message rows — square, list-row language, not chat bubbles ===== */
 .chat-msg{max-width:80%;padding:10px 12px;border:2px solid var(--line);font-size:13px;line-height:1.5}
