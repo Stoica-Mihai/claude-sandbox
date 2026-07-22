@@ -79,7 +79,7 @@ export const ChatManager = {
             loadMoreBtn,
             state: createChatState(),
             transcriptLines: [],
-            transcriptRenderedFrom: 0,
+            transcriptStart: 0,
             socket: null,
         };
 
@@ -142,35 +142,40 @@ export const ChatManager = {
         socket.connect();
     },
 
-    // _loadTranscript fetches the conversation transcript and renders its tail
-    // (§7: tail-first, no chat-side snapshot machinery — history comes from
-    // the transcript, live events from the stream).
+    // _loadTranscript fetches the newest window of the conversation transcript
+    // (server-side tail — §7 tail-first; the server bounds transfer so a huge
+    // conversation never ships whole) and renders it.
     async _loadTranscript(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
-        let lines = [];
-        try {
-            const res = await fetch(sessionTranscriptPath(terminalId));
-            if (res.ok) {
-                const text = await res.text();
-                lines = text.split('\n').filter(Boolean);
-            }
-        } catch (e) { /* best-effort — a fetch failure just means no history renders */ }
-        instance.transcriptLines = lines;
-        const from = Math.max(0, lines.length - TAIL_INITIAL_LINES);
-        this._rebuildFromTranscript(terminalId, from);
+        const page = await this._fetchTranscriptPage(terminalId, '?tail=' + TAIL_INITIAL_LINES);
+        instance.transcriptLines = page.lines;
+        instance.transcriptStart = page.offset;
+        this._renderBuffer(terminalId);
     },
 
-    // _rebuildFromTranscript clears and replays the message list from a given
-    // transcript line index — a full rebuild (not an incremental insert) so
-    // "load earlier" never has to reason about DOM insertion order.
-    _rebuildFromTranscript(terminalId, from) {
+    // _fetchTranscriptPage fetches one TranscriptPage; failures degrade to an
+    // empty page (no history renders, live events still flow).
+    async _fetchTranscriptPage(terminalId, query) {
+        try {
+            const res = await fetch(sessionTranscriptPath(terminalId) + query);
+            if (res.ok) {
+                const page = await res.json();
+                if (Array.isArray(page.lines)) return { lines: page.lines, offset: page.offset || 0 };
+            }
+        } catch (e) { /* best-effort */ }
+        return { lines: [], offset: 0 };
+    },
+
+    // _renderBuffer clears and replays the whole buffered window — a full
+    // rebuild (not an incremental insert) so "load earlier" never has to
+    // reason about DOM insertion order.
+    _renderBuffer(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
         resetView(instance.flow);
         instance.state = createChatState();
-        instance.transcriptRenderedFrom = from;
-        for (let i = from; i < instance.transcriptLines.length; i++) {
+        for (let i = 0; i < instance.transcriptLines.length; i++) {
             let evt;
             try { evt = JSON.parse(instance.transcriptLines[i]); } catch (e) { continue; }
             // Init events aren't persisted, so replay recovers the model from
@@ -190,17 +195,21 @@ export const ChatManager = {
                 onUsage: (u) => { instance.headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
             });
         }
-        instance.loadMoreBtn.classList.toggle('hidden', from === 0);
+        instance.loadMoreBtn.classList.toggle('hidden', instance.transcriptStart === 0);
     },
 
-    _renderMoreHistory(terminalId) {
+    async _renderMoreHistory(terminalId) {
         const instance = this.instances[terminalId];
-        if (!instance) return;
-        const from = Math.max(0, instance.transcriptRenderedFrom - TAIL_CHUNK);
+        if (!instance || instance.transcriptStart === 0) return;
+        const page = await this._fetchTranscriptPage(
+            terminalId, '?before=' + instance.transcriptStart + '&count=' + TAIL_CHUNK);
+        if (!page.lines.length) return;
+        instance.transcriptLines = page.lines.concat(instance.transcriptLines);
+        instance.transcriptStart = page.offset;
         // Reading earlier history: don't let content-growth re-pins snap the
         // list back to the bottom.
         instance.sticky.disengage();
-        this._rebuildFromTranscript(terminalId, from);
+        this._renderBuffer(terminalId);
     },
 
     destroy(terminalId) {

@@ -79,6 +79,15 @@ type DirectoryData struct {
 	Breadcrumbs []Breadcrumb `json:"breadcrumbs"`
 }
 
+// TranscriptPage is one window of a conversation transcript, newest-last.
+// Offset is the absolute index of Lines[0] within the whole transcript, so a
+// client pages older history with before=Offset until Offset reaches 0.
+type TranscriptPage struct {
+	Total  int      `json:"total"`
+	Offset int      `json:"offset"`
+	Lines  []string `json:"lines"`
+}
+
 // SpawnRequest is the body for POST /api/sessions: a new conversation in CWD,
 // or a resumed one when Resume (a conversation uuid) is set. Kind selects the
 // engine transport (terminal PTY or chat stream-json); empty/absent means

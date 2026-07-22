@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -471,26 +472,75 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	page := api.TranscriptPage{Lines: []string{}}
 	paths := transcriptPaths(uuid)
-	if len(paths) == 0 {
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
+	if len(paths) > 0 {
+		data, err := os.ReadFile(paths[0])
+		if err != nil {
+			slog.Error("failed to read transcript", "path", paths[0], "error", err)
+			writeErr(w, http.StatusInternalServerError, "failed to read transcript")
+			return
+		}
+		lines := splitTranscriptLines(data)
+		page.Total = len(lines)
 
-	f, err := os.Open(paths[0])
-	if err != nil {
-		slog.Error("failed to open transcript", "path", paths[0], "error", err)
-		writeErr(w, http.StatusInternalServerError, "failed to read transcript")
-		return
+		// Window selection: ?tail=N (newest N, the open/reconnect case) or
+		// ?before=OFFSET&count=N (the page-older case). Bounded server-side so
+		// a monster transcript never ships whole to the browser.
+		if before, ok := queryInt(r, "before"); ok {
+			count := queryIntDefault(r, "count", transcriptPageDefault)
+			end := min(max(before, 0), len(lines))
+			start := max(0, end-count)
+			page.Offset = start
+			page.Lines = lines[start:end]
+		} else {
+			tail := queryIntDefault(r, "tail", transcriptPageDefault)
+			start := max(0, len(lines)-tail)
+			page.Offset = start
+			page.Lines = lines[start:]
+		}
 	}
-	defer f.Close()
+	writeJSON(w, http.StatusOK, page)
+}
 
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(w, f); err != nil {
-		slog.Error("failed to stream transcript", "path", paths[0], "error", err)
+// transcriptPageDefault/-Max bound one transcript page (lines per response).
+const (
+	transcriptPageDefault = 200
+	transcriptPageMax     = 1000
+)
+
+// splitTranscriptLines splits raw .jsonl bytes into non-empty lines.
+func splitTranscriptLines(data []byte) []string {
+	var lines []string
+	for _, l := range strings.Split(string(data), "\n") {
+		if l != "" {
+			lines = append(lines, l)
+		}
 	}
+	return lines
+}
+
+// queryInt reads an integer query param; ok is false when absent or invalid.
+func queryInt(r *http.Request, key string) (int, bool) {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// queryIntDefault reads a positive integer query param with a default,
+// clamped to transcriptPageMax.
+func queryIntDefault(r *http.Request, key string, def int) int {
+	n, ok := queryInt(r, key)
+	if !ok || n == 0 {
+		n = def
+	}
+	return min(n, transcriptPageMax)
 }
 
 // handleModeSwitch kills the named session and respawns its conversation as
