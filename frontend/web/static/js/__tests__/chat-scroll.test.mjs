@@ -124,7 +124,7 @@ test('works without ResizeObserver (test/jsdom-less environments)', () => {
 });
 
 test('suppressNext skips the resize pin burst, later growth pins again', async () => {
-    withRO(() => {
+    await withRO(() => {
         const el = fakeScrollEl();
         const sticky = createStickyScroll(el, {});
         el.scrollTop = 800; // at bottom, following
