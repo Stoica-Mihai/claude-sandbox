@@ -70,8 +70,12 @@ USER claude
 ENV CLAUDE_SOCK_DIR=/home/claude/.local/state/claude/sock
 RUN mkdir -p /home/claude/.local/state/claude/sock
 
-# Install Claude Code
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Claude Code, pinned: the chat-sessions stream-json event vocabulary
+# (sessiond's chat kind, the backend's conversation_reset/init re-key tap) is
+# verified against this exact version. Bumping it is a deliberate, reviewed
+# change — re-run the chat-sessions probes against the new version first.
+ARG CLAUDE_CODE_VERSION=2.1.215
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}"
 
 # Install UV
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh

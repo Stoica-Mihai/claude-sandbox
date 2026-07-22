@@ -27,6 +27,8 @@
     <script src="/static/vendor/addon-web-links.min.js"></script>
     <script src="/static/vendor/addon-webgl.min.js"></script>
     <script src="/static/vendor/qrcode-generator.js"></script>
+    <script src="/static/vendor/marked.min.js"></script>
+    <script src="/static/vendor/purify.min.js"></script>
 </head>
 <body class="grain" hx-ext="sse" sse-connect="{{routeEvents}}">
 <div class="app">
@@ -91,10 +93,14 @@
                 <button class="keycap" data-action="send-key" data-key="escape" title="Send Escape">Esc</button>
                 <button class="keycap" data-action="send-key" data-key="ctrl-c" title="Send Ctrl+C">Ctrl+C</button>
                 <button class="keycap" data-action="send-key" data-key="ctrl-d" title="Send Ctrl+D">Ctrl+D</button>
+                <button class="keycap" data-action="mode-switch" data-target-kind="chat" title="Switch this session to chat">Chat</button>
             </div>
 
             <!-- Terminal; tabs.js toggles .hidden -->
             <div id="singleTerminal" class="terminal-bg hidden"></div>
+
+            <!-- Chat surface (kind=chat sessions); chat.js renders into it, tabs.js toggles .hidden -->
+            <div id="singleChat" class="chat-bg hidden"></div>
 
             <!-- Welcome screen (shown when no terminal is open) -->
             <div id="singleWelcome" class="welcome">
@@ -139,6 +145,10 @@
             <div class="kick">New Session</div>
             <h2>NEW SESSION.</h2>
             <p>Open a folder, then start fresh or resume a past conversation.</p>
+        </div>
+        <div class="mode-choice" role="radiogroup" aria-label="Session surface">
+            <button type="button" class="mode-opt" role="radio" data-action="pick-session-kind" data-kind="terminal">Terminal</button>
+            <button type="button" class="mode-opt" role="radio" data-action="pick-session-kind" data-kind="chat">Chat</button>
         </div>
         <div id="dir-picker"></div>
         <div class="mfoot">
@@ -310,6 +320,9 @@
 // Dashboard enums injected from shared/enums.go (single source with backend validation).
 window.ACCENTS = {{accentsJSON}};
 window.NEW_PROJECT_NAME_PATTERN = "{{newProjectPattern}}";
+// Session-kind allowlist injected from shared/enums.go (single source with the
+// backend's spawn/resume kind validation).
+window.SESSION_KINDS = {{sessionKindsJSON}};
 // WS control vocabulary injected from the shared Go contract (single source with sessiond/protocol).
 window.WS_CONTROL = {{wsControlJSON}};
 // Share-tunnel state vocabulary injected from the shared Go contract (shared/types.go).

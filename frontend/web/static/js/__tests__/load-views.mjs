@@ -8,6 +8,7 @@ import { makeTimers } from './timers.mjs';
 
 import * as uiUtils from '../ui-utils.js';
 import * as terminal from '../terminal.js';
+import * as chat from '../chat.js';
 import * as actions from '../actions.js';
 import * as store from '../store.js';
 import * as sidebar from '../sidebar.js';
@@ -19,11 +20,11 @@ import * as rename from '../rename.js';
 import * as appInit from '../app-init.js';
 
 // Namespaces whose exports the tests reach for via env.sandbox.
-const NAMESPACES = [uiUtils, actions, store, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit];
+const NAMESPACES = [uiUtils, actions, store, sidebar, tabs, mobileBar, picker, historyDel, rename, appInit, chat];
 // history-del has no init; terminal.init wires browser-only listeners the view
-// tests don't exercise. TerminalManager is stubbed instead. The store inits
-// first (main.js order): the views subscribe to it in their inits.
-const INIT_ORDER = [store, sidebar, tabs, mobileBar, picker, rename, appInit];
+// tests don't exercise. TerminalManager/ChatManager are stubbed instead. The
+// store inits first (main.js order): the views subscribe to it in their inits.
+const INIT_ORDER = [store, sidebar, tabs, mobileBar, picker, rename, appInit, chat];
 
 // Load views into a fresh fake environment with controllable globals/timers.
 // Returns the live document plus a flushTimers() to fire pending setTimeout cbs.
@@ -41,6 +42,7 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
         // Mirror layout.html's injection of the shared route patterns.
         ROUTES: {
             sessions: '/api/sessions',
+            session: '/api/sessions/{terminalId}',
             settings: '/api/settings',
             uiPrefs: '/api/ui-prefs',
             directories: '/api/directories',
@@ -49,6 +51,8 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
             sessionUpload: '/api/sessions/{terminalId}/upload',
             historyItem: '/api/sessions/history/{uuid}',
             wsTerminal: '/ws/terminal/{terminalId}',
+            sessionTranscript: '/api/sessions/{terminalId}/transcript',
+            sessionMode: '/api/sessions/{terminalId}/mode',
         },
     };
 
@@ -69,10 +73,15 @@ function loadViews({ mobile = false, ids = [], localStorage = {} } = {}) {
     globalThis.location = { reload() {} };
     globalThis.fetch = () => Promise.resolve({ ok: true, status: 200, json: async () => [] });
 
-    // Stub TerminalManager so tests never hit the real xterm create path.
+    // Stub TerminalManager/ChatManager so tests never hit the real xterm
+    // create path or a real chat socket/DOM build.
     terminal.TerminalManager.instances = {};
     Object.assign(terminal.TerminalManager, {
         create() {}, destroy() {}, resize() {}, resizeAll() {}, get() { return null; },
+    });
+    chat.ChatManager.instances = {};
+    Object.assign(chat.ChatManager, {
+        create() {}, destroy() {}, get() { return null; }, focus() {},
     });
 
     // Reset module state + wire listeners onto the fresh document.

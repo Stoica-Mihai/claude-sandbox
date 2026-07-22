@@ -77,6 +77,8 @@ func NewServer(sm *SessionManager, broker *Broker, mux *http.ServeMux) *Server {
 	mux.HandleFunc("GET "+api.RouteEvents, s.handleSSE)
 	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocket)
 	mux.HandleFunc("POST "+api.RouteSessionUpload, s.handleUpload)
+	mux.HandleFunc("GET "+api.RouteSessionTranscript, s.handleTranscript)
+	mux.HandleFunc("POST "+api.RouteSessionMode, s.handleModeSwitch)
 	mux.HandleFunc("GET "+api.RouteHealthz, s.handleHealthz)
 
 	return s
@@ -160,13 +162,13 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	var sessionName string
 	var err error
 	if req.Resume != "" {
-		sessionName, err = s.sm.Resume(req.Resume)
+		sessionName, err = s.sm.Resume(req.Resume, string(req.Kind))
 	} else {
 		if req.CWD == "" {
 			writeErr(w, http.StatusBadRequest, "missing cwd parameter")
 			return
 		}
-		sessionName, err = s.sm.Spawn(req.CWD)
+		sessionName, err = s.sm.Spawn(req.CWD, string(req.Kind))
 	}
 	if err != nil {
 		slog.Error("failed to start session", "cwd", req.CWD, "resume", req.Resume, "error", err)
@@ -452,6 +454,70 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"path": filePath})
 }
 
+// handleTranscript serves a live session's conversation transcript (the
+// claude-recorded .jsonl history), for the chat UI to render history on open
+// or reconnect (see the session-api transcript-endpoint requirement). A
+// session with no transcript yet (spawned but never messaged) gets 200 with
+// an empty body, not an error.
+func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
+	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
+		return
+	}
+
+	uuid, ok := s.sm.ConversationUUID(sessionName)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	paths := transcriptPaths(uuid)
+	if len(paths) == 0 {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	f, err := os.Open(paths[0])
+	if err != nil {
+		slog.Error("failed to open transcript", "path", paths[0], "error", err)
+		writeErr(w, http.StatusInternalServerError, "failed to read transcript")
+		return
+	}
+	defer f.Close()
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.Copy(w, f); err != nil {
+		slog.Error("failed to stream transcript", "path", paths[0], "error", err)
+	}
+}
+
+// handleModeSwitch kills the named session and respawns its conversation as
+// the requested kind (mode switch — see the chat-ui capability). The
+// conversation uuid never crosses the wire for this; the backend resolves it
+// internally from the live session record.
+func (s *Server) handleModeSwitch(w http.ResponseWriter, r *http.Request) {
+	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
+	if !ok {
+		return
+	}
+	var req struct {
+		Kind string `json:"kind"`
+	}
+	if !decodeJSON(w, r, &req, "invalid JSON") {
+		return
+	}
+
+	name, err := s.sm.SwitchMode(sessionName, req.Kind)
+	if err != nil {
+		slog.Error("mode switch failed", "session", sessionName, "kind", req.Kind, "error", err)
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, api.SpawnResponse{SessionName: name})
+}
+
 // handleSSE streams Server-Sent Events to the client. It subscribes to the
 // broker and forwards update notifications as SSE events until the client
 // disconnects.
@@ -505,7 +571,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.sm.HasSession(sessionName) {
+	kind, ok := s.sm.SessionKind(sessionName)
+	if !ok {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -528,15 +595,23 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sess.Close()
 
-	slog.Info("websocket attached", "session", sessionName)
-	defer slog.Info("websocket detached", "session", sessionName)
+	slog.Info("websocket attached", "session", sessionName, "kind", kind)
+	defer slog.Info("websocket detached", "session", sessionName, "kind", kind)
 
 	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		bridgeFramesToWS(sess, conn)
-	}()
-	bridgeWSToFrames(conn, sess, sessionName)
+	if kind == api.SessionKindChat {
+		go func() {
+			defer close(done)
+			bridgeChatFramesToWS(sess, conn, s.sm, sessionName)
+		}()
+		bridgeChatWSToFrames(conn, sess, sessionName)
+	} else {
+		go func() {
+			defer close(done)
+			bridgeFramesToWS(sess, conn)
+		}()
+		bridgeWSToFrames(conn, sess, sessionName)
+	}
 	_ = sess.Close() // unblocks the frame reader
 	<-done
 }
@@ -650,5 +725,123 @@ func bridgeFramesToWS(sess net.Conn, conn *websocket.Conn) {
 			writeWS(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended"))
 			return
 		}
+	}
+}
+
+// bridgeChatWSToFrames pumps chat WS messages into protocol frames. Unlike
+// the terminal bridge, ATTACH is sent immediately on connect (chat sessions
+// carry no dimensions to wait for — see chat-session-host), and every WS
+// TextMessage is one chat input line forwarded verbatim as FrameData; there is
+// no resize/reactivate concept for chat sessions.
+func bridgeChatWSToFrames(conn *websocket.Conn, sess net.Conn, sessionName string) {
+	attachPayload, _ := json.Marshal(protocol.Attach{})
+	_ = sess.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if err := protocol.WriteFrame(sess, protocol.FrameAttach, attachPayload); err != nil {
+		slog.Debug("chat session attach failed", "session", sessionName, "error", err)
+		return
+	}
+
+	for {
+		msgType, data, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err,
+				websocket.CloseGoingAway,
+				websocket.CloseNormalClosure,
+			) {
+				slog.Debug("chat websocket read error", "session", sessionName, "error", err)
+			}
+			return
+		}
+		if msgType != websocket.TextMessage {
+			continue // chat input is always a JSON text message
+		}
+		_ = sess.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if err := protocol.WriteFrame(sess, protocol.FrameData, data); err != nil {
+			slog.Debug("chat session write failed", "session", sessionName, "error", err)
+			return
+		}
+	}
+}
+
+// bridgeChatFramesToWS pumps chat protocol frames into WS TextMessages (chat
+// event lines are complete UTF-8 JSON, unlike terminal PTY byte chunks — see
+// chat-relay). Before forwarding, it taps each line for the two-step
+// conversation_reset → system/init re-key sequence (see chatResetTap);
+// forwarding to the browser never waits on or fails because of the tap.
+func bridgeChatFramesToWS(sess net.Conn, conn *websocket.Conn, sm *SessionManager, sessionName string) {
+	writeWS := func(msgType int, data []byte) bool {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(msgType, data) == nil
+	}
+	var tap chatResetTap
+	br := bufio.NewReader(sess)
+	scratch := make([]byte, 16<<10)
+	for {
+		typ, payload, err := protocol.ReadFrameInto(br, scratch)
+		if err != nil {
+			return
+		}
+		switch typ {
+		case protocol.FrameData:
+			tap.observe(sm, sessionName, payload)
+			if !writeWS(websocket.TextMessage, payload) {
+				return
+			}
+		case protocol.FrameControl:
+			if !writeWS(websocket.TextMessage, payload) {
+				return
+			}
+		case protocol.FrameClose:
+			writeWS(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended"))
+			return
+		}
+	}
+}
+
+// chatResetTap is the stateful two-step re-key detector (see design.md
+// decision 7 and the chat-relay capability): a conversation_reset event's
+// session_id is the OLD uuid (its new_conversation_id field is NOT reliable —
+// verified against the pinned engine, it does not match the uuid the
+// conversation actually continues under); the real new uuid is the session_id
+// of the next system/init event. One tap instance lives for the life of one
+// WS connection — the sequence always happens on the same stream.
+type chatResetTap struct {
+	awaitingInit bool
+	oldUUID      string
+}
+
+// chatStreamEvent is the minimal shape the tap reads from every chat line; it
+// does not interpret any other part of the event vocabulary (that is the
+// frontend's job).
+type chatStreamEvent struct {
+	Type              string `json:"type"`
+	Subtype           string `json:"subtype"`
+	SessionID         string `json:"session_id"`
+	NewConversationID string `json:"new_conversation_id"`
+}
+
+// observe inspects one forwarded line for conversation_reset/system-init and
+// re-keys the session on completing the sequence. Never fails the bridge —
+// a malformed or unrelated line is silently ignored.
+func (t *chatResetTap) observe(sm *SessionManager, sessionName string, payload []byte) {
+	var evt chatStreamEvent
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		return
+	}
+	switch {
+	case evt.Type == api.ChatEventConversationReset:
+		t.awaitingInit = true
+		t.oldUUID = evt.SessionID
+	case t.awaitingInit && evt.Type == api.ChatEventSystem && evt.Subtype == api.ChatSystemSubtypeInit:
+		t.awaitingInit = false
+		newUUID := evt.SessionID
+		if newUUID == "" || t.oldUUID == "" || newUUID == t.oldUUID {
+			return
+		}
+		if err := sm.RekeyConversation(t.oldUUID, newUUID); err != nil {
+			slog.Warn("chat session-index rekey failed", "session", sessionName, "old", t.oldUUID, "new", newUUID, "error", err)
+			return
+		}
+		slog.Info("chat session re-keyed after conversation_reset", "session", sessionName, "old", t.oldUUID, "new", newUUID)
 	}
 }

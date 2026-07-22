@@ -197,6 +197,17 @@ func (s *session) Kill() { s.send(cmdKill{}) }
 // Exited reports actor teardown completion.
 func (s *session) Exited() <-chan struct{} { return s.exited }
 
+// info reports this session's registry-visible metadata.
+func (s *session) info() protocol.SessionInfo {
+	return protocol.SessionInfo{
+		Name:    s.name,
+		CWD:     s.cwd,
+		UUID:    s.uuid,
+		Created: s.created.Unix(),
+		Kind:    protocol.KindTerminal,
+	}
+}
+
 // send delivers a command; false if the session has exited. The exited
 // pre-check keeps the answer deterministic once Exited() is observed closed —
 // a buffered channel send and a closed-channel receive are otherwise both

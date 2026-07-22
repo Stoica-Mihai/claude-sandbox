@@ -15,7 +15,8 @@ type sessionRecord struct {
 	Name      string
 	CWD       string
 	Created   time.Time
-	SessionID string // claude conversation uuid
+	SessionID string         // claude conversation uuid
+	Kind      api.SessionKind // terminal or chat — a property of the live child, not the index
 }
 
 // display converts a record to its API view.
@@ -26,6 +27,7 @@ func (rec sessionRecord) display() api.DisplaySession {
 		DirName:   filepath.Base(rec.CWD),
 		CreatedAt: rec.Created,
 		Alive:     true,
+		Kind:      rec.Kind,
 		SessionID: rec.SessionID,
 	}
 }
@@ -73,6 +75,22 @@ func (s *sessionStore) byUUID(uuid string) (sessionRecord, bool) {
 		}
 	}
 	return sessionRecord{}, false
+}
+
+// rekeySessionID updates the live record whose conversation uuid is oldUUID to
+// newUUID in place (same map key — Name — unaffected), for the chat bridge's
+// conversation_reset re-key tap. Reports whether a matching record was found.
+func (s *sessionStore) rekeySessionID(oldUUID, newUUID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, rec := range s.m {
+		if rec.SessionID == oldUUID {
+			rec.SessionID = newUUID
+			s.m[name] = rec
+			return true
+		}
+	}
+	return false
 }
 
 // list returns all records, oldest first — matching the tab bar (new tabs

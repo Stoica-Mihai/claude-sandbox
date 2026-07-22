@@ -24,14 +24,14 @@ type fakeHost struct {
 	listFn   func() ([]protocol.SessionInfo, error) // overrides sessions when set
 }
 
-func (f *fakeHost) Spawn(cwd, uuid string, resume bool) (string, error) {
+func (f *fakeHost) Spawn(cwd, uuid string, resume bool, kind string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.spawnErr != nil {
 		return "", f.spawnErr
 	}
 	name := fmt.Sprintf("claude-fake%04d", len(f.sessions))
-	f.sessions = append(f.sessions, protocol.SessionInfo{Name: name, CWD: cwd, UUID: uuid, Created: time.Now().Unix()})
+	f.sessions = append(f.sessions, protocol.SessionInfo{Name: name, CWD: cwd, UUID: uuid, Created: time.Now().Unix(), Kind: kind})
 	return name, nil
 }
 
@@ -88,7 +88,7 @@ func TestResumeAlreadyLive(t *testing.T) {
 	sm.index.add(testUUID1, "/workspace/a", 100)
 	sm.store.add(sessionRecord{Name: "claude-live1234", CWD: "/workspace/a", SessionID: testUUID1})
 
-	name, err := sm.Resume(testUUID1)
+	name, err := sm.Resume(testUUID1, "")
 	if err != nil {
 		t.Fatalf("Resume returned error: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestResumeRejectsMalformedUUID(t *testing.T) {
 	bad := `x"; rm -rf /; echo "`
 	sm, _ := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{bad: {CWD: "/workspace/a"}}})
 
-	if _, err := sm.Resume(bad); !errors.Is(err, ErrUnknownSession) {
+	if _, err := sm.Resume(bad, ""); !errors.Is(err, ErrUnknownSession) {
 		t.Fatalf("Resume(malformed) err = %v, want ErrUnknownSession", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestSpawnDelegatesToHost(t *testing.T) {
 	sm, fh := newTestManager(t, &SessionIndex{entries: map[string]indexEntry{}})
 	_, ch := sm.broker.Subscribe()
 
-	name, err := sm.spawn("/workspace/a", testUUID1, false)
+	name, err := sm.spawn("/workspace/a", testUUID1, false, "")
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}

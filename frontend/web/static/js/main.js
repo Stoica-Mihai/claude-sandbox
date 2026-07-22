@@ -8,6 +8,7 @@ import { init as initMobileBar } from './mobile-bar.js';
 import { init as initPicker } from './picker.js';
 import { init as initRename } from './rename.js';
 import { init as initTerminal } from './terminal.js';
+import { init as initChat } from './chat.js';
 import { init as initTheme } from './theme.js';
 import { init as initSettings } from './settings.js';
 import { init as initShare } from './share.js';
@@ -23,6 +24,7 @@ function boot() {
     initPicker();
     initRename();
     initTerminal();
+    initChat();
     initTheme();
     initSettings();
     initShare();

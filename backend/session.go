@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -89,6 +90,41 @@ func (sm *SessionManager) HasSession(name string) bool {
 	return ok
 }
 
+// SessionKind reports a live session's kind (terminal or chat), so the WS
+// handler can pick the matching bridge variant.
+func (sm *SessionManager) SessionKind(name string) (api.SessionKind, bool) {
+	rec, ok := sm.store.get(name)
+	if !ok {
+		return "", false
+	}
+	return rec.Kind, true
+}
+
+// ConversationUUID resolves a live session's conversation uuid, for the
+// transcript endpoint.
+func (sm *SessionManager) ConversationUUID(name string) (string, bool) {
+	rec, ok := sm.store.get(name)
+	if !ok || rec.SessionID == "" {
+		return "", false
+	}
+	return rec.SessionID, true
+}
+
+// RekeyConversation re-keys a conversation from oldUUID to newUUID in both the
+// persisted session index and the in-memory live store, for the chat bridge's
+// conversation_reset re-key tap (see the chat-relay capability). Best-effort:
+// errors are returned for the caller to log, never to fail the bridge.
+func (sm *SessionManager) RekeyConversation(oldUUID, newUUID string) error {
+	if err := sm.index.rekey(oldUUID, newUUID); err != nil {
+		return fmt.Errorf("rekey session index: %w", err)
+	}
+	if !sm.store.rekeySessionID(oldUUID, newUUID) {
+		return fmt.Errorf("no live session record matched uuid %s", oldUUID)
+	}
+	sm.broker.Publish()
+	return nil
+}
+
 // DialSession opens an attach stream to a session via sessiond.
 func (sm *SessionManager) DialSession(name string) (net.Conn, error) {
 	return sm.sd.DialSession(name)
@@ -162,6 +198,7 @@ func (sm *SessionManager) refreshFromList() bool {
 			CWD:       info.CWD,
 			Created:   time.Unix(info.Created, 0),
 			SessionID: info.UUID,
+			Kind:      api.SessionKind(info.Kind),
 		})
 		changed = true
 	}

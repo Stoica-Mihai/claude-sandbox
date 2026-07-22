@@ -21,7 +21,10 @@ export function directoriesPath() { return routes().directories; }
 export function sessionsHistoryPath(cwd) {
     return routes().sessionsHistory + '?cwd=' + encodeURIComponent(cwd);
 }
+export function sessionPath(terminalId) { return fill(routes().session, 'terminalId', terminalId); }
 export function sessionNamePath(terminalId) { return fill(routes().sessionName, 'terminalId', terminalId); }
 export function sessionUploadPath(terminalId) { return fill(routes().sessionUpload, 'terminalId', terminalId); }
 export function historyItemPath(uuid) { return fill(routes().historyItem, 'uuid', encodeURIComponent(uuid)); }
 export function wsTerminalPath(terminalId) { return fill(routes().wsTerminal, 'terminalId', terminalId); }
+export function sessionTranscriptPath(terminalId) { return fill(routes().sessionTranscript, 'terminalId', terminalId); }
+export function sessionModePath(terminalId) { return fill(routes().sessionMode, 'terminalId', terminalId); }

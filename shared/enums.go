@@ -62,6 +62,20 @@ var Accents = []Accent{
 // Themes is the binary light/dark toggle allowlist.
 var Themes = []string{"light", "dark"}
 
+// SessionKinds is the spawn/resume `kind` allowlist: a PTY-backed terminal or a
+// stream-json pipe-backed chat (see SessionKind in types.go).
+var SessionKinds = []SessionKind{SessionKindTerminal, SessionKindChat}
+
+// SessionKindValues returns the session-kind allowlist as plain strings for
+// validation.
+func SessionKindValues() []string {
+	out := make([]string, len(SessionKinds))
+	for i, k := range SessionKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
 // NewProjectNamePattern restricts a new project folder name to one safe path
 // segment. Shared by the backend validator and the client-side pre-check.
 const NewProjectNamePattern = `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`

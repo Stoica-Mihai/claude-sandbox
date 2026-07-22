@@ -14,18 +14,20 @@ import "strings"
 const HeaderTerminalID = "X-Terminal-Id"
 
 const (
-	RouteSessions        = "/api/sessions"
-	RouteSessionsHistory = "/api/sessions/history"
-	RouteSession         = "/api/sessions/{terminalId}"
-	RouteSessionName     = "/api/sessions/{terminalId}/name"
-	RouteSessionUpload   = "/api/sessions/{terminalId}/upload"
-	RouteHistoryItem     = "/api/sessions/history/{uuid}"
-	RouteDirectories     = "/api/directories"
-	RouteSettings        = "/api/settings"
-	RouteUIPrefs         = "/api/ui-prefs"
-	RouteEvents          = "/events"
-	RouteWSTerminal      = "/ws/terminal/{terminalId}"
-	RouteHealthz         = "/healthz"
+	RouteSessions          = "/api/sessions"
+	RouteSessionsHistory   = "/api/sessions/history"
+	RouteSession           = "/api/sessions/{terminalId}"
+	RouteSessionName       = "/api/sessions/{terminalId}/name"
+	RouteSessionUpload     = "/api/sessions/{terminalId}/upload"
+	RouteSessionTranscript = "/api/sessions/{terminalId}/transcript"
+	RouteSessionMode       = "/api/sessions/{terminalId}/mode"
+	RouteHistoryItem       = "/api/sessions/history/{uuid}"
+	RouteDirectories       = "/api/directories"
+	RouteSettings          = "/api/settings"
+	RouteUIPrefs           = "/api/ui-prefs"
+	RouteEvents            = "/events"
+	RouteWSTerminal        = "/ws/terminal/{terminalId}"
+	RouteHealthz           = "/healthz"
 )
 
 // SSEEventUpdate is the Server-Sent-Event name the backend emits on a session
@@ -42,6 +44,14 @@ func SessionPath(terminalID string) string {
 
 func SessionNamePath(terminalID string) string {
 	return strings.Replace(RouteSessionName, "{terminalId}", terminalID, 1)
+}
+
+func SessionTranscriptPath(terminalID string) string {
+	return strings.Replace(RouteSessionTranscript, "{terminalId}", terminalID, 1)
+}
+
+func SessionModePath(terminalID string) string {
+	return strings.Replace(RouteSessionMode, "{terminalId}", terminalID, 1)
 }
 
 func HistoryItemPath(uuid string) string {

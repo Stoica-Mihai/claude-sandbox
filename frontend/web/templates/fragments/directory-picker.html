@@ -9,9 +9,11 @@
         {{end}}
     </nav>
 
-    <!-- cwd = selected folder; resume = uuid when a previous session is selected -->
+    <!-- cwd = selected folder; resume = uuid when a previous session is selected;
+         kind = terminal|chat, kept in sync with the mode-choice toggle by picker.js -->
     <input type="hidden" name="cwd" id="dir-picker-cwd" value="" />
     <input type="hidden" name="resume" id="dir-picker-resume" value="" />
+    <input type="hidden" name="kind" id="dir-picker-kind" value="terminal" />
 
     <!-- Folder list: row click selects the folder; the › drill button opens its subfolders -->
     <div id="dp-folders" class="folders">

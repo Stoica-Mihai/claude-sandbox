@@ -15,6 +15,35 @@ let dpDirSkelTimer = null;
 // wrong folder's rows into the shared #session-actions.
 let historyRenderSeq = 0;
 
+// sessionKindPref is the spawn/resume surface choice (terminal|chat) — a
+// per-browser preference (localStorage), not a server default (design doc
+// open decision #1: "remember last used, no global default"). It applies to
+// both "start new" and "resume" alike: the same modal-wide toggle, rather than
+// a separate control per history row.
+const SESSION_KIND_STORAGE_KEY = 'spawnSessionKind';
+let sessionKindPref = 'terminal';
+
+// dpApplySessionKind syncs the hidden form field and the toggle buttons'
+// active state from sessionKindPref. Called on init and after every directory
+// fragment swap (the hidden input is recreated each time).
+function dpApplySessionKind() {
+    const hidden = document.getElementById('dir-picker-kind');
+    if (hidden) hidden.value = sessionKindPref;
+    document.querySelectorAll('.mode-opt').forEach(btn => {
+        const active = btn.dataset.kind === sessionKindPref;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-checked', String(active));
+    });
+}
+
+// dpSetSessionKind changes the preference, persists it, and re-syncs the form.
+function dpSetSessionKind(kind) {
+    if (kind !== 'terminal' && kind !== 'chat') return;
+    sessionKindPref = kind;
+    try { localStorage.setItem(SESSION_KIND_STORAGE_KEY, kind); } catch (e) { /* storage blocked */ }
+    dpApplySessionKind();
+}
+
 // Open the New Session modal, resetting the picker to a fresh browse state
 // (re-fetch the root folder list) so it never reopens in a stale/selected state.
 export function openNewSessionModal(event) {
@@ -46,6 +75,7 @@ export function dpResetBrowse() {
     if (cwd) cwd.value = '';
     const resume = document.getElementById('dir-picker-resume');
     if (resume) resume.value = '';
+    dpApplySessionKind();
     dpFooter('Launch', false);
 }
 
@@ -290,8 +320,14 @@ export function init() {
     dirPickerSel = { kind: null, uuid: null };
     dpDirSkelTimer = null;
     historyRenderSeq = 0;
+    try {
+        const stored = localStorage.getItem(SESSION_KIND_STORAGE_KEY);
+        sessionKindPref = stored === 'chat' ? 'chat' : 'terminal';
+    } catch (e) { sessionKindPref = 'terminal'; }
+    dpApplySessionKind();
 
     register('new-session', () => openNewSessionModal({}));
+    register('pick-session-kind', (el) => dpSetSessionKind(el.dataset.kind));
     register('dp-select-folder', (el) => dpSelectFolder(el.dataset.path, el.dataset.name));
     register('dp-open-editor', () => openEditor());
     register('dp-close-editor', () => closeEditor());

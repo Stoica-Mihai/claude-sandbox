@@ -11,7 +11,7 @@ import (
 // sessionHost is the backend's view of sessiond: spawn/list/kill on the
 // control socket plus per-session attach dials. Faked in tests.
 type sessionHost interface {
-	Spawn(cwd, uuid string, resume bool) (string, error)
+	Spawn(cwd, uuid string, resume bool, kind string) (string, error)
 	List() ([]protocol.SessionInfo, error)
 	Kill(name string) error
 	DialSession(name string) (net.Conn, error)
@@ -39,8 +39,8 @@ func (h *protocolHost) do(req protocol.Request) (protocol.Response, error) {
 	return resp, nil
 }
 
-func (h *protocolHost) Spawn(cwd, uuid string, resume bool) (string, error) {
-	resp, err := h.do(protocol.Request{Op: protocol.OpSpawn, CWD: cwd, UUID: uuid, Resume: resume})
+func (h *protocolHost) Spawn(cwd, uuid string, resume bool, kind string) (string, error) {
+	resp, err := h.do(protocol.Request{Op: protocol.OpSpawn, CWD: cwd, UUID: uuid, Resume: resume, Kind: kind})
 	if err != nil {
 		return "", err
 	}

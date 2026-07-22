@@ -480,3 +480,95 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   .settings-nav{flex-direction:row;width:auto;border-right:0;border-bottom:3px solid var(--line);overflow-x:auto}
   .share-actions{flex-wrap:wrap}
 }
+
+/* D18: chat surface (chat.js/chat-render.js) — a second session-view kind
+   alongside the terminal. It reuses the app's list-row language (2px ink
+   borders, --surf/--field backgrounds, --accent for the user's own turns)
+   rather than a chat-bubble aesthetic (rounded corners, tails) — bubbles would
+   break Law #1 (square corners everywhere). Tool-step rows reuse the
+   .newrow/.frow toggle-disclosure idiom already established by the directory
+   picker instead of inventing a new expand/collapse pattern. */
+
+/* ===== NEW SESSION modal: Terminal/Chat mode-choice toggle ===== */
+.mode-choice{display:flex;border:2px solid var(--line);margin:14px 0}
+.mode-opt{flex:1;background:var(--surf);color:var(--muted);border:none;font-family:var(--font);
+  font-weight:800;font-style:italic;font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+  padding:9px 0;cursor:pointer}
+.mode-opt+.mode-opt{border-left:2px solid var(--line)}
+.mode-opt:hover{color:var(--ink)}
+.mode-opt.active{background:var(--accent);color:var(--on-accent)}
+
+/* ===== Chat surface shell ===== */
+.chat-bg{background:var(--bg)}
+#singleChat{flex:1;overflow:hidden;position:relative}
+.chat-surface{position:absolute;inset:0;display:flex;flex-direction:column}
+
+.chat-header{display:flex;align-items:center;gap:10px;flex:none;padding:0 14px;height:48px;
+  border-bottom:3px solid var(--line);background:var(--surf);font-family:var(--mono);font-size:11px}
+.chat-header-cwd{color:var(--ink);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chat-header-model{color:var(--muted)}
+.chat-header-cost{color:var(--muted);margin-left:auto}
+.chat-header-mode,.chat-header-kill{border:2px solid var(--line);background:var(--field);color:var(--ink);
+  font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 10px;cursor:pointer;flex:none}
+.chat-header-mode:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.chat-header-kill:hover{background:var(--ink);color:var(--bg)}
+
+.chat-load-more{flex:none;width:100%;border:none;border-bottom:2px solid var(--line);background:var(--surf);
+  color:var(--muted);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  padding:8px 0;cursor:pointer}
+.chat-load-more:hover{color:var(--ink)}
+
+.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;
+  display:flex;flex-direction:column;gap:10px}
+
+/* ===== Message rows — square, list-row language, not chat bubbles ===== */
+.chat-msg{max-width:80%;padding:10px 12px;border:2px solid var(--line);font-size:13px;line-height:1.5}
+.chat-msg-user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.chat-msg-assistant{align-self:flex-start;background:var(--field)}
+.chat-msg-system{align-self:center;max-width:100%;border-style:dashed;background:transparent;color:var(--muted);
+  font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:center}
+.chat-msg-assistant p:first-child{margin-top:0}
+.chat-msg-assistant p:last-child{margin-bottom:0}
+.chat-msg-assistant pre{background:var(--surf);border:2px solid var(--line);padding:8px;overflow-x:auto;font-family:var(--mono);font-size:12px}
+.chat-msg-assistant code{font-family:var(--mono);font-size:12px}
+
+/* ===== Blocks within an assistant message ===== */
+.chat-block+.chat-block{margin-top:8px}
+
+.chat-thinking-toggle,.chat-tool-toggle{width:100%;text-align:left;border:2px solid var(--line);background:var(--surf);
+  color:var(--muted);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  padding:6px 10px;cursor:pointer}
+.chat-thinking-toggle:hover,.chat-tool-toggle:hover{color:var(--ink)}
+.chat-thinking-body{border:2px solid var(--line);border-top:none;background:var(--surf);color:var(--muted);
+  padding:8px 10px;font-size:12px;white-space:pre-wrap}
+.chat-tool-body{border:2px solid var(--line);border-top:none;background:var(--field);padding:8px}
+.chat-tool-body.hidden{display:none}
+.chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word}
+.chat-tool-cmd{color:var(--ink)}
+.chat-tool-output{margin-top:8px;padding-top:8px;border-top:2px solid var(--line);color:var(--muted)}
+
+/* Edit/Write diff: deletion/addition panes, distinguished by tint only (no
+   red/green pair — the app's single-accent law rules out a second hue). */
+.chat-diff-del,.chat-diff-add{margin:0;padding:6px 8px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word}
+.chat-diff-del{background:var(--surf);color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent)}
+.chat-diff-add{margin-top:4px;background:var(--field);color:var(--ink);border-left:3px solid var(--accent)}
+
+/* ===== Input bar ===== */
+.chat-input-bar{flex:none;display:flex;align-items:flex-end;gap:8px;padding:10px 14px;
+  border-top:3px solid var(--line);background:var(--surf)}
+.chat-input-text{flex:1;min-width:0;resize:none;border:2px solid var(--line);background:var(--field);color:var(--ink);
+  font-family:var(--font);font-size:13px;padding:9px 10px;max-height:140px}
+.chat-input-text:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chat-input-file{display:none}
+.chat-input-attach,.chat-input-send{flex:none;border:2px solid var(--line);background:var(--field);color:var(--ink);
+  font-family:var(--font);font-weight:800;font-style:italic;font-size:13px;padding:9px 14px;cursor:pointer}
+.chat-input-attach{padding:9px 12px}
+.chat-input-attach.chat-input-attach-pending{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.chat-input-send:hover,.chat-input-attach:hover{background:var(--ink);color:var(--bg)}
+
+@media (max-width:640px){
+  .chat-msg{max-width:92%}
+  .chat-header{font-size:10px;gap:6px}
+  .chat-header-mode,.chat-header-kill{padding:5px 8px}
+}

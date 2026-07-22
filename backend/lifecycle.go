@@ -4,20 +4,41 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
+	api "claude-sandbox-api"
 	"claude-sandbox-sessiond/protocol"
 )
 
-// Spawn creates a new Claude Code conversation in cwd. It generates a uuid and
-// passes it to sessiond so the dashboard owns the conversation id.
-func (sm *SessionManager) Spawn(cwd string) (string, error) {
+// resolveKind validates a requested session kind, defaulting an empty value to
+// terminal (so callers/wire payloads from before this field existed keep their
+// behavior unchanged).
+func resolveKind(kind string) (string, error) {
+	if kind == "" {
+		return protocol.KindTerminal, nil
+	}
+	if !slices.Contains(api.SessionKindValues(), kind) {
+		return "", fmt.Errorf("invalid kind: %s", kind)
+	}
+	return kind, nil
+}
+
+// Spawn creates a new Claude Code conversation in cwd, as the requested kind
+// (terminal PTY or chat stream-json pipe; empty defaults to terminal). It
+// generates a uuid and passes it to sessiond so the dashboard owns the
+// conversation id.
+func (sm *SessionManager) Spawn(cwd, kind string) (string, error) {
+	resolvedKind, err := resolveKind(kind)
+	if err != nil {
+		return "", err
+	}
 	absPath, err := validWorkspaceDir(cwd)
 	if err != nil {
 		return "", err
 	}
 	uuid := newUUID()
-	name, err := sm.spawn(absPath, uuid, false)
+	name, err := sm.spawn(absPath, uuid, false, resolvedKind)
 	if err != nil {
 		return "", err
 	}
@@ -29,12 +50,18 @@ func (sm *SessionManager) Spawn(cwd string) (string, error) {
 	return name, nil
 }
 
-// Resume reopens a previously recorded conversation by uuid. If the
-// conversation is already running, its live session is returned instead of
-// spawning a second `claude --resume` onto the same transcript.
-func (sm *SessionManager) Resume(uuid string) (string, error) {
+// Resume reopens a previously recorded conversation by uuid, as the requested
+// kind — which MAY differ from the kind the conversation last ran as (a mode
+// switch). If the conversation is already running, its live session is
+// returned instead of spawning a second child onto the same transcript,
+// regardless of the requested kind (one live child per uuid).
+func (sm *SessionManager) Resume(uuid, kind string) (string, error) {
 	if rec, ok := sm.store.byUUID(uuid); ok {
 		return rec.Name, nil
+	}
+	resolvedKind, err := resolveKind(kind)
+	if err != nil {
+		return "", err
 	}
 	// Index membership gates the uuid; the format check keeps malformed values
 	// out of the claude command line outright (defense in depth).
@@ -49,12 +76,12 @@ func (sm *SessionManager) Resume(uuid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return sm.spawn(absPath, uuid, true)
+	return sm.spawn(absPath, uuid, true, resolvedKind)
 }
 
 // spawn delegates to sessiond and records the new session in the store.
-func (sm *SessionManager) spawn(absPath, uuid string, resume bool) (string, error) {
-	name, err := sm.sd.Spawn(absPath, uuid, resume)
+func (sm *SessionManager) spawn(absPath, uuid string, resume bool, kind string) (string, error) {
+	name, err := sm.sd.Spawn(absPath, uuid, resume, kind)
 	if err != nil {
 		return "", err
 	}
@@ -63,10 +90,36 @@ func (sm *SessionManager) spawn(absPath, uuid string, resume bool) (string, erro
 		CWD:       absPath,
 		Created:   time.Now(),
 		SessionID: uuid,
+		Kind:      api.SessionKind(kind),
 	})
 	sm.broker.Publish()
-	slog.Info("spawned session", "session", name, "cwd", absPath, "uuid", uuid, "resume", resume)
+	slog.Info("spawned session", "session", name, "cwd", absPath, "uuid", uuid, "resume", resume, "kind", kind)
 	return name, nil
+}
+
+// SwitchMode kills the named live session and respawns its conversation as
+// the requested kind (a mode switch — see design.md decision 1: kind is a
+// property of the live child, not the persisted conversation, so the session
+// index is untouched). It waits (bounded) for the old child to actually leave
+// sessiond's list before respawning, so the two processes never race on the
+// same transcript — the same ordering concern DeleteHistory already handles.
+func (sm *SessionManager) SwitchMode(sessionName, kind string) (string, error) {
+	resolvedKind, err := resolveKind(kind)
+	if err != nil {
+		return "", err
+	}
+	rec, ok := sm.store.get(sessionName)
+	if !ok {
+		return "", fmt.Errorf("session not found: %s", sessionName)
+	}
+	if rec.Kind == api.SessionKind(resolvedKind) {
+		return "", fmt.Errorf("session is already running as %s", resolvedKind)
+	}
+	if err := sm.Kill(sessionName); err != nil {
+		return "", err
+	}
+	sm.waitForSessionGone(sessionName)
+	return sm.Resume(rec.SessionID, resolvedKind)
 }
 
 // DeleteHistory removes a conversation from history: it verifies the uuid is in

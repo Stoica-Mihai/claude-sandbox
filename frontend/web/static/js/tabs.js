@@ -6,51 +6,72 @@
 import { isMobile, fmtDuration } from './ui-utils.js';
 import { collapseSidebar } from './sidebar.js';
 import { TerminalManager } from './terminal.js';
+import { ChatManager, requestModeSwitch } from './chat.js';
 import { register } from './actions.js';
-import { subscribe } from './store.js';
+import { subscribe, getSession } from './store.js';
 
-// The session currently shown in the terminal view, or null (welcome screen).
+// The session currently shown in the single view (either surface), or null
+// (welcome screen).
 export let singleTerminalId = null;
 
-// Show a session in the terminal view, or focus it if it is already shown.
-export function openSession(terminalId) {
+// sessionKind resolves a session's kind from the client store, defaulting to
+// terminal for a session the store doesn't (yet) know about.
+function sessionKind(terminalId) {
+    return getSession(terminalId)?.kind || 'terminal';
+}
+
+// kindOverride bypasses the store lookup when the caller already knows the
+// kind — a mode switch opens the respawned session before the sidebar
+// fragment (and thus the store) has caught up.
+// Show a session in the single view (terminal or chat surface, by kind), or
+// focus it if it is already shown.
+export function openSession(terminalId, kindOverride) {
     if (!terminalId) return;
     if (isMobile()) collapseSidebar();
 
-    if (terminalId === singleTerminalId && TerminalManager.get(terminalId)) {
+    if (terminalId === singleTerminalId && (TerminalManager.get(terminalId) || ChatManager.get(terminalId))) {
         focusActive();
         return;
     }
 
     // Stop showing the previous session. It keeps running on the server; a later
-    // switch back re-attaches and repaints from sessiond's snapshot.
+    // switch back re-attaches (terminal: repaints from sessiond's snapshot; chat:
+    // re-fetches the transcript and resubscribes to the live tail).
     teardownCurrent();
 
-    const wrapper = document.getElementById('singleTerminal');
-    if (!wrapper) return;
-
-    const container = document.createElement('div');
-    container.id = 'singleTerm-' + terminalId;
-    container.className = 'term-tab terminal-bg';
-    container.setAttribute('role', 'tabpanel');
-    wrapper.appendChild(container);
-
+    const kind = kindOverride || sessionKind(terminalId);
     singleTerminalId = terminalId;
-    TerminalManager.create(terminalId, container);
-    updateSingleWelcome(true);
+
+    if (kind === 'chat') {
+        const wrapper = document.getElementById('singleChat');
+        if (!wrapper) return;
+        ChatManager.create(terminalId, wrapper);
+    } else {
+        const wrapper = document.getElementById('singleTerminal');
+        if (!wrapper) return;
+        const container = document.createElement('div');
+        container.id = 'singleTerm-' + terminalId;
+        container.className = 'term-tab terminal-bg';
+        container.setAttribute('role', 'tabpanel');
+        wrapper.appendChild(container);
+        TerminalManager.create(terminalId, container);
+    }
+
+    updateSingleWelcome(true, kind);
     updateSessionCardStates();
     focusActive();
 }
 
-// teardownCurrent disposes the shown terminal and removes its container.
+// teardownCurrent disposes whichever surface is shown and removes its container.
 function teardownCurrent() {
     if (!singleTerminalId) return;
     TerminalManager.destroy(singleTerminalId);
+    ChatManager.destroy(singleTerminalId);
     document.getElementById('singleTerm-' + singleTerminalId)?.remove();
     singleTerminalId = null;
 }
 
-// focusActive focuses + resizes the shown terminal after the next frame (needs
+// focusActive focuses + resizes the shown surface after the next frame (needs
 // a frame for the container to have dimensions).
 function focusActive() {
     const id = singleTerminalId;
@@ -59,23 +80,31 @@ function focusActive() {
         if (instance) {
             instance.term.focus();
             TerminalManager.resize(id);
+            return;
         }
+        if (ChatManager.get(id)) ChatManager.focus(id);
     });
 }
 
-// updateSingleWelcome toggles the welcome screen vs the terminal + its controls.
-export function updateSingleWelcome(hasTerminal) {
+// updateSingleWelcome toggles the welcome screen vs the shown surface + its
+// controls. Chat sessions get their own header/input bar, so the terminal-only
+// desktop keycap bar and mobile input bar stay hidden for them.
+export function updateSingleWelcome(hasSession, kind = 'terminal') {
     const welcome = document.getElementById('singleWelcome');
     const terminal = document.getElementById('singleTerminal');
+    const chat = document.getElementById('singleChat');
     const controls = document.getElementById('singleControls');
     const mobileInput = document.getElementById('mobileInputBar');
-    if (welcome) welcome.classList.toggle('hidden', hasTerminal);
-    if (terminal) terminal.classList.toggle('hidden', !hasTerminal);
+    const isChat = hasSession && kind === 'chat';
+    if (welcome) welcome.classList.toggle('hidden', hasSession);
+    if (terminal) terminal.classList.toggle('hidden', !hasSession || isChat);
+    if (chat) chat.classList.toggle('hidden', !isChat);
     if (controls) {
-        // Desktop controls only; mobile has its own input bar.
-        controls.classList.toggle('hidden', isMobile() || !hasTerminal);
+        // Desktop controls only; mobile has its own input bar. Neither applies
+        // to the chat surface, which carries its own header and input bar.
+        controls.classList.toggle('hidden', isMobile() || !hasSession || isChat);
     }
-    if (mobileInput) mobileInput.classList.toggle('hidden', !hasTerminal);
+    if (mobileInput) mobileInput.classList.toggle('hidden', !hasSession || isChat);
 }
 
 // updateSessionCardStates highlights the sidebar card of the shown session.
@@ -110,6 +139,17 @@ export function init() {
     singleTerminalId = null;
 
     register('kill-cleanup', (el) => cleanupKilledSession(el.dataset.terminalId));
+
+    // Mode switch (both directions): kill the session named on the control
+    // (or the currently shown one, for the static terminal-controls button)
+    // and open whatever gets respawned in its place.
+    register('mode-switch', async (el) => {
+        const terminalId = el.dataset.terminalId || singleTerminalId;
+        const targetKind = el.dataset.targetKind;
+        if (!terminalId || !targetKind) return;
+        const newName = await requestModeSwitch(terminalId, targetKind);
+        if (newName) openSession(newName, targetKind);
+    });
 
     // Session card click → show that session (ignore clicks on the card's buttons).
     document.addEventListener('click', (e) => {

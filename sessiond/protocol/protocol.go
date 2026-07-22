@@ -83,14 +83,25 @@ const (
 	OpPing  = "ping"
 )
 
-// Request is a control-socket request.
+// Request is a control-socket request. Kind selects the session kind for
+// OpSpawn ("terminal" or "chat"); empty means terminal, so a client from
+// before this field existed keeps spawning terminal sessions.
 type Request struct {
 	Op     string `json:"op"`
 	CWD    string `json:"cwd,omitempty"`
 	UUID   string `json:"uuid,omitempty"`
 	Resume bool   `json:"resume,omitempty"`
 	Name   string `json:"name,omitempty"`
+	Kind   string `json:"kind,omitempty"`
 }
+
+// Session kind values for Request.Kind and SessionInfo.Kind. Aliases the
+// shared api.SessionKind vocabulary as plain strings so protocol stays a thin
+// wire package (its Go consumers reference protocol.Kind* unchanged).
+const (
+	KindTerminal = string(api.SessionKindTerminal)
+	KindChat     = string(api.SessionKindChat)
+)
 
 // SessionInfo is one live session in a list response.
 type SessionInfo struct {
@@ -98,6 +109,7 @@ type SessionInfo struct {
 	CWD     string `json:"cwd"`
 	UUID    string `json:"uuid"`
 	Created int64  `json:"created"`
+	Kind    string `json:"kind"`
 }
 
 // Response is a control-socket response. NotFound distinguishes "sessiond

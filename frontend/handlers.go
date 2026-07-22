@@ -161,7 +161,14 @@ func templateFuncs() template.FuncMap {
 			return template.JS(b), err
 		},
 		"newProjectPattern": func() string { return api.NewProjectNamePattern },
-		"sseEvent":          func() string { return api.SSEEventUpdate },
+		// sessionKindsJSON injects the spawn/resume kind allowlist
+		// (window.SESSION_KINDS) so the NEW SESSION modal's mode choice and the
+		// resume list render from the shared Go contract, not re-typed literals.
+		"sessionKindsJSON": func() (template.JS, error) {
+			b, err := json.Marshal(api.SessionKindValues())
+			return template.JS(b), err
+		},
+		"sseEvent": func() string { return api.SSEEventUpdate },
 		// Route helpers so template hx-*/sse-connect attributes render from
 		// shared/routes.go instead of re-typed literals.
 		"routeEvents":      func() string { return api.RouteEvents },
@@ -172,15 +179,18 @@ func templateFuncs() template.FuncMap {
 		// (window.ROUTES), so a route rename in shared/routes.go flows to the JS.
 		"routesJSON": func() (template.JS, error) {
 			b, err := json.Marshal(map[string]string{
-				"sessions":        api.RouteSessions,
-				"settings":        api.RouteSettings,
-				"uiPrefs":         api.RouteUIPrefs,
-				"directories":     api.RouteDirectories,
-				"sessionsHistory": api.RouteSessionsHistory,
-				"sessionName":     api.RouteSessionName,
-				"sessionUpload":   api.RouteSessionUpload,
-				"historyItem":     api.RouteHistoryItem,
-				"wsTerminal":      api.RouteWSTerminal,
+				"sessions":          api.RouteSessions,
+				"session":           api.RouteSession,
+				"settings":          api.RouteSettings,
+				"uiPrefs":           api.RouteUIPrefs,
+				"directories":       api.RouteDirectories,
+				"sessionsHistory":   api.RouteSessionsHistory,
+				"sessionName":       api.RouteSessionName,
+				"sessionUpload":     api.RouteSessionUpload,
+				"historyItem":       api.RouteHistoryItem,
+				"wsTerminal":        api.RouteWSTerminal,
+				"sessionTranscript": api.RouteSessionTranscript,
+				"sessionMode":       api.RouteSessionMode,
 			})
 			return template.JS(b), err
 		},
@@ -366,17 +376,19 @@ func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) 
 // fetches the updated session list and renders the sessions fragment.
 // The form sends cwd as a form field; we convert it to JSON for the backend.
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
-	// The HTMX form sends application/x-www-form-urlencoded with "cwd" and an
-	// optional "resume" (conversation uuid) field.
+	// The HTMX form sends application/x-www-form-urlencoded with "cwd", an
+	// optional "resume" (conversation uuid), and a "kind" (terminal|chat;
+	// empty defaults to terminal on the backend) field.
 	cwd := r.FormValue("cwd")
 	resume := r.FormValue("resume")
+	kind := r.FormValue("kind")
 	if cwd == "" && resume == "" {
 		http.Error(w, "missing cwd parameter", http.StatusBadRequest)
 		return
 	}
 
 	// Forward as JSON to backend.
-	payload, _ := json.Marshal(api.SpawnRequest{CWD: cwd, Resume: resume})
+	payload, _ := json.Marshal(api.SpawnRequest{CWD: cwd, Resume: resume, Kind: api.SessionKind(kind)})
 	resp, err := s.backendRequest(r.Context(), "POST", api.RouteSessions, bytes.NewReader(payload))
 	if err != nil {
 		badGateway(w, "failed to spawn session via backend", err)

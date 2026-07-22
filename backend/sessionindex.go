@@ -92,6 +92,28 @@ func (s *SessionIndex) remove(uuid string) error {
 	})
 }
 
+// rekey moves an entry from oldUUID to newUUID in place, preserving its cwd,
+// created timestamp, and custom name — for the chat bridge's conversation_reset
+// re-key tap (see the chat-relay capability). No-op if oldUUID is absent or
+// newUUID already exists (never overwrite an unrelated entry).
+func (s *SessionIndex) rekey(oldUUID, newUUID string) error {
+	return s.mutateAndSave(func() func() {
+		e, ok := s.entries[oldUUID]
+		if !ok {
+			return nil
+		}
+		if _, taken := s.entries[newUUID]; taken {
+			return nil
+		}
+		delete(s.entries, oldUUID)
+		s.entries[newUUID] = e
+		return func() {
+			delete(s.entries, newUUID)
+			s.entries[oldUUID] = e
+		}
+	})
+}
+
 // setName sets or clears a conversation's custom name (no-op if unknown).
 func (s *SessionIndex) setName(uuid, name string) error {
 	return s.mutateAndSave(func() func() {
