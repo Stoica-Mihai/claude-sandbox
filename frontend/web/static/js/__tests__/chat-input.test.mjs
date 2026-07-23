@@ -5,14 +5,16 @@ import assert from 'node:assert/strict';
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
 import { createInputBar, uploadFile } from '../chat-input.js';
 
-function withEnv(fn) {
+// async so the environment stays installed across awaits in fn (the upload
+// promise renders the chip on a later microtask); all call sites await it.
+async function withEnv(fn) {
     const prevDoc = globalThis.document;
     const prevWin = globalThis.window;
     const prevFetch = globalThis.fetch;
     globalThis.document = new FakeDocument();
     globalThis.window = { ROUTES: { sessionUpload: '/api/sessions/{terminalId}/upload' } };
     try {
-        return fn();
+        return await fn();
     } finally {
         globalThis.document = prevDoc;
         globalThis.window = prevWin;
@@ -20,8 +22,8 @@ function withEnv(fn) {
     }
 }
 
-test('sending text calls onSend with the trimmed text and clears the input', () => {
-    withEnv(() => {
+test('sending text calls onSend with the trimmed text and clears the input', async () => {
+    await withEnv(() => {
         const sent = [];
         const bar = createInputBar({ terminalId: 'claude-1', onSend: (text, path) => sent.push([text, path]) });
         const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
@@ -35,8 +37,8 @@ test('sending text calls onSend with the trimmed text and clears the input', () 
     });
 });
 
-test('Enter (without Shift) sends; Shift+Enter does not', () => {
-    withEnv(() => {
+test('Enter (without Shift) sends; Shift+Enter does not', async () => {
+    await withEnv(() => {
         const sent = [];
         const bar = createInputBar({ terminalId: 'claude-1', onSend: (text) => sent.push(text) });
         const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
@@ -54,8 +56,8 @@ test('Enter (without Shift) sends; Shift+Enter does not', () => {
     });
 });
 
-test('sending empty text with no attachment is a no-op', () => {
-    withEnv(() => {
+test('sending empty text with no attachment is a no-op', async () => {
+    await withEnv(() => {
         const sent = [];
         const bar = createInputBar({ terminalId: 'claude-1', onSend: (text) => sent.push(text) });
         const sendBtn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.textContent === 'Send');
@@ -87,13 +89,13 @@ test('uploadFile throws on a non-OK response', async () => {
     });
 });
 
-test('attaching an image then sending includes its path, and clears the pending state after', async () => {
+test('attaching a file shows a ready chip, and sending includes its path then clears the chip', async () => {
     await withEnv(async () => {
         globalThis.fetch = () => Promise.resolve({ ok: true, json: async () => ({ path: '/state/uploads/claude-1/x.png' }) });
         const sent = [];
         const bar = createInputBar({ terminalId: 'claude-1', onSend: (text, path) => sent.push([text, path]) });
         const fileInput = bar.el.children.find(c => c.tagName === 'INPUT' && c.type === 'file');
-        const attachBtn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.classList.contains('chat-input-attach'));
+        const chip = bar.el.children.find(c => c.classList.contains('chat-input-chip'));
         const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
         const sendBtn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.textContent === 'Send');
 
@@ -101,18 +103,65 @@ test('attaching an image then sending includes its path, and clears the pending 
         fileInput.dispatch('change', {});
         await new Promise(r => setImmediate(r)); // let the upload promise settle
 
-        assert.ok(attachBtn.classList.contains('chat-input-attach-pending'));
+        assert.equal(chip.classList.contains('hidden'), false);
+        assert.ok(chip.textContent.includes('a.png'));
 
         textarea.value = 'see this';
         sendBtn.dispatch('click', {});
+        await new Promise(r => setImmediate(r)); // doSend awaits the (settled) upload
 
         assert.deepEqual(sent, [['see this', '/state/uploads/claude-1/x.png']]);
-        assert.equal(attachBtn.classList.contains('chat-input-attach-pending'), false);
+        assert.equal(chip.classList.contains('hidden'), true);
     });
 });
 
-test('setRunning toggles the button to Stop; clicking it interrupts instead of sending', () => {
-    withEnv(() => {
+test('sending before the upload settles still includes the path (await guards the race)', async () => {
+    await withEnv(async () => {
+        let resolveUpload;
+        globalThis.fetch = () => new Promise((res) => { resolveUpload = () => res({ ok: true, json: async () => ({ path: '/up/late.pdf' }) }); });
+        const sent = [];
+        const bar = createInputBar({ terminalId: 'claude-1', onSend: (text, path) => sent.push([text, path]) });
+        const fileInput = bar.el.children.find(c => c.tagName === 'INPUT' && c.type === 'file');
+        const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
+        const sendBtn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.textContent === 'Send');
+
+        fileInput.files = [{ name: 'late.pdf' }];
+        fileInput.dispatch('change', {});
+        textarea.value = 'attached';
+        sendBtn.dispatch('click', {}); // send while upload still in flight
+        assert.deepEqual(sent, []);    // held until the upload resolves
+
+        resolveUpload();
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        assert.deepEqual(sent, [['attached', '/up/late.pdf']]);
+    });
+});
+
+test('a failed upload shows a failed chip and does not attach a path on send', async () => {
+    await withEnv(async () => {
+        globalThis.fetch = () => Promise.resolve({ ok: false, status: 500 });
+        const sent = [];
+        const bar = createInputBar({ terminalId: 'claude-1', onSend: (text, path) => sent.push([text, path]) });
+        const fileInput = bar.el.children.find(c => c.tagName === 'INPUT' && c.type === 'file');
+        const chip = bar.el.children.find(c => c.classList.contains('chat-input-chip'));
+        const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
+        const sendBtn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.textContent === 'Send');
+
+        fileInput.files = [{ name: 'x.png' }];
+        fileInput.dispatch('change', {});
+        await new Promise(r => setImmediate(r));
+        assert.ok(chip.textContent.includes('failed'));
+
+        textarea.value = 'text only';
+        sendBtn.dispatch('click', {});
+        await new Promise(r => setImmediate(r));
+        assert.deepEqual(sent, [['text only', null]]);
+    });
+});
+
+test('setRunning toggles the button to Stop; clicking it interrupts instead of sending', async () => {
+    await withEnv(() => {
         const sent = [];
         let stopped = 0;
         const bar = createInputBar({

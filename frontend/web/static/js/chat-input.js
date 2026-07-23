@@ -1,7 +1,7 @@
 // Chat input bar: send, stop-while-running (the send button becomes a stop
 // button once a turn is in flight, calling onStop to interrupt), /clear as a
-// plain typed line (no dedicated button), and image attach via the existing
-// upload endpoint + file-path reference (never inline image bytes).
+// plain typed line (no dedicated button), and file attach via the existing
+// upload endpoint + file-path reference (never inline file bytes).
 
 import { sessionUploadPath } from './routes.js';
 
@@ -17,11 +17,17 @@ export async function uploadFile(terminalId, file) {
 }
 
 // createInputBar builds the input bar DOM and wires send/attach. onSend(text,
-// imagePath) fires on submit; onStop() fires when the button is clicked while
+// filePath) fires on submit; onStop() fires when the button is clicked while
 // a turn is running (see setRunning in the return value).
 export function createInputBar({ onSend, onStop, terminalId }) {
     const wrap = document.createElement('div');
     wrap.className = 'chat-input-bar';
+
+    // Attachment chip (own line, above the controls via flex-wrap): shows the
+    // selected file and its upload state so the attachment is visible before
+    // send — a silent button tint was easy to miss, especially on mobile.
+    const chip = document.createElement('div');
+    chip.className = 'chat-input-chip hidden';
 
     const textarea = document.createElement('textarea');
     textarea.className = 'chat-input-text';
@@ -48,21 +54,49 @@ export function createInputBar({ onSend, onStop, terminalId }) {
     sendBtn.className = 'chat-input-send';
     sendBtn.textContent = 'Send';
 
+    wrap.appendChild(chip);
     wrap.appendChild(attachBtn);
     wrap.appendChild(textarea);
     wrap.appendChild(fileInput);
     wrap.appendChild(sendBtn);
 
     let pendingFilePath = null;
+    let pendingUpload = null; // in-flight upload promise, or null
     let running = false;
+
+    // renderChip reflects the attachment state; status: uploading|ready|failed
+    // or null to hide. A ready chip carries a remove control.
+    function renderChip(name, status) {
+        chip.textContent = '';
+        if (!name) { chip.classList.add('hidden'); return; }
+        chip.classList.remove('hidden');
+        const label = document.createElement('span');
+        label.className = 'chat-chip-name';
+        const suffix = status === 'uploading' ? ' · uploading…' : status === 'failed' ? ' · upload failed' : '';
+        label.textContent = '📎 ' + name + suffix;
+        chip.appendChild(label);
+        if (status === 'ready') {
+            const rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'chat-chip-remove';
+            rm.title = 'Remove attachment';
+            rm.setAttribute('aria-label', 'Remove attachment');
+            rm.textContent = '✕';
+            rm.addEventListener('click', clearAttachment);
+            chip.appendChild(rm);
+        }
+    }
 
     function clearAttachment() {
         pendingFilePath = null;
-        attachBtn.classList.remove('chat-input-attach-pending');
+        pendingUpload = null;
+        renderChip(null);
     }
 
-    function doSend() {
+    async function doSend() {
         const text = textarea.value.trim();
+        // Wait out an in-flight upload so a fast send can't drop the file.
+        if (pendingUpload) { try { await pendingUpload; } catch (e) { /* failure already shown on the chip */ } }
         if (!text && !pendingFilePath) return;
         onSend(text, pendingFilePath);
         textarea.value = '';
@@ -78,16 +112,16 @@ export function createInputBar({ onSend, onStop, terminalId }) {
     }
 
     attachBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', async () => {
+    fileInput.addEventListener('change', () => {
         const file = fileInput.files && fileInput.files[0];
         fileInput.value = '';
         if (!file) return;
-        try {
-            pendingFilePath = await uploadFile(terminalId, file);
-            attachBtn.classList.add('chat-input-attach-pending');
-        } catch (e) {
-            clearAttachment();
-        }
+        pendingFilePath = null;
+        renderChip(file.name, 'uploading');
+        pendingUpload = uploadFile(terminalId, file)
+            .then((path) => { pendingFilePath = path; renderChip(file.name, 'ready'); })
+            .catch(() => { renderChip(file.name, 'failed'); })
+            .finally(() => { pendingUpload = null; });
     });
 
     sendBtn.addEventListener('click', () => {
