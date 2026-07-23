@@ -550,15 +550,18 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   padding:2px 7px;cursor:pointer}
 .chat-turn-copy:hover,.chat-code-copy:hover{color:var(--ink)}
 /* Turn-copy flows at the BOTTOM of the turn (order:99, flex-end), never over
-   a text line — the full-width-first-line overlap. JS toggles .hidden to
-   gate on prose; CSS reveals a non-hidden button on hover / on touch. */
-.chat-turn-copy{display:none;order:99;align-self:flex-end;margin-top:6px}
-.chat-msg-assistant:hover .chat-turn-copy:not(.hidden){display:inline-block}
+   a text line. It stays IN LAYOUT (opacity, not display) so hover-reveal
+   doesn't reflow the turn below it; .hidden fully removes it for a tool-only
+   turn (no prose) so nothing is reserved there. Reveal on hover / on touch. */
+.chat-turn-copy{order:99;align-self:flex-end;margin-top:6px;opacity:0;transition:opacity var(--fast) var(--ease)}
+.chat-turn-copy.hidden{display:none}
+.chat-msg-assistant:hover .chat-turn-copy:not(.hidden){opacity:1}
+/* Code-copy is absolute (out of flow) — its reveal never reflows anything. */
 .chat-code{position:relative}
 .chat-code-copy{display:none;position:absolute;top:6px;right:6px}
 .chat-code:hover .chat-code-copy{display:inline-block}
 @media (hover:none){
-  .chat-turn-copy:not(.hidden){display:inline-block}
+  .chat-turn-copy:not(.hidden){opacity:1}
   .chat-code-copy{display:inline-block}
 }
 
