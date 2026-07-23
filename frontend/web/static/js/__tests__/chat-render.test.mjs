@@ -404,3 +404,39 @@ test('the interrupt marker uses a machined square, not the stop emoji', () => {
         assert.equal(marker.textContent.includes('⏹'), false);
     });
 });
+
+test('a quick-replies patch renders tappable chips that send the option and clear', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        const sent = [];
+        applyPatches(list, [{ kind: 'quick-replies', options: ['Yes', 'No'] }], { onQuickReply: (t) => sent.push(t) });
+        const row = list.children.find(c => c.classList.contains('chat-quick-replies'));
+        assert.ok(row);
+        const chips = row.children.filter(c => c.classList.contains('chat-quick-reply'));
+        assert.equal(chips.length, 2);
+        chips[0].dispatch('click', {});
+        assert.deepEqual(sent, ['Yes']);
+        // tapping clears the row
+        assert.equal(list.children.some(c => c.classList.contains('chat-quick-replies')), false);
+    });
+});
+
+test('a new quick-replies row replaces the previous one', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [{ kind: 'quick-replies', options: ['A'] }], {});
+        applyPatches(list, [{ kind: 'quick-replies', options: ['B'] }], {});
+        const rows = list.children.filter(c => c.classList.contains('chat-quick-replies'));
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].children[0].textContent, 'B');
+    });
+});
+
+test('appending a user message clears pending quick-reply chips', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [{ kind: 'quick-replies', options: ['A', 'B'] }], {});
+        appendUserMessage(list, 'typed instead', false);
+        assert.equal(list.children.some(c => c.classList.contains('chat-quick-replies')), false);
+    });
+});

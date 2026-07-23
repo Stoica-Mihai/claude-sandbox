@@ -94,18 +94,7 @@ export const ChatManager = {
         });
         const inputBar = createInputBar({
             terminalId,
-            onSend: (text, imagePath) => {
-                if (instance.socket?.status === 'lost') {
-                    instance.socket.retry();
-                    return;
-                }
-                if (!text && !imagePath) return;
-                appendUserMessage(instance.flow, text, !!imagePath);
-                showPending(instance.flow);
-                this._setRunning(terminalId, true);
-                instance.sticky.engage();
-                instance.socket?.sendControl(composeUserInput(text, imagePath));
-            },
+            onSend: (text, imagePath) => this._sendUserText(terminalId, text, imagePath),
             onStop: () => {
                 // Interrupt the in-flight turn (verified control_request over
                 // stream-json); the engine emits a result, which flips running
@@ -141,6 +130,20 @@ export const ChatManager = {
         this.instances[terminalId]?.setRunning?.(on);
     },
 
+    // _sendUserText is the single send path (input bar and quick-reply chips):
+    // optimistic echo, pending row, running state, then the stream-json write.
+    _sendUserText(terminalId, text, imagePath) {
+        const instance = this.instances[terminalId];
+        if (!instance) return;
+        if (instance.socket?.status === 'lost') { instance.socket.retry(); return; }
+        if (!text && !imagePath) return;
+        appendUserMessage(instance.flow, text, !!imagePath);
+        showPending(instance.flow);
+        this._setRunning(terminalId, true);
+        instance.sticky.engage();
+        instance.socket?.sendControl(composeUserInput(text, imagePath));
+    },
+
     _connect(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
@@ -161,6 +164,7 @@ export const ChatManager = {
                 applyPatches(flow, patches, {
                     onHeader: (h) => { headerCwd.textContent = h.cwd; headerModel.textContent = h.model; },
                     onUsage: (u) => { headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
+                    onQuickReply: (text) => this._sendUserText(terminalId, text, null),
                 });
             },
             onStatus: (status) => {
@@ -222,6 +226,7 @@ export const ChatManager = {
             applyPatches(instance.flow, patches, {
                 onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },
                 onUsage: (u) => { instance.headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
+                onQuickReply: (text) => this._sendUserText(terminalId, text, null),
             });
         }
         instance.loadMoreBtn.classList.toggle('hidden', instance.transcriptStart === 0);

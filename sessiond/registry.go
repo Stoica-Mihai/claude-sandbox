@@ -73,6 +73,16 @@ func claudeCommand(cwd, uuid string, resume bool) *exec.Cmd {
 	return cmd
 }
 
+// chatQuickReplyPrompt asks the model to emit a machine-readable options line
+// when it offers the user a discrete choice. The chat UI parses this exact
+// marker into tappable chips and strips it from the shown text. Headless mode
+// has no AskUserQuestion tool, so this explicit marker is the reliable signal
+// (verified against the pinned engine).
+const chatQuickReplyPrompt = "When your reply asks the user to choose among a small set of discrete options " +
+	"(including any yes/no or either/or question), end the reply with one line in exactly this format and nothing after it: " +
+	"[[reply: first option | second option | third option]] — use 2 to 4 short options. " +
+	"Do not use it when there is no genuine choice to offer."
+
 // claudeChatCommand builds the real claude invocation for a chat (stream-json
 // pipe) session. --verbose is required: --print with
 // --output-format=stream-json refuses to run without it (verified against the
@@ -88,6 +98,7 @@ func claudeChatCommand(cwd, uuid string, resume bool) *exec.Cmd {
 		"--output-format", "stream-json",
 		"--include-partial-messages",
 		"--verbose",
+		"--append-system-prompt", chatQuickReplyPrompt,
 		"--dangerously-skip-permissions",
 	}
 	if resume {

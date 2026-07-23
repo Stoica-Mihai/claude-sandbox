@@ -5,6 +5,7 @@
 // deliberately NOT here — chat-scroll.js owns it (observation-driven).
 
 import { copyToClipboard } from './ui-utils.js';
+import { stripQuickReplyMarker } from './chat-events.js';
 
 // makeCopyButton builds an icon copy button (currentColor-masked glyph, not a
 // text label) whose click copies getText() and briefly swaps the glyph to a
@@ -185,17 +186,19 @@ export function stableMarkdownBoundary(text) {
 // can differ from a whole-text parse for constructs spanning blank lines
 // (loose lists), so finalize does one authoritative full parse.
 function renderTextBlock(el, block) {
-    el._src = block.text; // markdown source, for turn-copy
+    // Strip the quick-reply marker (complete, or still-streaming trailing open)
+    // so it never renders and never lands in the copy source.
+    const text = stripQuickReplyMarker(block.text || '').replace(/\[\[reply:[^\]]*$/, '');
+    el._src = text; // markdown source, for turn-copy
     if (block.done) {
         el._md = null;
-        el.innerHTML = renderMarkdown(block.text);
+        el.innerHTML = renderMarkdown(text);
         // Highlight only once the block stops streaming — re-highlighting
         // every delta would burn CPU for no visible gain.
         highlightFences(el);
         decorateCodeBlocks(el);
         return;
     }
-    const text = block.text || '';
     const boundary = stableMarkdownBoundary(text);
     const stable = text.slice(0, boundary);
     if (!el._md || !stable.startsWith(el._md.src)) {
@@ -365,6 +368,32 @@ export function attachmentIcon() {
     return icon;
 }
 
+// renderQuickReplies appends a row of tappable option chips; a tap sends that
+// option's text as the next message via onQuickReply. Only one row lives at a
+// time — a new row (or a user send) clears the previous, since old options
+// are stale once the conversation moves on.
+export function renderQuickReplies(listEl, options, onQuickReply) {
+    clearQuickReplies(listEl);
+    if (!options || !options.length) return;
+    const row = document.createElement('div');
+    row.className = 'chat-quick-replies';
+    for (const opt of options) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chat-quick-reply';
+        chip.textContent = opt;
+        chip.addEventListener('click', () => { clearQuickReplies(listEl); onQuickReply?.(opt); });
+        row.appendChild(chip);
+    }
+    listEl.appendChild(row);
+}
+
+function clearQuickReplies(listEl) {
+    for (const row of [...listEl.children]) {
+        if (row.classList && row.classList.contains('chat-quick-replies')) row.remove();
+    }
+}
+
 // appendSystemNotice renders a plain system line (e.g. after /clear).
 export function appendSystemNotice(listEl, text) {
     const el = document.createElement('div');
@@ -377,6 +406,7 @@ export function appendSystemNotice(listEl, text) {
 // the server's "user" event echo is intentionally NOT re-rendered (see
 // chat-events.js applyUserEvent) to avoid a duplicate bubble.
 export function appendUserMessage(listEl, text, hasAttachment) {
+    clearQuickReplies(listEl); // any pending chips are answered once the user speaks
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
     if (text) {
@@ -414,6 +444,9 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'user-message':
                 appendUserMessage(listEl, p.text, p.attachment);
                 showPending(listEl); // a co-viewer sent; their turn is now running
+                break;
+            case 'quick-replies':
+                renderQuickReplies(listEl, p.options, callbacks.onQuickReply);
                 break;
             case 'interrupt':
                 clearPending(listEl);

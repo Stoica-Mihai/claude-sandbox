@@ -28,6 +28,27 @@ function newBlock(type, extra) {
     return Object.assign({ type, text: '', done: false }, extra || {});
 }
 
+// QUICK_REPLY_MARKER is the machine-readable options line the chat system
+// prompt asks the model to emit (see sessiond chat spawn). extractQuickReplies
+// parses it into option strings and strips it from the block's text, so the
+// marker never renders and the options drive tappable chips instead.
+const QUICK_REPLY_MARKER = /\s*\[\[reply:([^\]]*)\]\]/;
+
+export function extractQuickReplies(block) {
+    if (!block || block.type !== 'text' || !block.text) return null;
+    const m = block.text.match(QUICK_REPLY_MARKER);
+    if (!m) return null;
+    const options = m[1].split('|').map((s) => s.trim()).filter(Boolean);
+    block.text = block.text.replace(QUICK_REPLY_MARKER, '').trim();
+    return options.length ? options : null;
+}
+
+// stripQuickReplyMarker removes the marker for display without extracting —
+// used while a block is still streaming (the marker may arrive mid-text).
+export function stripQuickReplyMarker(text) {
+    return String(text || '').replace(QUICK_REPLY_MARKER, '');
+}
+
 function findMessage(state, id) {
     return state.messages.find(m => m.id === id) || null;
 }
@@ -119,7 +140,10 @@ function applyStreamEvent(state, evt) {
             if (block.type === 'tool' && block.inputRaw) {
                 try { block.input = JSON.parse(block.inputRaw); } catch (err) { /* keep raw text */ }
             }
-            return [{ kind: 'finalize-block', messageId: msg.id, blockIndex: e.index, block }];
+            const stopPatches = [{ kind: 'finalize-block', messageId: msg.id, blockIndex: e.index, block }];
+            const opts = extractQuickReplies(block);
+            if (opts) stopPatches.push({ kind: 'quick-replies', options: opts });
+            return stopPatches;
         }
         case 'message_stop': {
             const messageId = state._openMessageId;
@@ -168,6 +192,10 @@ function applyFullMessage(state, evt, role, replay) {
         existing.blocks[i] = block;
         patches.push({ kind: 'new-block', messageId: existing.id, blockIndex: i, block });
         patches.push({ kind: 'finalize-block', messageId: existing.id, blockIndex: i, block });
+        if (block.type === 'text') {
+            const opts = extractQuickReplies(block);
+            if (opts) patches.push({ kind: 'quick-replies', options: opts });
+        }
     });
     patches.push({ kind: 'finalize-message', messageId: existing.id });
     return patches;

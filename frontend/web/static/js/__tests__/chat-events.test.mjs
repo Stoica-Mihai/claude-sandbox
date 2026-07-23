@@ -255,3 +255,27 @@ test('the "file" attachment marker is stripped and flagged too', () => {
     const patches = applyEvent(createChatState(), evt);
     assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this', attachment: true }]);
 });
+
+test('a finalized text block with a reply marker emits quick-replies and strips the marker', () => {
+    const state = createChatState();
+    applyEvent(state, { type: 'stream_event', event: { type: 'message_start', message: { id: 'm1' } } });
+    applyEvent(state, { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } });
+    applyEvent(state, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Use cookies.\n[[reply: Yes | No | Tell me more]]' } } });
+    const patches = applyEvent(state, { type: 'stream_event', event: { type: 'content_block_stop', index: 0 } });
+
+    const qr = patches.find((p) => p.kind === 'quick-replies');
+    assert.ok(qr, 'quick-replies patch emitted');
+    assert.deepEqual(qr.options, ['Yes', 'No', 'Tell me more']);
+    assert.equal(state.messages[0].blocks[0].text, 'Use cookies.'); // marker stripped
+});
+
+test('extractQuickReplies returns null when there is no marker', async () => {
+    const { extractQuickReplies } = await import('../chat-events.js');
+    assert.equal(extractQuickReplies({ type: 'text', text: 'just prose' }), null);
+    assert.equal(extractQuickReplies({ type: 'tool', text: '[[reply: a | b]]' }), null); // only text blocks
+});
+
+test('stripQuickReplyMarker removes a complete marker for display', async () => {
+    const { stripQuickReplyMarker } = await import('../chat-events.js');
+    assert.equal(stripQuickReplyMarker('hi\n[[reply: a | b]]').trim(), 'hi');
+});
