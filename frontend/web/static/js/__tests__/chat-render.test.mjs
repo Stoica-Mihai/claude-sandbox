@@ -38,7 +38,7 @@ test('appendUserMessage appends a user-role message', () => {
         const list = new FakeElement('div');
         appendUserMessage(list, 'hello there');
         assert.ok(list.children[0].classList.contains('chat-msg-user'));
-        assert.equal(list.children[0].textContent, 'hello there');
+        assert.equal(list.children[0].querySelector('.chat-msg-body').textContent, 'hello there');
     });
 });
 
@@ -226,7 +226,7 @@ test('a user-message patch appends a user bubble', () => {
         const list = new FakeElement('div');
         applyPatches(list, [{ kind: 'user-message', text: 'hello from co-viewer' }]);
         assert.ok(list.children[0].classList.contains('chat-msg-user'));
-        assert.equal(list.children[0].textContent, 'hello from co-viewer');
+        assert.equal(list.children[0].querySelector('.chat-msg-body').textContent, 'hello from co-viewer');
     });
 });
 
@@ -438,5 +438,31 @@ test('appending a user message clears pending quick-reply chips', () => {
         applyPatches(list, [{ kind: 'quick-replies', options: ['A', 'B'] }], {});
         appendUserMessage(list, 'typed instead', false);
         assert.equal(list.children.some(c => c.classList.contains('chat-quick-replies')), false);
+    });
+});
+
+test('messages carry a timestamp element (transcript ts for replay, now for live)', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        appendUserMessage(list, 'hi', false, '2026-07-23T15:24:00Z');
+        const uTime = list.children[0].querySelector('.chat-time');
+        assert.ok(uTime, 'user bubble has a timestamp');
+        assert.ok(uTime.textContent.length > 0);
+
+        applyPatches(list, [{ kind: 'new-message', messageId: 'm1', role: 'assistant', ts: '2026-07-23T15:25:00Z' }]);
+        const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
+        assert.ok(box.querySelector('.chat-time'), 'assistant box has a timestamp');
+    });
+});
+
+test('a merged assistant turn stamps the time once, not per engine message', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant', ts: '2026-07-23T15:25:00Z' },
+            { kind: 'new-message', messageId: 'm2', role: 'assistant', ts: '2026-07-23T15:25:30Z' },
+        ]);
+        const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
+        assert.equal([...box.children].filter(c => c.classList.contains('chat-time')).length, 1);
     });
 });

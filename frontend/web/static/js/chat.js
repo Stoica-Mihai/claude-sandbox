@@ -156,7 +156,7 @@ export const ChatManager = {
         if (!instance) return;
         if (instance.socket?.status === 'lost') { instance.socket.retry(); return; }
         if (!text && !imagePath) return;
-        appendUserMessage(instance.flow, text, !!imagePath);
+        appendUserMessage(instance.flow, text, !!imagePath, Date.now());
         showPending(instance.flow);
         this._setRunning(terminalId, true);
         instance.sticky.engage();

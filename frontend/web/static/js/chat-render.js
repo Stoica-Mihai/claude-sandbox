@@ -394,6 +394,18 @@ function clearQuickReplies(listEl) {
     }
 }
 
+// timeEl builds a subtle timestamp element. ts may be an ISO string, epoch
+// ms, or null/undefined (→ now, for live messages). Full date on hover.
+function timeEl(ts) {
+    const el = document.createElement('span');
+    el.className = 'chat-time';
+    const d = ts != null ? new Date(ts) : new Date();
+    if (isNaN(d.getTime())) return el;
+    el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    el.title = d.toLocaleString();
+    return el;
+}
+
 // appendSystemNotice renders a plain system line (e.g. after /clear).
 export function appendSystemNotice(listEl, text) {
     const el = document.createElement('div');
@@ -405,16 +417,18 @@ export function appendSystemNotice(listEl, text) {
 // appendUserMessage renders the user's own message optimistically on send —
 // the server's "user" event echo is intentionally NOT re-rendered (see
 // chat-events.js applyUserEvent) to avoid a duplicate bubble.
-export function appendUserMessage(listEl, text, hasAttachment) {
+export function appendUserMessage(listEl, text, hasAttachment, ts) {
     clearQuickReplies(listEl); // any pending chips are answered once the user speaks
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
     if (text) {
         const span = document.createElement('span');
+        span.className = 'chat-msg-body';
         span.textContent = text; // textContent keeps user input un-parsed
         el.appendChild(span);
     }
     if (hasAttachment) el.appendChild(attachmentIcon());
+    el.appendChild(timeEl(ts));
     listEl.appendChild(el);
 }
 
@@ -422,9 +436,13 @@ export function appendUserMessage(listEl, text, hasAttachment) {
 export function applyPatches(listEl, patches, callbacks = {}) {
     for (const p of patches) {
         switch (p.kind) {
-            case 'new-message':
-                findOrCreateMessageEl(listEl, p.messageId, p.role);
+            case 'new-message': {
+                const msgEl = findOrCreateMessageEl(listEl, p.messageId, p.role);
+                // First engine message of a (possibly merged) turn stamps the
+                // time once; later merged messages reuse the box, don't restamp.
+                if (!msgEl._timeSet) { msgEl.appendChild(timeEl(p.ts)); msgEl._timeSet = true; }
                 break;
+            }
             case 'new-block':
             case 'append-text':
             case 'tool-input-progress':
@@ -442,7 +460,7 @@ export function applyPatches(listEl, patches, callbacks = {}) {
                 appendSystemNotice(listEl, p.text);
                 break;
             case 'user-message':
-                appendUserMessage(listEl, p.text, p.attachment);
+                appendUserMessage(listEl, p.text, p.attachment, p.ts);
                 showPending(listEl); // a co-viewer sent; their turn is now running
                 break;
             case 'quick-replies':

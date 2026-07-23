@@ -103,7 +103,7 @@ test('user event with a tool_result attaches it to the matching tool block by id
 test('user event with plain text renders a bubble (sessiond mirrors co-viewer sends; the sender never receives its own)', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hello' }] } });
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'hello', attachment: false }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'hello', attachment: false, ts: null }]);
 });
 
 test('user event with a tool_result for an unknown tool_use_id is ignored', () => {
@@ -233,7 +233,7 @@ test('empty thinking shells (transcript form) produce no block', () => {
 test('a mirrored plain-text user event renders as a user bubble patch', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'from the phone\n\n[Attached image: /up/x.jpg]' }] } });
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'from the phone', attachment: true }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'from the phone', attachment: true, ts: null }]);
 });
 
 test('tool_result user events never produce a user bubble', () => {
@@ -253,7 +253,7 @@ test('the post-interrupt marker becomes an interrupt patch, not a user turn', ()
 test('the "file" attachment marker is stripped and flagged too', () => {
     const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'see this\n\n[Attached file: /up/report.pdf]' }] } };
     const patches = applyEvent(createChatState(), evt);
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this', attachment: true }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this', attachment: true, ts: null }]);
 });
 
 test('a finalized text block with a reply marker emits quick-replies and strips the marker', () => {

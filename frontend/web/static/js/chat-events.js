@@ -94,7 +94,7 @@ function applyStreamEvent(state, evt) {
             state.messages.push(msg);
             state._openMessageId = id;
             state._openBlocks = [];
-            return [{ kind: 'new-message', messageId: id, role: 'assistant' }];
+            return [{ kind: 'new-message', messageId: id, role: 'assistant', ts: evt.timestamp || null }];
         }
         case 'content_block_start': {
             const msg = findMessage(state, state._openMessageId);
@@ -173,7 +173,7 @@ function applyFullMessage(state, evt, role, replay) {
     if (!existing) {
         existing = { id: msg.id, role, blocks: [] };
         state.messages.push(existing);
-        patches.push({ kind: 'new-message', messageId: msg.id, role });
+        patches.push({ kind: 'new-message', messageId: msg.id, role, ts: evt.timestamp || null });
     }
     (msg.content || []).forEach((cb, i) => {
         // Transcripts persist thinking blocks with empty text (shell only) —
@@ -225,7 +225,7 @@ function applyUserEvent(state, evt) {
     // is an abort marker, not a real send — render it as a system notice so
     // it neither starts a new turn nor shows a pending row.
     if (info.text === INTERRUPT_MARKER) return [{ kind: 'interrupt' }];
-    return [{ kind: 'user-message', text: info.text, attachment: info.hasAttachment }];
+    return [{ kind: 'user-message', text: info.text, attachment: info.hasAttachment, ts: evt.timestamp || null }];
 }
 
 const INTERRUPT_MARKER = '[Request interrupted by user]';
