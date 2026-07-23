@@ -11,7 +11,11 @@ export async function uploadFile(terminalId, file) {
     const form = new FormData();
     form.append('file', file);
     const res = await fetch(sessionUploadPath(terminalId), { method: 'POST', body: form });
-    if (!res.ok) throw new Error('upload failed: ' + res.status);
+    if (!res.ok) {
+        let detail = '';
+        try { detail = (await res.json()).error || ''; } catch (e) { /* non-JSON error body */ }
+        throw new Error(detail || ('HTTP ' + res.status));
+    }
     const data = await res.json();
     return data.path;
 }
@@ -66,13 +70,15 @@ export function createInputBar({ onSend, onStop, terminalId }) {
 
     // renderChip reflects the attachment state; status: uploading|ready|failed
     // or null to hide. A ready chip carries a remove control.
-    function renderChip(name, status) {
+    function renderChip(name, status, detail) {
         chip.textContent = '';
         if (!name) { chip.classList.add('hidden'); return; }
         chip.classList.remove('hidden');
         const label = document.createElement('span');
         label.className = 'chat-chip-name';
-        const suffix = status === 'uploading' ? ' · uploading…' : status === 'failed' ? ' · upload failed' : '';
+        let suffix = '';
+        if (status === 'uploading') suffix = ' · uploading…';
+        else if (status === 'failed') suffix = ' · failed' + (detail ? ' (' + detail + ')' : '');
         label.textContent = '📎 ' + name + suffix;
         chip.appendChild(label);
         if (status === 'ready') {
@@ -120,7 +126,7 @@ export function createInputBar({ onSend, onStop, terminalId }) {
         renderChip(file.name, 'uploading');
         pendingUpload = uploadFile(terminalId, file)
             .then((path) => { pendingFilePath = path; renderChip(file.name, 'ready'); })
-            .catch(() => { renderChip(file.name, 'failed'); })
+            .catch((err) => { renderChip(file.name, 'failed', err && err.message); })
             .finally(() => { pendingUpload = null; });
     });
 

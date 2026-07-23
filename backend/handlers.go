@@ -27,8 +27,11 @@ import (
 )
 
 const (
-	// maxUploadSize is the maximum allowed upload size (10 MB).
-	maxUploadSize = 10 << 20
+	// maxUploadSize is the hard cap on an upload (50 MB) — phone photos and
+	// PDFs routinely exceed 10 MB. uploadParseMemory bounds what is buffered
+	// in memory during parse; the rest spills to a temp file.
+	maxUploadSize     = 50 << 20
+	uploadParseMemory = 10 << 20
 	// maxSessionNameLen caps custom session names (bytes) — the index file
 	// persists them, so unbounded names mean unbounded index growth.
 	maxSessionNameLen = 120
@@ -410,7 +413,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// 10 MB max.
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := r.ParseMultipartForm(uploadParseMemory); err != nil {
 		writeErr(w, http.StatusBadRequest, "file too large or invalid form")
 		return
 	}
