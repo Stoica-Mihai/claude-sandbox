@@ -546,9 +546,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
    hover; always shown on touch. display (not opacity) toggling so a hidden
    button reserves no space. "Copied"/"Failed" feedback is set in JS. */
 .chat-turn-copy,.chat-code-copy{border:2px solid var(--line);background:var(--surf);color:var(--muted);
-  font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+  font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
   padding:2px 7px;cursor:pointer}
-.chat-turn-copy:hover,.chat-code-copy:hover{color:var(--ink);border-color:var(--ink)}
+.chat-turn-copy:hover,.chat-code-copy:hover{color:var(--ink)}
 /* Turn-copy flows at the BOTTOM of the turn (order:99, flex-end), never over
    a text line — the full-width-first-line overlap. JS toggles .hidden to
    gate on prose; CSS reveals a non-hidden button on hover / on touch. */
