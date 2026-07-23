@@ -102,11 +102,25 @@ export const ChatManager = {
                 if (!text && !imagePath) return;
                 appendUserMessage(instance.flow, imagePath ? (text ? text + ' 📎' : '📎 image attached') : text);
                 showPending(instance.flow);
+                this._setRunning(terminalId, true);
                 instance.sticky.engage();
                 instance.socket?.sendControl(composeUserInput(text, imagePath));
             },
+            onStop: () => {
+                // Interrupt the in-flight turn (verified control_request over
+                // stream-json); the engine emits a result, which flips running
+                // back off. Optimistically flip now so the button responds.
+                instance.socket?.sendControl({
+                    type: 'control_request',
+                    request_id: 'int-' + Date.now(),
+                    request: { subtype: 'interrupt' },
+                });
+                clearPending(instance.flow);
+                this._setRunning(terminalId, false);
+            },
         });
         instance.focusInput = inputBar.focus;
+        instance.setRunning = inputBar.setRunning;
 
         root.appendChild(header);
         root.appendChild(loadMoreBtn);
@@ -121,12 +135,26 @@ export const ChatManager = {
         return instance;
     },
 
+    // _setRunning flips the input bar between Send and Stop. Idempotent, and
+    // safe if the instance or input bar isn't ready yet.
+    _setRunning(terminalId, on) {
+        this.instances[terminalId]?.setRunning?.(on);
+    },
+
     _connect(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
         const { flow, headerCwd, headerModel, headerCost } = instance;
         const socket = new SessionSocket(terminalId, {
             onControl: (evt) => {
+                // Running-state edges from the stream: any turn activity marks
+                // running (covers a viewer attaching mid-turn); a result ends
+                // it. A mirrored co-viewer send (plain user event) also starts
+                // one. control_response (interrupt ack) is not turn activity.
+                if (evt.type === 'result') this._setRunning(terminalId, false);
+                else if (evt.type === 'stream_event' || evt.type === 'assistant' || evt.type === 'user') {
+                    this._setRunning(terminalId, true);
+                }
                 const patches = applyEvent(instance.state, evt);
                 applyPatches(flow, patches, {
                     onHeader: (h) => { headerCwd.textContent = h.cwd; headerModel.textContent = h.model; },
@@ -135,6 +163,7 @@ export const ChatManager = {
             },
             onStatus: (status) => {
                 clearPending(flow); // whatever happened, the turn is no longer just pending
+                if (status !== 'open') this._setRunning(terminalId, false);
                 if (status === 'ended') appendSystemNotice(flow, '[Session ended]');
                 else if (status === 'reconnecting') appendSystemNotice(flow, '[Reconnecting…]');
                 else if (status === 'lost') appendSystemNotice(flow, '[Connection lost — send a message to retry]');

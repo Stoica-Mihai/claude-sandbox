@@ -577,6 +577,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-input-attach{padding:9px 12px}
 .chat-input-attach.chat-input-attach-pending{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .chat-input-send:hover,.chat-input-attach:hover{background:var(--ink);color:var(--bg)}
+/* Stop state: filled accent so it reads as the active/interrupt affordance. */
+.chat-input-send.chat-input-stop{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.chat-input-send.chat-input-stop:hover{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 
 @media (max-width:640px){
   .chat-msg-user{max-width:92%}

@@ -1,8 +1,7 @@
-// Chat input bar: send, queue-while-running (ordering is guaranteed
-// server-side by the single-actor chat session — see chat-session-host — so
-// the client just sends in submission order), /clear as a plain typed line
-// (no dedicated button), and image attach via the existing upload endpoint +
-// file-path reference (never inline image bytes).
+// Chat input bar: send, stop-while-running (the send button becomes a stop
+// button once a turn is in flight, calling onStop to interrupt), /clear as a
+// plain typed line (no dedicated button), and image attach via the existing
+// upload endpoint + file-path reference (never inline image bytes).
 
 import { sessionUploadPath } from './routes.js';
 
@@ -18,9 +17,9 @@ export async function uploadImageFile(terminalId, file) {
 }
 
 // createInputBar builds the input bar DOM and wires send/attach. onSend(text,
-// imagePath) is called with the user's submitted text and an optional
-// uploaded-image path.
-export function createInputBar({ onSend, terminalId }) {
+// imagePath) fires on submit; onStop() fires when the button is clicked while
+// a turn is running (see setRunning in the return value).
+export function createInputBar({ onSend, onStop, terminalId }) {
     const wrap = document.createElement('div');
     wrap.className = 'chat-input-bar';
 
@@ -56,6 +55,7 @@ export function createInputBar({ onSend, terminalId }) {
     wrap.appendChild(sendBtn);
 
     let pendingImagePath = null;
+    let running = false;
 
     function clearAttachment() {
         pendingImagePath = null;
@@ -68,6 +68,14 @@ export function createInputBar({ onSend, terminalId }) {
         onSend(text, pendingImagePath);
         textarea.value = '';
         clearAttachment();
+    }
+
+    // setRunning toggles the primary button between Send and Stop. While
+    // running, the button interrupts the turn (onStop) and Enter does not send.
+    function setRunning(on) {
+        running = on;
+        sendBtn.textContent = on ? 'Stop' : 'Send';
+        sendBtn.classList.toggle('chat-input-stop', on);
     }
 
     attachBtn.addEventListener('click', () => fileInput.click());
@@ -83,13 +91,16 @@ export function createInputBar({ onSend, terminalId }) {
         }
     });
 
-    sendBtn.addEventListener('click', doSend);
+    sendBtn.addEventListener('click', () => {
+        if (running) onStop?.();
+        else doSend();
+    });
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            doSend();
+            if (!running) doSend();
         }
     });
 
-    return { el: wrap, focus: () => textarea.focus() };
+    return { el: wrap, focus: () => textarea.focus(), setRunning };
 }

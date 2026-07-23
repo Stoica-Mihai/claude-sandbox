@@ -110,3 +110,36 @@ test('attaching an image then sending includes its path, and clears the pending 
         assert.equal(attachBtn.classList.contains('chat-input-attach-pending'), false);
     });
 });
+
+test('setRunning toggles the button to Stop; clicking it interrupts instead of sending', () => {
+    withEnv(() => {
+        const sent = [];
+        let stopped = 0;
+        const bar = createInputBar({
+            terminalId: 'claude-1',
+            onSend: (t) => sent.push(t),
+            onStop: () => { stopped++; },
+        });
+        const textarea = bar.el.children.find(c => c.tagName === 'TEXTAREA');
+        const btn = bar.el.children.find(c => c.tagName === 'BUTTON' && c.textContent === 'Send');
+
+        bar.setRunning(true);
+        assert.equal(btn.textContent, 'Stop');
+        assert.ok(btn.classList.contains('chat-input-stop'));
+
+        textarea.value = 'ignored while running';
+        btn.dispatch('click', {});
+        assert.equal(stopped, 1);
+        assert.deepEqual(sent, []);
+
+        // Enter does not send while running.
+        let defaulted = false;
+        textarea.dispatch('keydown', { key: 'Enter', shiftKey: false, preventDefault: () => { defaulted = true; } });
+        assert.deepEqual(sent, []);
+
+        bar.setRunning(false);
+        assert.equal(btn.textContent, 'Send');
+        btn.dispatch('click', {});
+        assert.deepEqual(sent, ['ignored while running']);
+    });
+});
