@@ -329,8 +329,9 @@ test('a result-driven turn end clears a pending row', () => {
         const list = new FakeElement('div');
         showPending(list);
         assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
-        // system-notice also clears pending (the interrupt-marker path).
-        applyPatches(list, [{ kind: 'system-notice', text: 'Interrupted' }]);
+        // an interrupt patch clears pending and adds the Stopped marker.
+        applyPatches(list, [{ kind: 'interrupt' }]);
         assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 0);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-interrupted')).length, 1);
     });
 });

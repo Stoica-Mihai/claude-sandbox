@@ -286,6 +286,15 @@ export function clearPending(listEl) {
     listEl._chatPending = null;
 }
 
+// appendInterruptMarker renders a small muted "Stopped" line indented to sit
+// under the turn it cut short (not a bubble, not a full-width divider).
+export function appendInterruptMarker(listEl) {
+    const el = document.createElement('div');
+    el.className = 'chat-interrupted';
+    el.textContent = '⏹ Stopped';
+    listEl.appendChild(el);
+}
+
 // appendSystemNotice renders a plain system line (e.g. after /clear).
 export function appendSystemNotice(listEl, text) {
     const el = document.createElement('div');
@@ -330,6 +339,10 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'user-message':
                 appendUserMessage(listEl, p.text);
                 showPending(listEl); // a co-viewer sent; their turn is now running
+                break;
+            case 'interrupt':
+                clearPending(listEl);
+                appendInterruptMarker(listEl);
                 break;
             case 'header':
                 callbacks.onHeader?.(p.header);

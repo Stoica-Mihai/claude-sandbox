@@ -531,6 +531,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-pending{align-self:stretch;position:relative;padding-left:26px;
   color:var(--muted);font-style:italic;font-size:13px;line-height:1.5}
 .chat-pending::before{animation:var(--blink)}
+/* Interrupt marker: a muted line indented under the turn it cut short. */
+.chat-interrupted{align-self:stretch;padding-left:26px;margin-top:-4px;
+  color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em}
 .chat-msg-system{align-self:center;max-width:100%;padding:6px 12px;border:2px dashed var(--line);
   background:transparent;color:var(--muted);
   font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:center}

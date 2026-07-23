@@ -3,7 +3,7 @@
 // (create/destroy/get) so tabs.js can treat either surface uniformly.
 
 import { SessionSocket } from './session-socket.js';
-import { createChatState, applyEvent, composeUserInput, transcriptUserText } from './chat-events.js';
+import { createChatState, applyEvent, composeUserInput } from './chat-events.js';
 import { applyPatches, appendUserMessage, appendSystemNotice, resetView, showPending, clearPending } from './chat-render.js';
 import { createStickyScroll } from './chat-scroll.js';
 import { createInputBar } from './chat-input.js';
@@ -215,13 +215,9 @@ export const ChatManager = {
             // assistant records instead ('<synthetic>' = engine notices, skip).
             const model = evt.type === 'assistant' ? evt.message?.model : null;
             if (model && model !== '<synthetic>') instance.headerModel.textContent = model;
-            // Plain user turns exist only in the transcript (live, the input bar
-            // echoes them locally and the stream never carries them back).
-            const userText = transcriptUserText(evt);
-            if (userText !== null) {
-                appendUserMessage(instance.flow, userText);
-                continue;
-            }
+            // Replay flows through the same event classifier as live (user
+            // turns → bubbles, tool_results → attached, the interrupt marker →
+            // its Stopped line), so history and live render identically.
             const patches = applyEvent(instance.state, evt, { replay: true });
             applyPatches(instance.flow, patches, {
                 onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },

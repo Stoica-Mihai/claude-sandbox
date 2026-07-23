@@ -196,7 +196,7 @@ function applyUserEvent(state, evt) {
     // The engine emits this synthetic user turn right after an interrupt; it
     // is an abort marker, not a real send — render it as a system notice so
     // it neither starts a new turn nor shows a pending row.
-    if (text === INTERRUPT_MARKER) return [{ kind: 'system-notice', text: 'Interrupted' }];
+    if (text === INTERRUPT_MARKER) return [{ kind: 'interrupt' }];
     return [{ kind: 'user-message', text }];
 }
 
