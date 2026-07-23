@@ -192,9 +192,15 @@ function applyUserEvent(state, evt) {
     }
     if (patches.length) return patches;
     const text = transcriptUserText(evt);
-    if (text !== null) return [{ kind: 'user-message', text }];
-    return patches;
+    if (text === null) return patches;
+    // The engine emits this synthetic user turn right after an interrupt; it
+    // is an abort marker, not a real send — render it as a system notice so
+    // it neither starts a new turn nor shows a pending row.
+    if (text === INTERRUPT_MARKER) return [{ kind: 'system-notice', text: 'Interrupted' }];
+    return [{ kind: 'user-message', text }];
 }
+
+const INTERRUPT_MARKER = '[Request interrupted by user]';
 
 function findToolBlock(state, toolUseId) {
     if (!toolUseId) return null;

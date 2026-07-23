@@ -243,3 +243,9 @@ test('tool_result user events never produce a user bubble', () => {
     assert.equal(patches.length, 1);
     assert.equal(patches[0].kind, 'tool-result');
 });
+
+test('the post-interrupt marker renders as a system notice, not a user turn', () => {
+    const state = createChatState();
+    const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } });
+    assert.deepEqual(patches, [{ kind: 'system-notice', text: 'Interrupted' }]);
+});

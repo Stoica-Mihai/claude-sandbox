@@ -151,9 +151,11 @@ export const ChatManager = {
                 // running (covers a viewer attaching mid-turn); a result ends
                 // it. A mirrored co-viewer send (plain user event) also starts
                 // one. control_response (interrupt ack) is not turn activity.
-                if (evt.type === 'result') this._setRunning(terminalId, false);
-                else if (evt.type === 'stream_event' || evt.type === 'assistant' || evt.type === 'user') {
-                    this._setRunning(terminalId, true);
+                if (evt.type === 'result') {
+                    clearPending(flow); // turn ended (success or interrupt) — drop the thinking row
+                    this._setRunning(terminalId, false);
+                } else if (evt.type === 'stream_event' || evt.type === 'assistant') {
+                    this._setRunning(terminalId, true); // turn activity (covers attaching mid-turn)
                 }
                 const patches = applyEvent(instance.state, evt);
                 applyPatches(flow, patches, {

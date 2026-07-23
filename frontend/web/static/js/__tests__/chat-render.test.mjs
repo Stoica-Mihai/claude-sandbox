@@ -323,3 +323,14 @@ test('pending indicator: shown once, cleared by the first content patch, replay-
         assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
     });
 });
+
+test('a result-driven turn end clears a pending row', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        showPending(list);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 1);
+        // system-notice also clears pending (the interrupt-marker path).
+        applyPatches(list, [{ kind: 'system-notice', text: 'Interrupted' }]);
+        assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 0);
+    });
+});
