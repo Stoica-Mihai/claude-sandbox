@@ -157,3 +157,16 @@ test('suppression is one-shot: the very next growth after the toggle burst pins'
         assert.equal(el.scrollTop, 3500);
     });
 });
+
+test('onFollowChange fires on follow edges (drives the jump-to-latest button)', () => {
+    withRO(() => {
+        const el = fakeScrollEl();
+        const edges = [];
+        const sticky = createStickyScroll(el, {}, { onFollowChange: (f) => edges.push(f) });
+        el.scrollTop = 100; // scroll up, far from bottom
+        el.fireScroll();
+        assert.deepEqual(edges, [false]); // disengaged
+        sticky.engage();
+        assert.deepEqual(edges, [false, true]); // re-engaged (jump-to-latest)
+    });
+});

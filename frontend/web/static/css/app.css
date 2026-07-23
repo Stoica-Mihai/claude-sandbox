@@ -517,8 +517,15 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 
 /* list = scroll container; flow = observed content (chat-scroll.js re-pins
    on its size changes). Padding lives on flow so content height is honest. */
-.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.chat-message-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
 .chat-message-flow{display:flex;flex-direction:column;gap:10px;padding:14px}
+/* Jump-to-latest — pinned to the scroll viewport (absolute in the position:
+   relative list, so it doesn't scroll with content). No offset shadow: an
+   overflow ancestor would clip it. */
+.chat-jump-latest{position:absolute;right:14px;bottom:14px;width:34px;height:34px;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--line);
+  background:var(--surf);color:var(--ink);font-size:18px;line-height:1;cursor:pointer}
+.chat-jump-latest:hover{background:var(--ink);color:var(--bg)}
 
 /* ===== Message rows ===== */
 /* User turns are accent boxes; assistant turns flow unboxed with a small
@@ -600,13 +607,15 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 /* Code never wraps (a wrapped hex dump or long path is unreadable) — lines
    stay intact and each pre scrolls horizontally inside its own box, matching
    the markdown code-block treatment and claude.ai's own behavior. */
-.chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;white-space:pre;overflow-x:auto}
+/* max-height caps a long tool result (a big Read/Bash output) so it scrolls
+   inside its own box instead of becoming a giant row you page past. */
+.chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto;max-height:320px}
 .chat-tool-cmd{color:var(--ink)}
 .chat-tool-output{margin-top:8px;padding-top:8px;border-top:2px solid var(--line);color:var(--muted)}
 
 /* Edit/Write diff: deletion/addition panes, distinguished by tint only (no
    red/green pair — the app's single-accent law rules out a second hue). */
-.chat-diff-del,.chat-diff-add{margin:0;padding:6px 8px;font-family:var(--mono);font-size:12px;white-space:pre;overflow-x:auto}
+.chat-diff-del,.chat-diff-add{margin:0;padding:6px 8px;font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto;max-height:320px}
 .chat-diff-del{background:var(--surf);color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent)}
 .chat-diff-add{margin-top:4px;background:var(--field);color:var(--ink);border-left:3px solid var(--accent)}
 

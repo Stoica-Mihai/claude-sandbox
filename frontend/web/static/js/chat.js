@@ -68,11 +68,23 @@ export const ChatManager = {
         flow.className = 'chat-message-flow';
         list.appendChild(flow);
 
+        // Jump-to-latest: floats bottom-right of the list, shown only while the
+        // user has scrolled away from the bottom (follow disengaged).
+        const jumpBtn = document.createElement('button');
+        jumpBtn.type = 'button';
+        jumpBtn.className = 'chat-jump-latest hidden';
+        jumpBtn.title = 'Jump to latest';
+        jumpBtn.setAttribute('aria-label', 'Jump to latest');
+        jumpBtn.textContent = '↓';
+        list.appendChild(jumpBtn);
+
         const instance = {
             root,
             list,
             flow,
-            sticky: createStickyScroll(list, flow),
+            sticky: createStickyScroll(list, flow, {
+                onFollowChange: (following) => jumpBtn.classList.toggle('hidden', following),
+            }),
             headerCwd,
             headerModel,
             headerCost,
@@ -83,6 +95,7 @@ export const ChatManager = {
             socket: null,
         };
 
+        jumpBtn.addEventListener('click', () => instance.sticky.engage());
         loadMoreBtn.addEventListener('click', () => this._renderMoreHistory(terminalId));
         // Expand/collapse toggles change content height by user action, not
         // output — suppress the follow pin for that resize burst.

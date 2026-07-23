@@ -10,9 +10,17 @@
 
 const FOLLOW_THRESHOLD = 120; // px from bottom within which scrolling re-engages
 
-export function createStickyScroll(scrollEl, contentEl) {
+export function createStickyScroll(scrollEl, contentEl, opts = {}) {
     let follow = true;
     let pendingProgrammatic = 0;
+
+    // setFollow notifies onFollowChange only on an actual edge — drives the
+    // jump-to-latest button (shown while NOT following).
+    const setFollow = (v) => {
+        if (v === follow) return;
+        follow = v;
+        opts.onFollowChange?.(follow);
+    };
 
     const pin = () => {
         const target = scrollEl.scrollHeight - scrollEl.clientHeight;
@@ -26,7 +34,7 @@ export function createStickyScroll(scrollEl, contentEl) {
             pendingProgrammatic--;
             return;
         }
-        follow = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < FOLLOW_THRESHOLD;
+        setFollow(scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < FOLLOW_THRESHOLD);
     };
     scrollEl.addEventListener('scroll', onScroll);
 
@@ -53,14 +61,15 @@ export function createStickyScroll(scrollEl, contentEl) {
     }
 
     return {
-        // engage: user intent to be at the bottom (sending a message).
+        // engage: user intent to be at the bottom (sending a message, or the
+        // jump-to-latest button).
         engage() {
-            follow = true;
+            setFollow(true);
             pin();
         },
         // disengage: user intent to read away from the bottom (load earlier).
         disengage() {
-            follow = false;
+            setFollow(false);
         },
         // suppressNext: ignore resize-driven pins for the burst caused by a
         // user-initiated layout change (expand/collapse toggles).
