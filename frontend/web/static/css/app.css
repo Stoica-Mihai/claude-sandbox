@@ -503,7 +503,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   border-bottom:3px solid var(--line);background:var(--surf);font-family:var(--mono);font-size:11px}
 .chat-header-cwd{color:var(--ink);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .chat-header-model{color:var(--muted)}
-.chat-header-cost{color:var(--muted);margin-left:auto}
+/* margin-left:auto pushes the mode/kill group to the right (previously the
+   cost element carried this before it was removed). */
+.chat-header-mode{margin-left:auto}
 .chat-header-mode,.chat-header-kill{border:2px solid var(--line);background:var(--field);color:var(--ink);
   font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
   padding:5px 10px;cursor:pointer;flex:none}

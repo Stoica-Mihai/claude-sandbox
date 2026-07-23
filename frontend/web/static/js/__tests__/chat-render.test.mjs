@@ -127,19 +127,14 @@ test('a tool-result patch appends the output excerpt to the existing tool block'
     });
 });
 
-test('header and usage patches invoke their callbacks without touching the DOM list', () => {
+test('a header patch invokes onHeader without touching the DOM list', () => {
     withDocument(() => {
         const list = new FakeElement('div');
-        let gotHeader, gotUsage;
+        let gotHeader;
         applyPatches(list, [
             { kind: 'header', header: { cwd: '/workspace/x', model: 'opus' } },
-            { kind: 'usage', usage: { totalCostUsd: 0.5 } },
-        ], {
-            onHeader: (h) => { gotHeader = h; },
-            onUsage: (u) => { gotUsage = u; },
-        });
+        ], { onHeader: (h) => { gotHeader = h; } });
         assert.deepEqual(gotHeader, { cwd: '/workspace/x', model: 'opus' });
-        assert.deepEqual(gotUsage, { totalCostUsd: 0.5 });
         assert.equal(list.children.length, 0);
     });
 });

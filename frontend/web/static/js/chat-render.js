@@ -491,9 +491,6 @@ export function applyPatches(listEl, patches, callbacks = {}) {
             case 'header':
                 callbacks.onHeader?.(p.header);
                 break;
-            case 'usage':
-                callbacks.onUsage?.(p.usage);
-                break;
             default:
                 break;
         }

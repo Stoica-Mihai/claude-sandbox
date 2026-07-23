@@ -15,7 +15,6 @@
 export function createChatState() {
     return {
         header: { cwd: '', model: '', sessionId: '' },
-        usage: { totalCostUsd: null, inputTokens: null, outputTokens: null },
         messages: [], // { id, role, blocks: [ {type,text,collapsed,toolName,toolUseId,input,inputRaw,result,resultText,done} ] }
         // blockIndex tracks the open assistant message's content-block-index → block, for
         // stream_event content_block_* dispatch while a message is in progress.
@@ -69,8 +68,6 @@ export function applyEvent(state, evt, opts) {
             return applyFullMessage(state, evt, 'assistant', !!opts?.replay);
         case 'user':
             return applyUserEvent(state, evt);
-        case 'result':
-            return applyResult(state, evt);
         case 'conversation_reset':
             return applyReset(state, evt);
         default:
@@ -251,15 +248,6 @@ function toolResultText(content) {
         return content.map(c => (typeof c === 'string' ? c : c.text || '')).join('\n');
     }
     return '';
-}
-
-function applyResult(state, evt) {
-    state.usage = {
-        totalCostUsd: evt.total_cost_usd ?? state.usage.totalCostUsd,
-        inputTokens: evt.usage?.input_tokens ?? state.usage.inputTokens,
-        outputTokens: evt.usage?.output_tokens ?? state.usage.outputTokens,
-    };
-    return [{ kind: 'usage', usage: state.usage }];
 }
 
 function applyReset(state, evt) {

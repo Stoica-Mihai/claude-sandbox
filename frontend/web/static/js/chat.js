@@ -34,8 +34,6 @@ export const ChatManager = {
         headerCwd.textContent = getSession(terminalId)?.cwd || '';
         const headerModel = document.createElement('span');
         headerModel.className = 'chat-header-model';
-        const headerCost = document.createElement('span');
-        headerCost.className = 'chat-header-cost';
         const modeBtn = document.createElement('button');
         modeBtn.type = 'button';
         modeBtn.className = 'chat-header-mode';
@@ -51,7 +49,6 @@ export const ChatManager = {
         killBtn.dataset.terminalId = terminalId;
         header.appendChild(headerCwd);
         header.appendChild(headerModel);
-        header.appendChild(headerCost);
         header.appendChild(modeBtn);
         header.appendChild(killBtn);
 
@@ -93,7 +90,6 @@ export const ChatManager = {
             }),
             headerCwd,
             headerModel,
-            headerCost,
             loadMoreBtn,
             state: createChatState(),
             transcriptLines: [],
@@ -172,7 +168,7 @@ export const ChatManager = {
     _connect(terminalId) {
         const instance = this.instances[terminalId];
         if (!instance) return;
-        const { flow, headerCwd, headerModel, headerCost } = instance;
+        const { flow, headerCwd, headerModel } = instance;
         const socket = new SessionSocket(terminalId, {
             onControl: (evt) => {
                 // Running-state edges from the stream: any turn activity marks
@@ -188,7 +184,6 @@ export const ChatManager = {
                 const patches = applyEvent(instance.state, evt);
                 applyPatches(flow, patches, {
                     onHeader: (h) => { headerCwd.textContent = h.cwd; headerModel.textContent = h.model; },
-                    onUsage: (u) => { headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
                     onQuickReply: (text) => this._sendUserText(terminalId, text, null),
                 });
             },
@@ -250,7 +245,6 @@ export const ChatManager = {
             const patches = applyEvent(instance.state, evt, { replay: true });
             applyPatches(instance.flow, patches, {
                 onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },
-                onUsage: (u) => { instance.headerCost.textContent = u.totalCostUsd != null ? '$' + u.totalCostUsd.toFixed(4) : ''; },
                 onQuickReply: (text) => this._sendUserText(terminalId, text, null),
             });
         }

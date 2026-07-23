@@ -139,13 +139,6 @@ test('assistant full-message event does not clobber an already-finalized streame
     assert.equal(msg.blocks[0].text, 'streamed');
 });
 
-test('result event captures usage/cost', () => {
-    const state = createChatState();
-    const patches = applyEvent(state, { type: 'result', total_cost_usd: 0.0123, usage: { input_tokens: 10, output_tokens: 20 } });
-    assert.equal(patches[0].kind, 'usage');
-    assert.deepEqual(state.usage, { totalCostUsd: 0.0123, inputTokens: 10, outputTokens: 20 });
-});
-
 test('conversation_reset produces a system notice', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'conversation_reset', session_id: 'old', new_conversation_id: 'unreliable' });
