@@ -56,7 +56,16 @@ class FakeElement {
         if (this._innerHTML === '') this.children = [];
     }
     get innerHTML() { return this._innerHTML; }
-    appendChild(child) { this.children.push(child); child.parentNode = this; return child; }
+    appendChild(child) {
+        if (child.parentNode) child.remove(); // moving re-parents, like the real DOM
+        this.children.push(child); child.parentNode = this; return child;
+    }
+    insertBefore(node, ref) {
+        if (node.parentNode) node.remove();
+        const i = ref ? this.children.indexOf(ref) : -1;
+        if (i >= 0) this.children.splice(i, 0, node); else this.children.push(node);
+        node.parentNode = this; return node;
+    }
     remove() {
         if (this.parentNode) {
             const i = this.parentNode.children.indexOf(this);
@@ -124,17 +133,18 @@ class FakeElement {
 // class selectors (e.g. ".actitle, .arow-wrap"). Class selectors only —
 // enough for the dir-picker history/delete paths under test.
 function matchDescendants(root, sel) {
-    const classes = String(sel).split(',')
-        .map(s => s.trim())
-        .filter(s => s.startsWith('.'))
-        .map(s => s.slice(1));
-    if (classes.length === 0) return [];
+    // Class selectors (".foo") and bare tag selectors ("pre") — comma lists of
+    // either. Enough for the dir-picker paths and decorateCodeBlocks' pre scan.
+    const parts = String(sel).split(',').map(s => s.trim()).filter(Boolean);
+    const classes = parts.filter(s => s.startsWith('.')).map(s => s.slice(1));
+    const tags = parts.filter(s => /^[a-z][a-z0-9]*$/i.test(s)).map(s => s.toUpperCase());
+    if (classes.length === 0 && tags.length === 0) return [];
     const out = [];
     const walk = (el) => {
         (el.children || []).forEach(child => {
-            if (classes.some(c => child.classList && child.classList.contains(c))) {
-                out.push(child);
-            }
+            const hitClass = classes.some(c => child.classList && child.classList.contains(c));
+            const hitTag = tags.includes(child.tagName);
+            if (hitClass || hitTag) out.push(child);
             walk(child);
         });
     };

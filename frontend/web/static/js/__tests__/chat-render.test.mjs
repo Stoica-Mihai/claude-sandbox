@@ -491,3 +491,16 @@ test('a sent message (no unsent opt) has no retry and is not dimmed', () => {
         assert.equal([...el.children].some(c => c.classList.contains('chat-retry')), false);
     });
 });
+
+test('tool-body code panes get the same copy icon as markdown fences', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Bash', toolUseId: 't1', input: { command: 'ls -la' }, resultText: 'a\nb', done: true } },
+        ]);
+        const blockEl = firstBlock(list.children[0]);
+        const copyBtns = blockEl.querySelectorAll('.chat-code-copy');
+        assert.ok(copyBtns.length >= 2, 'copy icon on the command pre and the output pre'); // cmd + output
+    });
+});

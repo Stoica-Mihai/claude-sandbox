@@ -97,6 +97,8 @@ function decorateCodeBlocks(container) {
     if (!container.querySelectorAll) return; // real DOM only
     for (const pre of container.querySelectorAll('pre')) {
         if (pre._copyWrapped || !pre.parentNode) continue;
+        // Diff panes are a paired old/new layout, not a standalone copy target.
+        if (pre.parentNode.classList && pre.parentNode.classList.contains('chat-diff')) continue;
         pre._copyWrapped = true;
         const code = pre.textContent;
         const wrap = document.createElement('div');
@@ -309,6 +311,9 @@ function renderToolBlock(el, block) {
         // (auto-detect on arbitrary tool output guesses wrong too often).
         if (block.toolName === 'Read' && fileLang) highlightCode(out, fileLang);
     }
+    // Same copy affordance as markdown code fences — each pre (command, input,
+    // output, diff pane) gets a currentColor copy icon.
+    decorateCodeBlocks(body);
 }
 
 function renderBlock(msgEl, messageId, blockIndex, block) {
