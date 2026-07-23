@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	// maxUploadSize is the maximum allowed image upload size (10 MB).
+	// maxUploadSize is the maximum allowed upload size (10 MB).
 	maxUploadSize = 10 << 20
 	// maxSessionNameLen caps custom session names (bytes) — the index file
 	// persists them, so unbounded names mean unbounded index growth.
@@ -38,7 +38,7 @@ const (
 )
 
 // uploadDir lives on the claude-state volume shared with the sessions
-// container, so claude can read pasted-image paths the backend writes. Resolved
+// container, so claude can read uploaded file paths the backend writes. Resolved
 // at startup by initPaths from protocol.StateDir (sibling of the socket dir) so
 // it follows a mount move instead of being stranded off-volume. A var so tests
 // can redirect it.
@@ -371,8 +371,26 @@ func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, api.CreateDirectoryResponse{Path: rel, Warning: warning})
 }
 
-// handleUpload accepts an image file upload and saves it to a temp directory
-// accessible from the session. Returns the file path as JSON.
+// uploadNameRe collapses anything outside a safe filename charset; the saved
+// name is random-prefixed, so this only sanitizes the preserved original name.
+var uploadNameRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// sanitizeUploadName reduces a client-supplied filename to a single safe path
+// segment, preserving the extension (keeps the tail if very long).
+func sanitizeUploadName(name string) string {
+	name = uploadNameRe.ReplaceAllString(filepath.Base(name), "_")
+	name = strings.Trim(name, "._")
+	if len(name) > 80 {
+		name = name[len(name)-80:]
+	}
+	if name == "" {
+		name = "file"
+	}
+	return name
+}
+
+// handleUpload accepts a file upload (any type — the model Reads it by path)
+// and saves it to a session-scoped dir on the shared volume. Returns the path.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	sessionName, ok := requirePathValue(w, r, "terminalId", "missing session name")
 	if !ok {
@@ -397,29 +415,16 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("image")
+	// "file" is the chat field; terminal image-paste posts "image".
+	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "missing image field")
+		file, header, err = r.FormFile("image")
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "missing file field")
 		return
 	}
 	defer file.Close()
-
-	// Validate content type.
-	ct := header.Header.Get("Content-Type")
-	var ext string
-	switch {
-	case strings.HasPrefix(ct, "image/png"):
-		ext = ".png"
-	case strings.HasPrefix(ct, "image/jpeg"):
-		ext = ".jpg"
-	case strings.HasPrefix(ct, "image/gif"):
-		ext = ".gif"
-	case strings.HasPrefix(ct, "image/webp"):
-		ext = ".webp"
-	default:
-		writeErr(w, http.StatusBadRequest, "unsupported image type: "+ct)
-		return
-	}
 
 	// Create upload directory for this session.
 	sessionDir := filepath.Join(uploadDir, sessionName)
@@ -434,7 +439,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "failed to generate filename")
 		return
 	}
-	filename := "clipboard-" + hex.EncodeToString(randBytes[:]) + ext
+	// Random prefix guarantees uniqueness; the sanitized original name is
+	// preserved so the model (and the user) sees a meaningful path/extension.
+	filename := hex.EncodeToString(randBytes[:]) + "-" + sanitizeUploadName(header.Filename)
 	filePath := filepath.Join(sessionDir, filename)
 
 	dst, err := os.Create(filePath)
@@ -451,7 +458,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("image uploaded", "session", sessionName, "path", filePath, "size", header.Size)
+	slog.Info("file uploaded", "session", sessionName, "path", filePath, "size", header.Size)
 	writeJSON(w, http.StatusOK, map[string]string{"path": filePath})
 }
 

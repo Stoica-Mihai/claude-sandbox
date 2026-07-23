@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -362,5 +363,62 @@ func TestHandleCreateDirectoryGitInitFailure(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(workspaceRoot, parent, "repo")); err != nil || !info.IsDir() {
 		t.Fatalf("folder should survive git failure: info=%v err=%v", info, err)
+	}
+}
+
+func TestSanitizeUploadName(t *testing.T) {
+	cases := map[string]string{
+		"report.pdf":            "report.pdf",
+		"../../etc/passwd":      "passwd",
+		"my report v2.PDF":      "my_report_v2.PDF",
+		".env":                  "env",
+		"weird/../name*?.txt":   "name_.txt",
+		"":                      "file",
+	}
+	for in, want := range cases {
+		if got := sanitizeUploadName(in); got != want {
+			t.Errorf("sanitizeUploadName(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := sanitizeUploadName(strings.Repeat("a", 200) + ".go"); len(got) > 80 || !strings.HasSuffix(got, ".go") {
+		t.Errorf("long name not tail-truncated with extension: len=%d suffix ok=%v", len(got), strings.HasSuffix(got, ".go"))
+	}
+}
+
+func TestHandleUploadAnyFileType(t *testing.T) {
+	testConfigDir(t)
+	tmp := t.TempDir()
+	orig := uploadDir
+	uploadDir = tmp
+	t.Cleanup(func() { uploadDir = orig })
+
+	s := newTestServer(t, loadSessionIndexFresh(t))
+	s.sm.store.add(sessionRecord{Name: "claude-u1", CWD: "/workspace/a", SessionID: testUUID1, Kind: api.SessionKindChat})
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	fw, _ := mw.CreateFormFile("file", "notes report.md")
+	fw.Write([]byte("# hello\nnot an image\n"))
+	mw.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/sessions/{terminalId}/upload", s.handleUpload)
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/claude-u1/upload", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (any file type must upload): %s", rec.Code, rec.Body.String())
+	}
+	var resp struct{ Path string `json:"path"` }
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("bad response: %v", err)
+	}
+	if !strings.HasSuffix(resp.Path, "-notes_report.md") {
+		t.Fatalf("path = %q, want a -notes_report.md suffix (sanitized original name preserved)", resp.Path)
+	}
+	if data, err := os.ReadFile(resp.Path); err != nil || !strings.Contains(string(data), "not an image") {
+		t.Fatalf("saved file missing/wrong: err=%v", err)
 	}
 }

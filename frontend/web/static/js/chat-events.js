@@ -249,18 +249,19 @@ export function transcriptUserText(evt) {
     if (content.some((cb) => cb.type === 'tool_result')) return null;
     let text = content.filter((cb) => cb.type === 'text').map((cb) => cb.text || '').join('\n');
     // Render attachment markers the way the live echo does (chat.js): 📎, not
-    // the raw upload path composeUserInput embeds.
-    text = text.replace(/\s*\[Attached image: [^\]]*\]/g, ' 📎').trim();
+    // the raw upload path composeUserInput embeds. Matches both the current
+    // "file" wording and the older "image" wording in existing transcripts.
+    text = text.replace(/\s*\[Attached (?:file|image): [^\]]*\]/g, ' 📎').trim();
     return text || null;
 }
 
-// composeUserInput builds the outbound stream-json user message. imagePath,
+// composeUserInput builds the outbound stream-json user message. filePath,
 // when set, references an already-uploaded file by path (see chat-input.js —
-// the model Reads the file itself); inline image bytes are never sent.
-export function composeUserInput(text, imagePath) {
+// the model Reads the file itself); inline file bytes are never sent.
+export function composeUserInput(text, filePath) {
     let combined = text || '';
-    if (imagePath) {
-        combined = combined ? combined + '\n\n[Attached image: ' + imagePath + ']' : '[Attached image: ' + imagePath + ']';
+    if (filePath) {
+        combined = combined ? combined + '\n\n[Attached file: ' + filePath + ']' : '[Attached file: ' + filePath + ']';
     }
     return { type: 'user', message: { role: 'user', content: [{ type: 'text', text: combined }] } };
 }

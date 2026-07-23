@@ -5,11 +5,11 @@
 
 import { sessionUploadPath } from './routes.js';
 
-// uploadImageFile posts an image file to the session's upload endpoint and
-// returns the saved file path the model can Read.
-export async function uploadImageFile(terminalId, file) {
+// uploadFile posts any file to the session's upload endpoint and returns the
+// saved path the model can Read (images, PDFs, docs, source — engine's call).
+export async function uploadFile(terminalId, file) {
     const form = new FormData();
-    form.append('image', file);
+    form.append('file', file);
     const res = await fetch(sessionUploadPath(terminalId), { method: 'POST', body: form });
     if (!res.ok) throw new Error('upload failed: ' + res.status);
     const data = await res.json();
@@ -34,14 +34,13 @@ export function createInputBar({ onSend, onStop, terminalId }) {
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-    fileInput.className = 'chat-input-file hidden';
+    fileInput.className = 'chat-input-file hidden'; // no accept filter — any file
 
     const attachBtn = document.createElement('button');
     attachBtn.type = 'button';
     attachBtn.className = 'chat-input-attach';
-    attachBtn.title = 'Attach image';
-    attachBtn.setAttribute('aria-label', 'Attach image');
+    attachBtn.title = 'Attach file';
+    attachBtn.setAttribute('aria-label', 'Attach file');
     attachBtn.textContent = '+';
 
     const sendBtn = document.createElement('button');
@@ -54,18 +53,18 @@ export function createInputBar({ onSend, onStop, terminalId }) {
     wrap.appendChild(fileInput);
     wrap.appendChild(sendBtn);
 
-    let pendingImagePath = null;
+    let pendingFilePath = null;
     let running = false;
 
     function clearAttachment() {
-        pendingImagePath = null;
+        pendingFilePath = null;
         attachBtn.classList.remove('chat-input-attach-pending');
     }
 
     function doSend() {
         const text = textarea.value.trim();
-        if (!text && !pendingImagePath) return;
-        onSend(text, pendingImagePath);
+        if (!text && !pendingFilePath) return;
+        onSend(text, pendingFilePath);
         textarea.value = '';
         clearAttachment();
     }
@@ -84,7 +83,7 @@ export function createInputBar({ onSend, onStop, terminalId }) {
         fileInput.value = '';
         if (!file) return;
         try {
-            pendingImagePath = await uploadImageFile(terminalId, file);
+            pendingFilePath = await uploadFile(terminalId, file);
             attachBtn.classList.add('chat-input-attach-pending');
         } catch (e) {
             clearAttachment();

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
-import { createInputBar, uploadImageFile } from '../chat-input.js';
+import { createInputBar, uploadFile } from '../chat-input.js';
 
 function withEnv(fn) {
     const prevDoc = globalThis.document;
@@ -64,7 +64,7 @@ test('sending empty text with no attachment is a no-op', () => {
     });
 });
 
-test('uploadImageFile posts to the session upload route and returns the saved path', async () => {
+test('uploadFile posts to the session upload route and returns the saved path', async () => {
     await withEnv(async () => {
         let capturedUrl, capturedBody;
         globalThis.fetch = (url, opts) => {
@@ -73,17 +73,17 @@ test('uploadImageFile posts to the session upload route and returns the saved pa
             return Promise.resolve({ ok: true, json: async () => ({ path: '/state/uploads/claude-1/clipboard-abcd.png' }) });
         };
         const fakeFile = { name: 'a.png' };
-        const path = await uploadImageFile('claude-1', fakeFile);
+        const path = await uploadFile('claude-1', fakeFile);
         assert.equal(capturedUrl, '/api/sessions/claude-1/upload');
         assert.ok(capturedBody instanceof FormData);
         assert.equal(path, '/state/uploads/claude-1/clipboard-abcd.png');
     });
 });
 
-test('uploadImageFile throws on a non-OK response', async () => {
+test('uploadFile throws on a non-OK response', async () => {
     await withEnv(async () => {
         globalThis.fetch = () => Promise.resolve({ ok: false, status: 400 });
-        await assert.rejects(() => uploadImageFile('claude-1', { name: 'a.png' }));
+        await assert.rejects(() => uploadFile('claude-1', { name: 'a.png' }));
     });
 });
 

@@ -249,3 +249,9 @@ test('the post-interrupt marker becomes an interrupt patch, not a user turn', ()
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } });
     assert.deepEqual(patches, [{ kind: 'interrupt' }]);
 });
+
+test('transcriptUserText renders the "file" attachment marker as a paperclip too', () => {
+    const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'see this\n\n[Attached file: /up/report.pdf]' }] } };
+    const patches = applyEvent(createChatState(), evt);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this 📎' }]);
+});
