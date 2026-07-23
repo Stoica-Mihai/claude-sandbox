@@ -100,7 +100,7 @@ export const ChatManager = {
                     return;
                 }
                 if (!text && !imagePath) return;
-                appendUserMessage(instance.flow, imagePath ? (text ? text + ' 📎' : '📎 file attached') : text);
+                appendUserMessage(instance.flow, text, !!imagePath);
                 showPending(instance.flow);
                 this._setRunning(terminalId, true);
                 instance.sticky.engage();

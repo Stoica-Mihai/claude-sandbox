@@ -13,6 +13,8 @@
   --terminal-bg:#0d1117;
   /* Shared live-dot blink (statpill, session card, active tab dot). */
   --blink:fd-blink 1.2s step-end infinite;
+  /* Paperclip mask for .chat-attach-icon (painted in currentColor). */
+  --paperclip:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48'/%3E%3C/svg%3E");
   /* Mobile flag — the single source for the mobile breakpoint. CSS owns it
      (custom props can't be used in @media conditions); views.js reads it via
      getComputedStyle. Flipped to 0 in the min-width:768px block below. */
@@ -605,6 +607,12 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   border:2px solid var(--line);background:var(--field);padding:4px 8px;
   font-family:var(--mono);font-size:11px;color:var(--muted);min-width:0}
 .chat-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* Attachment glyph — a paperclip painted in currentColor via a mask (Futurism:
+   icons are currentColor stroke SVG, never a color emoji). */
+.chat-attach-icon{flex:none;display:inline-block;width:13px;height:13px;vertical-align:-2px;
+  background:currentColor;
+  -webkit-mask:var(--paperclip) center/contain no-repeat;mask:var(--paperclip) center/contain no-repeat}
+.chat-msg-user .chat-attach-icon{margin-left:6px}
 .chat-chip-remove{flex:none;margin-left:auto;border:none;background:transparent;color:var(--muted);
   font-family:var(--mono);font-size:12px;line-height:1;padding:0 2px;cursor:pointer}
 .chat-chip-remove:hover{color:var(--ink)}

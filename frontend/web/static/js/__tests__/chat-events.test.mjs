@@ -103,7 +103,7 @@ test('user event with a tool_result attaches it to the matching tool block by id
 test('user event with plain text renders a bubble (sessiond mirrors co-viewer sends; the sender never receives its own)', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hello' }] } });
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'hello' }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'hello', attachment: false }]);
 });
 
 test('user event with a tool_result for an unknown tool_use_id is ignored', () => {
@@ -182,8 +182,8 @@ test('composeUserInput with only an image and no caption still sends a reference
 
 test('transcriptUserText extracts plain user turns', async () => {
     const { transcriptUserText } = await import('../chat-events.js');
-    assert.equal(transcriptUserText({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hello' }] } }), 'hello');
-    assert.equal(transcriptUserText({ type: 'user', message: { role: 'user', content: 'plain string' } }), 'plain string');
+    assert.deepEqual(transcriptUserText({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hello' }] } }), { text: 'hello', hasAttachment: false });
+    assert.deepEqual(transcriptUserText({ type: 'user', message: { role: 'user', content: 'plain string' } }), { text: 'plain string', hasAttachment: false });
 });
 
 test('transcriptUserText rejects non-user, meta, and tool_result records', async () => {
@@ -217,10 +217,10 @@ test('live full assistant events still index-match streamed blocks (no replay fl
     assert.equal(state.messages[0].blocks.length, 1); // full event did not duplicate the streamed block
 });
 
-test('transcriptUserText renders attachment markers as a paperclip', async () => {
+test('transcriptUserText strips the attachment marker and flags it (no emoji in text)', async () => {
     const { transcriptUserText } = await import('../chat-events.js');
     const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'did i attach something?\n\n[Attached image: /home/claude/.local/state/claude/uploads/x/y.jpg]' }] } };
-    assert.equal(transcriptUserText(evt), 'did i attach something? 📎');
+    assert.deepEqual(transcriptUserText(evt), { text: 'did i attach something?', hasAttachment: true });
 });
 
 test('empty thinking shells (transcript form) produce no block', () => {
@@ -233,7 +233,7 @@ test('empty thinking shells (transcript form) produce no block', () => {
 test('a mirrored plain-text user event renders as a user bubble patch', () => {
     const state = createChatState();
     const patches = applyEvent(state, { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'from the phone\n\n[Attached image: /up/x.jpg]' }] } });
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'from the phone 📎' }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'from the phone', attachment: true }]);
 });
 
 test('tool_result user events never produce a user bubble', () => {
@@ -250,8 +250,8 @@ test('the post-interrupt marker becomes an interrupt patch, not a user turn', ()
     assert.deepEqual(patches, [{ kind: 'interrupt' }]);
 });
 
-test('transcriptUserText renders the "file" attachment marker as a paperclip too', () => {
+test('the "file" attachment marker is stripped and flagged too', () => {
     const evt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'see this\n\n[Attached file: /up/report.pdf]' }] } };
     const patches = applyEvent(createChatState(), evt);
-    assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this 📎' }]);
+    assert.deepEqual(patches, [{ kind: 'user-message', text: 'see this', attachment: true }]);
 });

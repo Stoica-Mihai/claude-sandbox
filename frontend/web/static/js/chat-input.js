@@ -74,12 +74,15 @@ export function createInputBar({ onSend, onStop, terminalId }) {
         chip.textContent = '';
         if (!name) { chip.classList.add('hidden'); return; }
         chip.classList.remove('hidden');
+        const icon = document.createElement('span');
+        icon.className = 'chat-attach-icon'; // masked paperclip in currentColor, not an emoji
+        chip.appendChild(icon);
         const label = document.createElement('span');
         label.className = 'chat-chip-name';
         let suffix = '';
         if (status === 'uploading') suffix = ' · uploading…';
         else if (status === 'failed') suffix = ' · failed' + (detail ? ' (' + detail + ')' : '');
-        label.textContent = '📎 ' + name + suffix;
+        label.textContent = name + suffix;
         chip.appendChild(label);
         if (status === 'ready') {
             const rm = document.createElement('button');

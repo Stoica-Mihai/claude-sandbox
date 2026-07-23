@@ -348,8 +348,17 @@ export function clearPending(listEl) {
 export function appendInterruptMarker(listEl) {
     const el = document.createElement('div');
     el.className = 'chat-interrupted';
-    el.textContent = '⏹ Stopped';
+    el.textContent = '■ Stopped'; // machined square, not the ⏹ emoji
     listEl.appendChild(el);
+}
+
+// attachmentIcon builds the inline attachment glyph — a CSS-masked paperclip
+// in currentColor (Futurism: icons are currentColor, never color emoji).
+export function attachmentIcon() {
+    const icon = document.createElement('span');
+    icon.className = 'chat-attach-icon';
+    icon.setAttribute('aria-label', 'attachment');
+    return icon;
 }
 
 // appendSystemNotice renders a plain system line (e.g. after /clear).
@@ -363,10 +372,15 @@ export function appendSystemNotice(listEl, text) {
 // appendUserMessage renders the user's own message optimistically on send —
 // the server's "user" event echo is intentionally NOT re-rendered (see
 // chat-events.js applyUserEvent) to avoid a duplicate bubble.
-export function appendUserMessage(listEl, text) {
+export function appendUserMessage(listEl, text, hasAttachment) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
-    el.textContent = text;
+    if (text) {
+        const span = document.createElement('span');
+        span.textContent = text; // textContent keeps user input un-parsed
+        el.appendChild(span);
+    }
+    if (hasAttachment) el.appendChild(attachmentIcon());
     listEl.appendChild(el);
 }
 
@@ -394,7 +408,7 @@ export function applyPatches(listEl, patches, callbacks = {}) {
                 appendSystemNotice(listEl, p.text);
                 break;
             case 'user-message':
-                appendUserMessage(listEl, p.text);
+                appendUserMessage(listEl, p.text, p.attachment);
                 showPending(listEl); // a co-viewer sent; their turn is now running
                 break;
             case 'interrupt':

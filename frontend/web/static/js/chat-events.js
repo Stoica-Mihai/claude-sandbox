@@ -191,13 +191,13 @@ function applyUserEvent(state, evt) {
         patches.push({ kind: 'tool-result', messageId: found.messageId, blockIndex: found.blockIndex, block: found.block });
     }
     if (patches.length) return patches;
-    const text = transcriptUserText(evt);
-    if (text === null) return patches;
+    const info = transcriptUserText(evt);
+    if (info === null) return patches;
     // The engine emits this synthetic user turn right after an interrupt; it
     // is an abort marker, not a real send — render it as a system notice so
     // it neither starts a new turn nor shows a pending row.
-    if (text === INTERRUPT_MARKER) return [{ kind: 'interrupt' }];
-    return [{ kind: 'user-message', text }];
+    if (info.text === INTERRUPT_MARKER) return [{ kind: 'interrupt' }];
+    return [{ kind: 'user-message', text: info.text, attachment: info.hasAttachment }];
 }
 
 const INTERRUPT_MARKER = '[Request interrupted by user]';
@@ -238,21 +238,29 @@ function applyReset(state, evt) {
     return [{ kind: 'system-notice', text: '/clear — conversation context cleared' }];
 }
 
-// transcriptUserText extracts the text of a plain user turn from a transcript
-// record, or null when the record is not one (meta records, tool_result
-// carriers). Replay-only: live user events carry only tool_results.
+// Attachment marker composeUserInput embeds; matches the current "file" and
+// older "image" wording in existing transcripts.
+const ATTACHMENT_MARKER = /\s*\[Attached (?:file|image): [^\]]*\]/g;
+
+// transcriptUserText extracts a plain user turn as { text, hasAttachment },
+// or null when the record is not one (meta records, tool_result carriers).
+// The attachment marker is stripped from text — the flag drives a rendered
+// icon instead, so no emoji ends up in the message string. Replay-only: live
+// user events carry only tool_results.
 export function transcriptUserText(evt) {
     if (!evt || evt.type !== 'user' || evt.isMeta) return null;
     const content = evt.message?.content;
-    if (typeof content === 'string') return content || null;
-    if (!Array.isArray(content)) return null;
-    if (content.some((cb) => cb.type === 'tool_result')) return null;
-    let text = content.filter((cb) => cb.type === 'text').map((cb) => cb.text || '').join('\n');
-    // Render attachment markers the way the live echo does (chat.js): 📎, not
-    // the raw upload path composeUserInput embeds. Matches both the current
-    // "file" wording and the older "image" wording in existing transcripts.
-    text = text.replace(/\s*\[Attached (?:file|image): [^\]]*\]/g, ' 📎').trim();
-    return text || null;
+    let raw;
+    if (typeof content === 'string') raw = content;
+    else if (Array.isArray(content)) {
+        if (content.some((cb) => cb.type === 'tool_result')) return null;
+        raw = content.filter((cb) => cb.type === 'text').map((cb) => cb.text || '').join('\n');
+    } else return null;
+    const hasAttachment = ATTACHMENT_MARKER.test(raw);
+    ATTACHMENT_MARKER.lastIndex = 0;
+    const text = raw.replace(ATTACHMENT_MARKER, '').trim();
+    if (!text && !hasAttachment) return null;
+    return { text, hasAttachment };
 }
 
 // composeUserInput builds the outbound stream-json user message. filePath,

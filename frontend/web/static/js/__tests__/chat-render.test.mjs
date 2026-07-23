@@ -382,3 +382,25 @@ test('a tool-only turn keeps the copy button hidden (no prose to copy)', () => {
         assert.equal(btn.classList.contains('hidden'), true);
     });
 });
+
+test('a user message with an attachment renders a masked icon, not an emoji', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        appendUserMessage(list, 'here', true);
+        const bubble = list.children[0];
+        assert.ok(bubble.textContent.includes('here'));
+        assert.equal(bubble.textContent.includes('📎'), false); // no color emoji
+        const icon = [...bubble.children].find(c => c.classList.contains('chat-attach-icon'));
+        assert.ok(icon, 'attachment icon element present');
+    });
+});
+
+test('the interrupt marker uses a machined square, not the stop emoji', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [{ kind: 'interrupt' }]);
+        const marker = list.children.find(c => c.classList.contains('chat-interrupted'));
+        assert.ok(marker.textContent.includes('Stopped'));
+        assert.equal(marker.textContent.includes('⏹'), false);
+    });
+});
