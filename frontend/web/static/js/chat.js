@@ -60,6 +60,11 @@ export const ChatManager = {
         loadMoreBtn.className = 'chat-load-more hidden';
         loadMoreBtn.textContent = 'Load earlier messages';
 
+        // listWrap is a non-scrolling positioning context; the list scrolls
+        // inside it and the jump button is pinned to the wrap (an absolute
+        // button inside the scroll container itself scrolls out of view).
+        const listWrap = document.createElement('div');
+        listWrap.className = 'chat-list-wrap';
         const list = document.createElement('div');
         list.className = 'chat-message-list';
         // flow is the render target; list is the scroll container. The split
@@ -67,16 +72,17 @@ export const ChatManager = {
         const flow = document.createElement('div');
         flow.className = 'chat-message-flow';
         list.appendChild(flow);
+        listWrap.appendChild(list);
 
-        // Jump-to-latest: floats bottom-right of the list, shown only while the
-        // user has scrolled away from the bottom (follow disengaged).
+        // Jump-to-latest: pinned bottom-right of the list viewport, shown only
+        // while the user has scrolled away from the bottom (follow disengaged).
         const jumpBtn = document.createElement('button');
         jumpBtn.type = 'button';
         jumpBtn.className = 'chat-jump-latest hidden';
         jumpBtn.title = 'Jump to latest';
         jumpBtn.setAttribute('aria-label', 'Jump to latest');
         jumpBtn.textContent = '↓';
-        list.appendChild(jumpBtn);
+        listWrap.appendChild(jumpBtn);
 
         const instance = {
             root,
@@ -126,7 +132,7 @@ export const ChatManager = {
 
         root.appendChild(header);
         root.appendChild(loadMoreBtn);
-        root.appendChild(list);
+        root.appendChild(listWrap);
         root.appendChild(inputBar.el);
         containerEl.appendChild(root);
 
