@@ -4,6 +4,27 @@
 // produces; owns no event-vocabulary knowledge itself. Scroll behavior is
 // deliberately NOT here — chat-scroll.js owns it (observation-driven).
 
+import { copyToClipboard } from './ui-utils.js';
+
+// makeCopyButton builds a copy button whose click copies getText() and briefly
+// flips its label to a confirmation. getText is read at click time so it
+// reflects the latest content.
+function makeCopyButton(className, getText) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.textContent = 'Copy';
+    btn.title = 'Copy';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't toggle a tool row / trip other handlers
+        Promise.resolve(copyToClipboard(getText())).then((ok) => {
+            btn.textContent = ok ? 'Copied' : 'Failed';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+        });
+    });
+    return btn;
+}
+
 // renderMarkdown converts markdown to sanitized HTML. Falls back to escaped
 // plain text if the vendored markdown/sanitizer libs are not loaded (e.g. a
 // unit test running without the real page scripts).
@@ -64,6 +85,23 @@ function highlightFences(container) {
     }
 }
 
+// decorateCodeBlocks adds a copy button to each fenced code block. The code
+// text is captured up front, so the button (a sibling of the pre inside a
+// positioned wrapper — never inside the pre) can't pollute what gets copied.
+function decorateCodeBlocks(container) {
+    if (!container.querySelectorAll) return; // real DOM only
+    for (const pre of container.querySelectorAll('pre')) {
+        if (pre._copyWrapped || !pre.parentNode) continue;
+        pre._copyWrapped = true;
+        const code = pre.textContent;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-code';
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+        wrap.appendChild(makeCopyButton('chat-code-copy', () => code));
+    }
+}
+
 // Element lookup uses a plain cache keyed off the list/message element
 // itself, not a CSS attribute-selector query — a query string built from an
 // event id would need selector-escaping to be robust, and repeated attribute
@@ -86,6 +124,20 @@ function findOrCreateMessageEl(listEl, messageId, role) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-' + role;
     el.setAttribute('data-message-id', messageId);
+    if (role === 'assistant') {
+        // Turn-copy: the prose only. Reads the markdown source stashed on each
+        // text block (_src), so thinking and tool blocks are structurally
+        // excluded rather than filtered by class-sniffing. Hidden until the
+        // turn actually has prose (a tool-only turn has nothing to copy).
+        const copyBtn = makeCopyButton('chat-turn-copy hidden', () =>
+            [...el.children]
+                .filter((c) => c.classList?.contains('chat-block-text'))
+                .map((c) => c._src || '')
+                .filter(Boolean)
+                .join('\n\n'));
+        el._turnCopyBtn = copyBtn;
+        el.appendChild(copyBtn);
+    }
     listEl.appendChild(el);
     cache[messageId] = el;
     return el;
@@ -129,12 +181,14 @@ export function stableMarkdownBoundary(text) {
 // can differ from a whole-text parse for constructs spanning blank lines
 // (loose lists), so finalize does one authoritative full parse.
 function renderTextBlock(el, block) {
+    el._src = block.text; // markdown source, for turn-copy
     if (block.done) {
         el._md = null;
         el.innerHTML = renderMarkdown(block.text);
         // Highlight only once the block stops streaming — re-highlighting
         // every delta would burn CPU for no visible gain.
         highlightFences(el);
+        decorateCodeBlocks(el);
         return;
     }
     const text = block.text || '';
@@ -254,7 +308,10 @@ function renderBlock(msgEl, messageId, blockIndex, block) {
     const el = findOrCreateBlockEl(msgEl, messageId + ':' + blockIndex, block.type);
     if (block.type === 'thinking') renderThinkingBlock(el, block);
     else if (block.type === 'tool') renderToolBlock(el, block);
-    else renderTextBlock(el, block);
+    else {
+        renderTextBlock(el, block);
+        if (block.text) msgEl._turnCopyBtn?.classList.remove('hidden'); // turn now has prose
+    }
 }
 
 // resetView empties a render container AND its element caches — clearing

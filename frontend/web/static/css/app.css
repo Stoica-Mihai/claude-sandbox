@@ -542,6 +542,20 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-block-text pre{background:var(--surf);border:2px solid var(--line);padding:8px;overflow-x:auto;font-family:var(--mono);font-size:12px}
 .chat-msg-assistant code{font-family:var(--mono);font-size:12px}
 
+/* Copy buttons — turn-level (prose) and per code block. Muted, reveal on
+   hover; always visible on touch (no hover). "Copied"/"Failed" feedback is
+   set in JS. */
+.chat-turn-copy,.chat-code-copy{border:2px solid var(--line);background:var(--surf);color:var(--muted);
+  font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+  padding:2px 7px;cursor:pointer;opacity:0;transition:opacity var(--fast) var(--ease)}
+.chat-turn-copy:hover,.chat-code-copy:hover{color:var(--ink);border-color:var(--ink)}
+.chat-turn-copy{position:absolute;top:0;right:0}
+.chat-msg-assistant:hover .chat-turn-copy{opacity:1}
+.chat-code{position:relative}
+.chat-code-copy{position:absolute;top:6px;right:6px}
+.chat-code:hover .chat-code-copy{opacity:1}
+@media (hover:none){.chat-turn-copy,.chat-code-copy{opacity:1}}
+
 /* ===== Blocks within an assistant message ===== */
 .chat-block+.chat-block{margin-top:8px}
 

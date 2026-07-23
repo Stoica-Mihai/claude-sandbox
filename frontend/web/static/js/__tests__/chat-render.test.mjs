@@ -5,6 +5,11 @@ import assert from 'node:assert/strict';
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
 import { applyPatches, appendSystemNotice, appendUserMessage, resetView, showPending } from '../chat-render.js';
 
+// Assistant boxes carry chrome (the turn-copy button) alongside block
+// elements, so address blocks by class rather than raw child index.
+const blocksOf = (box) => [...box.children].filter((c) => c.classList.contains('chat-block'));
+const firstBlock = (box) => blocksOf(box)[0];
+
 function withDocument(fn) {
     const prevDoc = globalThis.document;
     const prevWin = globalThis.window;
@@ -48,8 +53,8 @@ test('new-message then append-text patches build one message bubble with one tex
         assert.equal(list.children.length, 1);
         const msgEl = list.children[0];
         assert.ok(msgEl.classList.contains('chat-msg-assistant'));
-        assert.equal(msgEl.children.length, 1); // one block element, re-rendered in place
-        assert.ok(msgEl.children[0].innerHTML.includes('Hello'));
+        assert.equal(blocksOf(msgEl).length, 1); // one block element, re-rendered in place
+        assert.ok(firstBlock(msgEl).innerHTML.includes('Hello'));
     });
 });
 
@@ -60,7 +65,7 @@ test('a thinking block renders collapsed by default with a toggle', () => {
             { kind: 'new-message', messageId: 'm1', role: 'assistant' },
             { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'thinking', text: 'reasoning', collapsed: true, done: true } },
         ]);
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         assert.ok(blockEl.classList.contains('chat-block-thinking'));
         // Collapsed: only the toggle button renders, no body text visible.
         assert.equal(blockEl.children.length, 1);
@@ -78,7 +83,7 @@ test('a tool block for Edit renders a diff with old/new panes', () => {
                 block: { type: 'tool', toolName: 'Edit', toolUseId: 't1', input: { old_string: 'foo', new_string: 'bar' }, done: true },
             },
         ]);
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         const body = blockEl.querySelector('.chat-tool-body');
         const diff = body.querySelector('.chat-diff');
         assert.ok(diff);
@@ -99,7 +104,7 @@ test('a tool block for Bash renders the command', () => {
                 block: { type: 'tool', toolName: 'Bash', toolUseId: 't1', input: { command: 'ls -la' }, done: true },
             },
         ]);
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         const cmd = blockEl.querySelector('.chat-tool-cmd');
         assert.equal(cmd.textContent, 'ls -la');
     });
@@ -116,7 +121,7 @@ test('a tool-result patch appends the output excerpt to the existing tool block'
         block.resultText = 'file1\nfile2';
         applyPatches(list, [{ kind: 'tool-result', messageId: 'm1', blockIndex: 0, block }]);
 
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         const out = blockEl.querySelector('.chat-tool-output');
         assert.equal(out.textContent, 'file1\nfile2');
     });
@@ -146,7 +151,7 @@ test('plain text without marked/DOMPurify loaded falls back to escaped text', ()
             { kind: 'new-message', messageId: 'm1', role: 'assistant' },
             { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: '<b>bold</b>', done: true } },
         ]);
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         assert.ok(blockEl.innerHTML.includes('&lt;b&gt;'));
     });
 });
@@ -162,9 +167,9 @@ test('consecutive assistant messages merge into one visual box with distinct blo
         ]);
         assert.equal(list.children.length, 1); // one box for the whole turn
         const msgEl = list.children[0];
-        assert.equal(msgEl.children.length, 2); // m1:0 and m2:0 stay distinct blocks
-        assert.ok(msgEl.children[0].innerHTML.includes('before tool'));
-        assert.ok(msgEl.children[1].innerHTML.includes('after tool'));
+        assert.equal(blocksOf(msgEl).length, 2); // m1:0 and m2:0 stay distinct blocks
+        assert.ok(blocksOf(msgEl)[0].innerHTML.includes('before tool'));
+        assert.ok(blocksOf(msgEl)[1].innerHTML.includes('after tool'));
     });
 });
 
@@ -183,7 +188,7 @@ test('a user bubble between assistant messages breaks the merge group', () => {
         assert.equal(list.children.length, 3); // assistant, user, assistant
         assert.ok(list.children[2].classList.contains('chat-msg-assistant'));
         assert.ok(list.children[2].innerHTML === '' || true); // container exists
-        assert.ok(list.children[2].children[0].innerHTML.includes('second turn'));
+        assert.ok(firstBlock(list.children[2]).innerHTML.includes('second turn'));
     });
 });
 
@@ -194,7 +199,7 @@ test('a thinking block with no text renders no toggle at all', () => {
             { kind: 'new-message', messageId: 'm1', role: 'assistant' },
             { kind: 'new-block', messageId: 'm1', blockIndex: 0, block: { type: 'thinking', text: '', collapsed: true } },
         ]);
-        assert.equal(list.children[0].children[0].children.length, 0);
+        assert.equal(firstBlock(list.children[0]).children.length, 0);
     });
 });
 
@@ -212,7 +217,7 @@ test('resetView clears the element caches so a rebuild renders fresh nodes', () 
             { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'second pass' } },
         ]);
         assert.equal(list.children.length, 1); // rendered into the DOM, not a detached cached node
-        assert.ok(list.children[0].children[0].innerHTML.includes('second pass'));
+        assert.ok(firstBlock(list.children[0]).innerHTML.includes('second pass'));
     });
 });
 
@@ -288,7 +293,7 @@ test('streaming parses each stable segment once and only re-parses the tail', ()
         assert.equal(parsesContainingParaOne, 1);
 
         // Rendered output still contains everything.
-        const blockEl = list.children[0].children[0];
+        const blockEl = firstBlock(list.children[0]);
         assert.ok(blockEl.innerHTML.includes('para one'));
         assert.ok(blockEl.innerHTML.includes('para three'));
 
@@ -333,5 +338,47 @@ test('a result-driven turn end clears a pending row', () => {
         applyPatches(list, [{ kind: 'interrupt' }]);
         assert.equal(list.children.filter(c => c.classList.contains('chat-pending')).length, 0);
         assert.equal(list.children.filter(c => c.classList.contains('chat-interrupted')).length, 1);
+    });
+});
+
+test('turn-copy copies only the prose, excluding thinking and tool blocks', () => {
+    withDocument(() => {
+        let captured = null;
+        const prev = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+        Object.defineProperty(globalThis, 'navigator', {
+            value: { clipboard: { writeText: (t) => { captured = t; return Promise.resolve(); } } },
+            configurable: true,
+        });
+        try {
+            const list = new FakeElement('div');
+            applyPatches(list, [
+                { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+                { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'Hello world' } },
+                { kind: 'finalize-block', messageId: 'm1', blockIndex: 1, block: { type: 'thinking', text: 'secret reasoning', collapsed: true, done: true } },
+                { kind: 'finalize-block', messageId: 'm1', blockIndex: 2, block: { type: 'tool', toolName: 'Bash', input: { command: 'ls' }, done: true } },
+                { kind: 'append-text', messageId: 'm1', blockIndex: 3, block: { type: 'text', text: 'Done.' } },
+            ]);
+            const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
+            const btn = box.children.find(c => c.classList.contains('chat-turn-copy'));
+            assert.ok(btn, 'turn-copy button present');
+            assert.equal(btn.classList.contains('hidden'), false); // revealed by prose
+            btn.dispatch('click', { stopPropagation() {} });
+            assert.equal(captured, 'Hello world\n\nDone.');
+        } finally {
+            if (prev) Object.defineProperty(globalThis, 'navigator', prev);
+        }
+    });
+});
+
+test('a tool-only turn keeps the copy button hidden (no prose to copy)', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Bash', input: { command: 'ls' }, done: true } },
+        ]);
+        const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
+        const btn = box.children.find(c => c.classList.contains('chat-turn-copy'));
+        assert.equal(btn.classList.contains('hidden'), true);
     });
 });
