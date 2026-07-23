@@ -6,20 +6,24 @@
 
 import { copyToClipboard } from './ui-utils.js';
 
-// makeCopyButton builds a copy button whose click copies getText() and briefly
-// flips its label to a confirmation. getText is read at click time so it
-// reflects the latest content.
+// makeCopyButton builds an icon copy button (currentColor-masked glyph, not a
+// text label) whose click copies getText() and briefly swaps the glyph to a
+// checkmark. getText is read at click time so it reflects the latest content.
 function makeCopyButton(className, getText) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = className;
-    btn.textContent = 'Copy';
     btn.title = 'Copy';
+    btn.setAttribute('aria-label', 'Copy');
+    const icon = document.createElement('span');
+    icon.className = 'chat-copy-icon';
+    btn.appendChild(icon);
     btn.addEventListener('click', (e) => {
         e.stopPropagation(); // don't toggle a tool row / trip other handlers
         Promise.resolve(copyToClipboard(getText())).then((ok) => {
-            btn.textContent = ok ? 'Copied' : 'Failed';
-            setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+            btn.classList.toggle('copied', ok);
+            btn.title = ok ? 'Copied' : 'Copy failed';
+            setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copy'; }, 1200);
         });
     });
     return btn;
