@@ -1,11 +1,17 @@
-/* Futurism Design System — drop-in stylesheet.
+/* Futurism Design System — drop-in stylesheet. v0.7.15
    Paper-Futurism: bold italic display, single red accent, square corners,
    solid offset shadows, fast directional motion. Light default; add
-   data-theme="dark" to the root for the carbon theme. */
+   data-theme="dark" to the root for the carbon theme.
+   The version above is the vendoring stamp — compare it against CHANGELOG.md
+   in the plugin root to see what changed since this copy was taken. */
 
 :root{
   --bg:#efe9dc; --surf:#f7f3ea; --ink:#1a1714; --muted:#4a4339;
   --accent:#d22f1a; --line:#1a1714; --shadow:#1a1714; --field:#f7f3ea; --on-accent:#efe9dc;
+  /* --shadow-mute: shadow for dense/stacked repeats (scroll lists of cards) —
+     ink in light, true carbon in dark, NEVER the accent: a stack of accent
+     shadows floods the screen red and buries the one legitimate accent moment. */
+  --shadow-mute:#1a1714;
   --ease:cubic-bezier(.2,.9,.1,1); --fast:.12s; --med:.2s;
   --border:2px; --shadow-off:6px;  /* --border = standard control/surface border; 3px dividers stay literal */
   --font:'Helvetica Neue',Arial,sans-serif;
@@ -27,6 +33,7 @@
 [data-theme="dark"]{
   --bg:#16140f; --surf:#211d16; --ink:#efe9dc; --muted:#a89f8e;
   --accent:#ff4d33; --line:#efe9dc; --shadow:#ff4d33; --field:#211d16; --on-accent:#16140f;
+  --shadow-mute:#000;
   --hover-bg:color-mix(in srgb,var(--accent) 20%,var(--surf));
   --sel-bg:color-mix(in srgb,var(--accent) 26%,var(--surf));
   --tint:color-mix(in srgb,var(--accent) 36%,var(--bg));
@@ -81,7 +88,10 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
 .btn-primary:active,.btn.err:active{box-shadow:1px 1px 0 var(--ink)}
 .btn-primary{background:var(--accent);color:var(--on-accent)}
 .btn-ink{background:var(--ink);color:var(--bg)}
-.btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink)}
+/* Compensate the added 2px border per side so ghost matches the borderless
+   variants' box exactly (same trick as .badge.out) — a ghost paired with a
+   primary (modal footer CANCEL/DELETE) sits flush instead of 4px taller. */
+.btn-ghost{background:transparent;color:var(--ink);border:var(--border) solid var(--ink);padding:8px 16px}
 /* Square variant — drops the skew so the button sits FLUSH against square elements
    (input+action groups, a single action in a square toolbar). Reserve the skewed
    .btn for standalone/hero CTAs and rows of skewed siblings (confirm+cancel); a lone
@@ -95,10 +105,20 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
    accent = error/attention. .saving marches diagonal stripes (the machine motion
    from .prog), never an opacity pulse, which would read as fade-puff (law 5). */
 .btn.ok{background:var(--ink);color:var(--bg);box-shadow:4px 4px 0 var(--shadow)}
+/* .ok outranks .btn:hover/:active by order at equal specificity, which would
+   freeze its resting 4px shadow through the lift and press — re-assert both.
+   --shadow is safe here (ink fill, no same-hue smear in dark). */
+.btn.ok:hover{box-shadow:5px 5px 0 var(--shadow)}
+.btn.ok:active{box-shadow:1px 1px 0 var(--shadow)}
 .btn.err{background:var(--accent);color:var(--on-accent)}
 .btn.saving{pointer-events:none;
   background-image:linear-gradient(45deg,color-mix(in srgb,var(--on-accent) 22%,transparent) 25%,transparent 25% 50%,color-mix(in srgb,var(--on-accent) 22%,transparent) 50% 75%,transparent 75%);
   background-size:22px 22px;animation:fd-march .55s linear infinite}
+/* Disabled — muted fill, no lunge/shadow, static (never an opacity fade). Keeps
+   the skew: still the same control, just inert. */
+.btn:disabled,.btn:disabled:hover,.btn:disabled:active{background:var(--muted);color:var(--bg);cursor:default;transform:skewX(-8deg);box-shadow:none}
+.btn-ghost:disabled{border-color:var(--muted)}
+.btn-square:disabled,.btn-square:disabled:hover,.btn-square:disabled:active{transform:none}
 
 /* Focus ring — the kit removes native outlines (button reset + border:none), so
    every focusable control reuses one vocabulary: a 3px accent outline (same as
@@ -111,22 +131,35 @@ button{font-family:var(--font);color:inherit;background:none;border:0}
   cursor:pointer;font-size:13px;font-weight:900;line-height:1;transition:background var(--fast),color var(--fast)}
 .iconbtn:hover{background:var(--ink);color:var(--bg)}
 .iconbtn.danger:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+/* Disabled icon action mutes the foreground, matching .pager button:disabled. */
+.iconbtn:disabled,.iconbtn:disabled:hover{background:var(--surf);color:var(--muted);border-color:var(--muted);cursor:default}
 .iconbtn svg{width:18px;height:18px}
 
 /* Keycap — monospace key/affordance chip */
 .keycap{border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);font-family:var(--mono,ui-monospace,monospace);font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;
   transition:background var(--fast),color var(--fast)}
 .keycap:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-/* Chord — keycaps welded into one block (shared 2px divider, no gap) so they
-   read as pressed together; no "+" symbol. The row gap keeps standalone keys apart. */
-.combo{display:inline-flex}
-.combo .keycap+.keycap{margin-left:-2px}
+/* Chord — reads as ONE pressed unit: the combo carries the single outer border,
+   inner caps drop theirs, and the joint is a half-height centered divider (an
+   internal seam, not a wall). Hover anywhere highlights the whole chord. No "+"
+   symbol; the row gap keeps standalone keys apart. */
+.combo{display:inline-flex;border:var(--border) solid var(--line);background:var(--surf);transition:background var(--fast),border-color var(--fast)}
+.combo .keycap{border:0;background:none}
+.combo .keycap+.keycap{position:relative}
+.combo .keycap+.keycap::before{content:"";position:absolute;left:0;top:25%;bottom:25%;width:var(--border);background:var(--line);transition:background var(--fast)}
+.combo:hover{background:var(--accent);border-color:var(--accent)}
+.combo:hover .keycap{color:var(--on-accent)}
+.combo:hover .keycap+.keycap::before{background:var(--on-accent)}
 
 /* Status dot — live indicator. Hard step-end toggle accent<->muted (a square-wave
    status LED, like the terminal cursor) — a machine switches color, it doesn't dim
    (an opacity fade would read as fade-puff, and on carbon it can vanish entirely). */
 .dot{width:9px;height:9px;flex:none;background:var(--accent);animation:fd-blink 1.2s step-end infinite}
 .dot.dead{background:var(--muted);animation:none}
+/* Pending/attention: same accent square at a 3x clock — urgency is blink RATE,
+   never a second hue (no amber, law 4). Pair it with visible status text: the
+   text is the accessible state, the blink is decoration. */
+.dot.warn{animation-duration:.4s}
 @keyframes fd-blink{50%{background:var(--muted)}}
 
 /* Form row — label + control pair used in settings panels */
@@ -293,12 +326,12 @@ tbody tr:hover{background:var(--tint)}
    transparency; setting it here would out-specify .confirm-yes and kill its fill. */
 .row-act>button{font:inherit;border:0;cursor:pointer;transition:background var(--fast),color var(--fast)}
 /* Default mode: every fill child (idle button, confirm-yes/no, the failed flash)
-   sits 2px shorter than the now-full-height .row-act, flush to the top via
-   align-items:flex-start above, so the fill stops right where the row's own
-   border-bottom begins instead of covering it. .centered's own height already
-   excludes that border entirely (a floating strip touching neither edge), so
-   its children fill it exactly with no trim needed. */
-.row-act:not(.centered)>*{height:calc(100% - 2px)}
+   sits one border-width (--border) shorter than the now-full-height .row-act,
+   flush to the top via align-items:flex-start above, so the fill stops right
+   where the row's own border-bottom begins instead of covering it. .centered's
+   own height already excludes that border entirely (a floating strip touching
+   neither edge), so its children fill it exactly with no trim needed. */
+.row-act:not(.centered)>*{height:calc(100% - var(--border))}
 .row-act.centered>*{height:100%}
 .row-act-btn{display:flex;align-items:center;justify-content:center;padding:0 12px;color:var(--muted)}
 .row-act-btn:hover{background:var(--accent);color:var(--on-accent)}
@@ -340,6 +373,13 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .acctrig:hover{transform:translateY(-2px)}
 .accpop{position:absolute;top:calc(100% + 6px);right:0;background:var(--surf);border:var(--border) solid var(--line);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);z-index:60;padding:8px;
   display:grid;grid-template-columns:repeat(4,1fr);gap:6px;transform-origin:top right;transform:scaleY(0);pointer-events:none;transition:transform var(--fast) var(--ease)}
+/* Placement variants — the default drops DOWN, right-aligned (grows left), which
+   suits top-right chrome. .start left-aligns (grows right) for triggers near the
+   left edge; .up opens above for triggers near the bottom. fdAccent() toggles
+   both automatically from viewport space on open; set them by hand for no-JS use. */
+.accpick.start .accpop{left:0;right:auto;transform-origin:top left}
+.accpick.up .accpop{top:auto;bottom:calc(100% + 6px);transform-origin:bottom right}
+.accpick.up.start .accpop{transform-origin:bottom left}
 .accpick.open .accpop{transform:scaleY(1);pointer-events:auto}
 .acc{width:28px;height:28px;border:var(--border) solid var(--line);cursor:pointer;transition:transform var(--fast) var(--ease)}
 .acc:hover{transform:translateY(-2px)}
@@ -368,10 +408,13 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .check:checked::after{content:"";position:absolute;left:4px;top:0;width:6px;height:11px;border:solid var(--on-accent);border-width:0 3px 3px 0;transform:rotate(45deg)}
 .radio:checked::after{content:"";position:absolute;inset:3px;background:var(--accent)}
 .check:focus-visible,.radio:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.check:disabled,.radio:disabled{border-color:var(--muted);cursor:default}
 
 /* Toast — non-blocking feedback. Darts in from the right (no fade); accent border
    by default (error/attention), line border for neutral info. */
-.toaster{position:fixed;right:16px;bottom:16px;z-index:70;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+/* Insets are tokens so an app with fixed bottom/side chrome (an input bar, a
+   drawer) can lift the stack clear of it: set --toast-bottom on :root. */
+.toaster{position:fixed;right:var(--toast-right,16px);bottom:var(--toast-bottom,16px);z-index:70;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
 /* Neutral by default (line border + accent left-rule); .err raises full accent.
    Slides in from the right and out via .out — never fades. */
 .toast{background:var(--surf);border:var(--border) solid var(--line);border-left:8px solid var(--accent);box-shadow:var(--shadow-off) var(--shadow-off) 0 var(--shadow);padding:11px 14px;font-size:13px;font-weight:700;min-width:200px;max-width:340px;
@@ -386,6 +429,10 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 .tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;background:var(--ink);color:var(--bg);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;padding:5px 8px;box-shadow:4px 4px 0 var(--shadow);z-index:65;
   visibility:hidden;transform:translateX(-50%) translateY(-4px);transition:transform var(--fast) var(--ease)}
 .tip:hover::after,.tip:focus-within::after{visibility:visible;transform:translateX(-50%) translateY(0)}
+/* Downward variant — for triggers under top chrome (title bar) that would clip
+   the upward tip at the viewport edge. Same dart-toward-trigger motion, mirrored. */
+.tip.down::after{bottom:auto;top:calc(100% + 8px);transform:translateX(-50%) translateY(4px)}
+.tip.down:hover::after,.tip.down:focus-within::after{transform:translateX(-50%) translateY(0)}
 
 /* Empty state — composed from existing parts; this just centers them. */
 .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:40px 24px;color:var(--muted)}
@@ -403,6 +450,9 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
    (like .toaster) — one .pull element, its state toggled by class. */
 .pull{position:relative;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
   background:var(--surf);border-bottom:var(--border) solid var(--line);transition:height var(--med) var(--ease)}
+/* While the finger drags (fdPull toggles .pulling), height 1:1-tracks the touch —
+   same law-#5 exception as .pull-fill's width below; --ease resumes on release. */
+.pull.pulling{transition:height 60ms linear}
 .pull-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--pull,0) * 100%);background:var(--accent);
   /* Exception to law #5 (--ease): this fill 1:1-tracks a touchmove position every
      frame, and the standard cubic-bezier visibly lags a fast drag. Linear keeps it
@@ -420,11 +470,11 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
    theming: "partial fill" rule), not --ink. */
 .pull.armed .pull-label,.pull.refreshing .pull-label{color:var(--on-accent)}
 
-/* Segmented control — welded buttons (the .combo idiom); active fills ink. For a
-   few visible options where tabs are too heavy and a select is overkill. */
+/* Segmented control — welded buttons sharing one 2px divider; active fills ink.
+   For a few visible options where tabs are too heavy and a select is overkill. */
 .seg{display:inline-flex}
 .seg button{font-family:var(--font);font-weight:800;font-style:italic;font-size:12px;padding:7px 14px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;transition:background var(--fast),color var(--fast)}
-.seg button+button{margin-left:-2px}
+.seg button+button{margin-left:calc(-1*var(--border))}
 .seg button.on{background:var(--ink);color:var(--bg)}
 .seg button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
 
@@ -442,7 +492,7 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
 /* Pagination — welded square cells; current fills ink, disabled goes muted. */
 .pager{display:inline-flex}
 .pager button{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:700;min-width:32px;height:32px;border:var(--border) solid var(--line);background:var(--surf);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast),color var(--fast)}
-.pager button+button{margin-left:-2px}
+.pager button+button{margin-left:calc(-1*var(--border))}
 .pager button:not(:disabled):hover{background:var(--ink);color:var(--bg)}
 /* current page fills ink = selected/committed (matches .seg/.tab); accent stays
    reserved for the live/attention role. aria-current=page carries the semantics. */
@@ -464,10 +514,15 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
    and the barber-pole bars lose their cue. Re-assert them with borders + Highlight. */
 @media (forced-colors:active){
   .list-row.sel,.tab.on,.seg button.on,.pager button.on,.nav-v>[aria-current="page"],.switch .act{outline:2px solid Highlight;outline-offset:-2px}
+  .combo .keycap+.keycap::before{background:CanvasText}
   .prog>i,.skel{background:Highlight}
   .dot{background:Highlight}
+  .dot.warn{background:Canvas;outline:2px solid Highlight;outline-offset:-2px}
   .dot.dead{background:GrayText}
   .pull-fill{background:Highlight}
+  /* Radio's checked cue is background-only (the checkbox glyph is border-drawn
+     and survives on its own). */
+  .radio:checked::after{background:Highlight}
 }
 
 /* Print: drop fixed overlays + solid shadows so pages print clean (screen-app kit,
@@ -482,6 +537,9 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
   /* The live dot loses its blink here, so give it a static ring to stay
      distinguishable from a dead dot without relying on the animation. */
   .dot:not(.dead){box-shadow:0 0 0 2px var(--accent)}
+  /* Warn loses its fast blink too — go hollow (unfilled = pending) so it stays
+     distinct from a solid live dot without motion. */
+  .dot.warn{background:var(--surf)}
 }
 
 /* Touch: the 28-32px desktop sizes for icon buttons, keycaps, accent swatches,
@@ -489,12 +547,18 @@ dialog .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
    narrow viewports (sizes-up only; the desktop layout is untouched). */
 @media (max-width:640px){
   .btn{padding:13px 18px}
+  .btn-ghost{padding:11px 16px}
   .iconbtn,.acctrig,.acc{width:40px;height:40px}
   .pager button{min-width:40px;height:40px}
   .keycap{padding:11px 13px}
   .seg button{padding:11px 16px}
   .sel-val{padding:12px 12px}
   .sel-opt{padding:12px 12px}
+  /* Toggle geometry is coupled: inner = size - 2*border, knob fills the height,
+     .on left = width - 2*border - knob. */
+  .toggle{width:80px;height:40px}
+  .toggle>i{width:36px;height:36px}
+  .toggle.on>i{left:40px}
 }
 
 /* Responsive show/hide — mobile-first: default (compact) layout hides desktop-only
