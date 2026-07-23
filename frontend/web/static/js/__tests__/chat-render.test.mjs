@@ -466,3 +466,28 @@ test('a merged assistant turn stamps the time once, not per engine message', () 
         assert.equal([...box.children].filter(c => c.classList.contains('chat-time')).length, 1);
     });
 });
+
+test('an unsent message dims and shows a retry that removes the bubble and re-sends', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        let retried = 0;
+        const el = appendUserMessage(list, 'lost one', false, Date.now(), { unsent: true, onRetry: () => { retried++; } });
+        assert.ok(el.classList.contains('chat-msg-unsent'));
+        const retry = [...el.children].find(c => c.classList.contains('chat-retry'));
+        assert.ok(retry, 'retry control present');
+        assert.equal(list.children.length, 1);
+
+        retry.dispatch('click', {});
+        assert.equal(retried, 1);
+        assert.equal(list.children.length, 0); // failed bubble removed on retry
+    });
+});
+
+test('a sent message (no unsent opt) has no retry and is not dimmed', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        const el = appendUserMessage(list, 'ok one', false, Date.now(), null);
+        assert.equal(el.classList.contains('chat-msg-unsent'), false);
+        assert.equal([...el.children].some(c => c.classList.contains('chat-retry')), false);
+    });
+});

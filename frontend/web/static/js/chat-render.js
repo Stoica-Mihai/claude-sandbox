@@ -417,7 +417,7 @@ export function appendSystemNotice(listEl, text) {
 // appendUserMessage renders the user's own message optimistically on send —
 // the server's "user" event echo is intentionally NOT re-rendered (see
 // chat-events.js applyUserEvent) to avoid a duplicate bubble.
-export function appendUserMessage(listEl, text, hasAttachment, ts) {
+export function appendUserMessage(listEl, text, hasAttachment, ts, opts) {
     clearQuickReplies(listEl); // any pending chips are answered once the user speaks
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
@@ -429,7 +429,20 @@ export function appendUserMessage(listEl, text, hasAttachment, ts) {
     }
     if (hasAttachment) el.appendChild(attachmentIcon());
     el.appendChild(timeEl(ts));
+    // Unsent: the socket wasn't open, so the message was echoed but not
+    // delivered. Mark it and offer a retry (which removes this bubble and
+    // re-sends) — never leave a bubble that looks sent but wasn't.
+    if (opts && opts.unsent) {
+        el.classList.add('chat-msg-unsent');
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'chat-retry';
+        retry.textContent = 'Not sent — retry';
+        retry.addEventListener('click', () => { el.remove(); opts.onRetry?.(); });
+        el.appendChild(retry);
+    }
     listEl.appendChild(el);
+    return el;
 }
 
 // applyPatches renders one batch of chat-events.js patches into listEl.

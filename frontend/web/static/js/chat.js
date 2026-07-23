@@ -150,17 +150,23 @@ export const ChatManager = {
     },
 
     // _sendUserText is the single send path (input bar and quick-reply chips):
-    // optimistic echo, pending row, running state, then the stream-json write.
+    // optimistic echo, then branch on whether the write actually left. A send
+    // while the socket isn't open echoes the bubble as UNSENT (retry offered)
+    // and re-arms the connection — never a bubble that looks sent but wasn't.
     _sendUserText(terminalId, text, imagePath) {
         const instance = this.instances[terminalId];
         if (!instance) return;
-        if (instance.socket?.status === 'lost') { instance.socket.retry(); return; }
         if (!text && !imagePath) return;
-        appendUserMessage(instance.flow, text, !!imagePath, Date.now());
-        showPending(instance.flow);
-        this._setRunning(terminalId, true);
+        const sent = instance.socket?.sendControl(composeUserInput(text, imagePath)) === true;
+        appendUserMessage(instance.flow, text, !!imagePath, Date.now(),
+            sent ? null : { unsent: true, onRetry: () => this._sendUserText(terminalId, text, imagePath) });
         instance.sticky.engage();
-        instance.socket?.sendControl(composeUserInput(text, imagePath));
+        if (sent) {
+            showPending(instance.flow);
+            this._setRunning(terminalId, true);
+        } else {
+            instance.socket?.retry(); // re-arm a lost connection so a retry can land
+        }
     },
 
     _connect(terminalId) {
