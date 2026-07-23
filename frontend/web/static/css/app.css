@@ -523,7 +523,7 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-msg{font-size:13px;line-height:1.5}
 .chat-msg-user{align-self:flex-end;max-width:80%;padding:10px 12px;background:var(--accent);
   color:var(--on-accent);border:2px solid var(--accent)}
-.chat-msg-assistant{align-self:stretch;position:relative;padding-left:26px}
+.chat-msg-assistant{align-self:stretch;position:relative;padding-left:26px;display:flex;flex-direction:column}
 .chat-msg-assistant::before,.chat-pending::before{content:'✱';position:absolute;left:0;top:2px;width:16px;height:16px;
   background:var(--accent);color:var(--on-accent);font-size:10px;line-height:16px;text-align:center;
   transform:skewX(-8deg)}
@@ -542,19 +542,25 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-block-text pre{background:var(--surf);border:2px solid var(--line);padding:8px;overflow-x:auto;font-family:var(--mono);font-size:12px}
 .chat-msg-assistant code{font-family:var(--mono);font-size:12px}
 
-/* Copy buttons — turn-level (prose) and per code block. Muted, reveal on
-   hover; always visible on touch (no hover). "Copied"/"Failed" feedback is
-   set in JS. */
+/* Copy buttons — turn-level (prose) and per code block. Muted, revealed on
+   hover; always shown on touch. display (not opacity) toggling so a hidden
+   button reserves no space. "Copied"/"Failed" feedback is set in JS. */
 .chat-turn-copy,.chat-code-copy{border:2px solid var(--line);background:var(--surf);color:var(--muted);
   font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;
-  padding:2px 7px;cursor:pointer;opacity:0;transition:opacity var(--fast) var(--ease)}
+  padding:2px 7px;cursor:pointer}
 .chat-turn-copy:hover,.chat-code-copy:hover{color:var(--ink);border-color:var(--ink)}
-.chat-turn-copy{position:absolute;top:0;right:0}
-.chat-msg-assistant:hover .chat-turn-copy{opacity:1}
+/* Turn-copy flows at the BOTTOM of the turn (order:99, flex-end), never over
+   a text line — the full-width-first-line overlap. JS toggles .hidden to
+   gate on prose; CSS reveals a non-hidden button on hover / on touch. */
+.chat-turn-copy{display:none;order:99;align-self:flex-end;margin-top:6px}
+.chat-msg-assistant:hover .chat-turn-copy:not(.hidden){display:inline-block}
 .chat-code{position:relative}
-.chat-code-copy{position:absolute;top:6px;right:6px}
-.chat-code:hover .chat-code-copy{opacity:1}
-@media (hover:none){.chat-turn-copy,.chat-code-copy{opacity:1}}
+.chat-code-copy{display:none;position:absolute;top:6px;right:6px}
+.chat-code:hover .chat-code-copy{display:inline-block}
+@media (hover:none){
+  .chat-turn-copy:not(.hidden){display:inline-block}
+  .chat-code-copy{display:inline-block}
+}
 
 /* ===== Blocks within an assistant message ===== */
 .chat-block+.chat-block{margin-top:8px}
