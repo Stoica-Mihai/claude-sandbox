@@ -528,7 +528,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-msg-user{align-self:flex-end;max-width:80%;padding:10px 12px;background:var(--accent);
   color:var(--on-accent);border:2px solid var(--accent)}
 .chat-msg-assistant{align-self:stretch;position:relative;padding-left:26px;display:flex;flex-direction:column}
-.chat-msg-assistant::before,.chat-pending::before{content:'✱';position:absolute;left:0;top:2px;width:16px;height:16px;
+/* top:4px centers the 16px mark on the first prose line (line box ~23px);
+   top:2px left it ~1.6px high. */
+.chat-msg-assistant::before,.chat-pending::before{content:'✱';position:absolute;left:0;top:4px;width:16px;height:16px;
   background:var(--accent);color:var(--on-accent);font-size:10px;line-height:16px;text-align:center;
   transform:skewX(-8deg)}
 /* Pending row: turn accepted, first content not yet streamed. */
