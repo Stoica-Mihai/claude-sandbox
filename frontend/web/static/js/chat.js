@@ -1,6 +1,7 @@
-// Chat surface manager: owns one chat session's DOM (header, message list,
-// input bar) and its SessionSocket, mirroring TerminalManager's shape
-// (create/destroy/get) so tabs.js can treat either surface uniformly.
+// Chat surface: ChatView owns one chat session's DOM (header, message list,
+// input bar) + its SessionSocket; ChatManager is the factory + registry keyed
+// by terminalId (create/get/destroy/focus), mirroring TerminalManager so
+// tabs.js treats either surface uniformly.
 
 import { SessionSocket } from './session-socket.js';
 import { createChatState, applyEvent, composeUserInput } from './chat-events.js';
@@ -15,24 +16,26 @@ import { getSession } from './store.js';
 const TAIL_INITIAL_LINES = 200;
 const TAIL_CHUNK = 200;
 
-export const ChatManager = {
-    instances: {}, // terminalId -> instance (see create())
-
-    create(terminalId, containerEl) {
-        if (this.instances[terminalId]) this.destroy(terminalId);
+// ChatView owns one chat session's surface. The constructor builds the DOM and
+// wires controls; start() loads transcript history then connects the live
+// socket. this.destroyed guards async transcript loads against a torn-down view.
+export class ChatView {
+    constructor(terminalId, containerEl) {
+        this.terminalId = terminalId;
+        this.destroyed = false;
 
         containerEl.innerHTML = '';
-        const root = document.createElement('div');
+        const root = this.root = document.createElement('div');
         root.className = 'chat-surface';
 
         const header = document.createElement('div');
         header.className = 'chat-header';
-        const headerCwd = document.createElement('span');
+        const headerCwd = this.headerCwd = document.createElement('span');
         headerCwd.className = 'chat-header-cwd';
         // The live system/init event fires only at process start, so a viewer
         // joining later would see an empty header — seed cwd from the store.
         headerCwd.textContent = getSession(terminalId)?.cwd || '';
-        const headerModel = document.createElement('span');
+        const headerModel = this.headerModel = document.createElement('span');
         headerModel.className = 'chat-header-model';
         const modeBtn = document.createElement('button');
         modeBtn.type = 'button';
@@ -52,7 +55,7 @@ export const ChatManager = {
         header.appendChild(modeBtn);
         header.appendChild(killBtn);
 
-        const loadMoreBtn = document.createElement('button');
+        const loadMoreBtn = this.loadMoreBtn = document.createElement('button');
         loadMoreBtn.type = 'button';
         loadMoreBtn.className = 'chat-load-more hidden';
         loadMoreBtn.textContent = 'Load earlier messages';
@@ -62,11 +65,11 @@ export const ChatManager = {
         // button inside the scroll container itself scrolls out of view).
         const listWrap = document.createElement('div');
         listWrap.className = 'chat-list-wrap';
-        const list = document.createElement('div');
+        const list = this.list = document.createElement('div');
         list.className = 'chat-message-list';
         // flow is the render target; list is the scroll container. The split
         // exists so chat-scroll.js can observe content size independently.
-        const flow = document.createElement('div');
+        const flow = this.flow = document.createElement('div');
         flow.className = 'chat-message-flow';
         list.appendChild(flow);
         listWrap.appendChild(list);
@@ -81,95 +84,81 @@ export const ChatManager = {
         jumpBtn.textContent = '↓';
         listWrap.appendChild(jumpBtn);
 
-        const instance = {
-            root,
-            list,
-            flow,
-            sticky: createStickyScroll(list, flow, {
-                onFollowChange: (following) => jumpBtn.classList.toggle('hidden', following),
-            }),
-            headerCwd,
-            headerModel,
-            loadMoreBtn,
-            state: createChatState(),
-            transcriptLines: [],
-            transcriptStart: 0,
-            socket: null,
-        };
+        this.state = createChatState();
+        this.transcriptLines = [];
+        this.transcriptStart = 0;
+        this.socket = null;
+        this.sticky = createStickyScroll(list, flow, {
+            onFollowChange: (following) => jumpBtn.classList.toggle('hidden', following),
+        });
 
-        jumpBtn.addEventListener('click', () => instance.sticky.engage());
-        loadMoreBtn.addEventListener('click', () => this._renderMoreHistory(terminalId));
+        jumpBtn.addEventListener('click', () => this.sticky.engage());
+        loadMoreBtn.addEventListener('click', () => this.renderMoreHistory());
         // Expand/collapse toggles change content height by user action, not
         // output — suppress the follow pin for that resize burst.
         list.addEventListener('click', (e) => {
-            if (e.target.closest?.('.chat-tool-toggle, .chat-thinking-toggle')) instance.sticky.suppressNext();
+            if (e.target.closest?.('.chat-tool-toggle, .chat-thinking-toggle')) this.sticky.suppressNext();
         });
         killBtn.addEventListener('click', () => {
             fetch(sessionPath(terminalId), { method: 'DELETE' }).catch(() => {});
         });
         const inputBar = createInputBar({
             terminalId,
-            onSend: (text, imagePath) => this._sendUserText(terminalId, text, imagePath),
+            onSend: (text, imagePath) => this.sendUserText(text, imagePath),
             onStop: () => {
                 // Interrupt the in-flight turn (verified control_request over
                 // stream-json); the engine emits a result, which flips running
                 // back off. Optimistically flip now so the button responds.
-                instance.socket?.sendControl({
+                this.socket?.sendControl({
                     type: 'control_request',
                     request_id: 'int-' + Date.now(),
                     request: { subtype: 'interrupt' },
                 });
-                clearPending(instance.flow);
-                this._setRunning(terminalId, false);
+                clearPending(this.flow);
+                this.setRunningState(false);
             },
         });
-        instance.focusInput = inputBar.focus;
-        instance.setRunning = inputBar.setRunning;
+        this.focusInput = inputBar.focus;
+        this.setRunning = inputBar.setRunning;
 
         root.appendChild(header);
         root.appendChild(loadMoreBtn);
         root.appendChild(listWrap);
         root.appendChild(inputBar.el);
         containerEl.appendChild(root);
+    }
 
-        this.instances[terminalId] = instance;
+    start() {
+        this.loadTranscript().then(() => this.connect());
+    }
 
-        this._loadTranscript(terminalId).then(() => this._connect(terminalId));
+    // setRunningState flips the input bar between Send and Stop. Idempotent, and
+    // safe if the input bar isn't ready yet.
+    setRunningState(on) {
+        this.setRunning?.(on);
+    }
 
-        return instance;
-    },
-
-    // _setRunning flips the input bar between Send and Stop. Idempotent, and
-    // safe if the instance or input bar isn't ready yet.
-    _setRunning(terminalId, on) {
-        this.instances[terminalId]?.setRunning?.(on);
-    },
-
-    // _sendUserText is the single send path (input bar and quick-reply chips):
+    // sendUserText is the single send path (input bar and quick-reply chips):
     // optimistic echo, then branch on whether the write actually left. A send
     // while the socket isn't open echoes the bubble as UNSENT (retry offered)
     // and re-arms the connection — never a bubble that looks sent but wasn't.
-    _sendUserText(terminalId, text, imagePath) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
+    sendUserText(text, imagePath) {
         if (!text && !imagePath) return;
-        const sent = instance.socket?.sendControl(composeUserInput(text, imagePath)) === true;
-        appendUserMessage(instance.flow, text, !!imagePath, Date.now(),
-            sent ? null : { unsent: true, onRetry: () => this._sendUserText(terminalId, text, imagePath) });
-        instance.sticky.engage();
+        const sent = this.socket?.sendControl(composeUserInput(text, imagePath)) === true;
+        appendUserMessage(this.flow, text, !!imagePath, Date.now(),
+            sent ? null : { unsent: true, onRetry: () => this.sendUserText(text, imagePath) });
+        this.sticky.engage();
         if (sent) {
-            showPending(instance.flow);
-            this._setRunning(terminalId, true);
+            showPending(this.flow);
+            this.setRunningState(true);
         } else {
-            instance.socket?.retry(); // re-arm a lost connection so a retry can land
+            this.socket?.retry(); // re-arm a lost connection so a retry can land
         }
-    },
+    }
 
-    _connect(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-        const { flow, headerCwd, headerModel } = instance;
-        const socket = new SessionSocket(terminalId, {
+    connect() {
+        const { flow, headerCwd, headerModel } = this;
+        const socket = new SessionSocket(this.terminalId, {
             onControl: (evt) => {
                 // Running-state edges from the stream: any turn activity marks
                 // running (covers a viewer attaching mid-turn); a result ends
@@ -177,100 +166,120 @@ export const ChatManager = {
                 // one. control_response (interrupt ack) is not turn activity.
                 if (evt.type === 'result') {
                     clearPending(flow); // turn ended (success or interrupt) — drop the thinking row
-                    this._setRunning(terminalId, false);
+                    this.setRunningState(false);
                 } else if (evt.type === 'stream_event' || evt.type === 'assistant') {
-                    this._setRunning(terminalId, true); // turn activity (covers attaching mid-turn)
+                    this.setRunningState(true); // turn activity (covers attaching mid-turn)
                 }
-                const patches = applyEvent(instance.state, evt);
+                const patches = applyEvent(this.state, evt);
                 applyPatches(flow, patches, {
                     onHeader: (h) => { headerCwd.textContent = h.cwd; headerModel.textContent = h.model; },
-                    onQuickReply: (text) => this._sendUserText(terminalId, text, null),
+                    onQuickReply: (text) => this.sendUserText(text, null),
                 });
             },
             onStatus: (status, info = {}) => {
                 clearPending(flow); // whatever happened, the turn is no longer just pending
-                if (status !== 'open') this._setRunning(terminalId, false);
+                if (status !== 'open') this.setRunningState(false);
                 if (status === 'open') clearConnectionNotice(flow); // reconnected: drop the transient notice
                 else if (status === 'reconnecting') setConnectionNotice(flow, `[Reconnecting… (attempt ${info.attempt})]`);
                 else if (status === 'lost') setConnectionNotice(flow, '[Connection lost — send a message to retry]');
                 else if (status === 'ended') { clearConnectionNotice(flow); appendSystemNotice(flow, '[Session ended]'); }
             },
         });
-        instance.socket = socket;
+        this.socket = socket;
         socket.connect();
-    },
+    }
 
-    // _loadTranscript fetches the newest window of the conversation transcript
+    // loadTranscript fetches the newest window of the conversation transcript
     // (server-side tail — §7 tail-first; the server bounds transfer so a huge
     // conversation never ships whole) and renders it.
-    async _loadTranscript(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-        const page = await this._fetchTranscriptPage(terminalId, '?tail=' + TAIL_INITIAL_LINES);
-        instance.transcriptLines = page.lines;
-        instance.transcriptStart = page.offset;
-        this._renderBuffer(terminalId);
-    },
+    async loadTranscript() {
+        const page = await this.fetchTranscriptPage('?tail=' + TAIL_INITIAL_LINES);
+        if (this.destroyed) return;
+        this.transcriptLines = page.lines;
+        this.transcriptStart = page.offset;
+        this.renderBuffer();
+    }
 
-    // _fetchTranscriptPage fetches one TranscriptPage; failures degrade to an
+    // fetchTranscriptPage fetches one TranscriptPage; failures degrade to an
     // empty page (no history renders, live events still flow).
-    async _fetchTranscriptPage(terminalId, query) {
+    async fetchTranscriptPage(query) {
         try {
-            const res = await fetch(sessionTranscriptPath(terminalId) + query);
+            const res = await fetch(sessionTranscriptPath(this.terminalId) + query);
             if (res.ok) {
                 const page = await res.json();
                 if (Array.isArray(page.lines)) return { lines: page.lines, offset: page.offset || 0 };
             }
         } catch (e) { /* best-effort */ }
         return { lines: [], offset: 0 };
-    },
+    }
 
-    // _renderBuffer clears and replays the whole buffered window — a full
-    // rebuild (not an incremental insert) so "load earlier" never has to
-    // reason about DOM insertion order.
-    _renderBuffer(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-        resetView(instance.flow);
-        instance.state = createChatState();
-        for (let i = 0; i < instance.transcriptLines.length; i++) {
+    // renderBuffer clears and replays the whole buffered window — a full rebuild
+    // (not an incremental insert) so "load earlier" never has to reason about
+    // DOM insertion order.
+    renderBuffer() {
+        if (this.destroyed) return;
+        resetView(this.flow);
+        this.state = createChatState();
+        for (let i = 0; i < this.transcriptLines.length; i++) {
             let evt;
-            try { evt = JSON.parse(instance.transcriptLines[i]); } catch (e) { continue; }
+            try { evt = JSON.parse(this.transcriptLines[i]); } catch (e) { continue; }
             // Init events aren't persisted, so replay recovers the model from
             // assistant records instead ('<synthetic>' = engine notices, skip).
             const model = evt.type === 'assistant' ? evt.message?.model : null;
-            if (model && model !== '<synthetic>') instance.headerModel.textContent = model;
+            if (model && model !== '<synthetic>') this.headerModel.textContent = model;
             // Replay flows through the same event classifier as live (user
             // turns → bubbles, tool_results → attached, the interrupt marker →
             // its Stopped line), so history and live render identically.
-            const patches = applyEvent(instance.state, evt, { replay: true });
-            applyPatches(instance.flow, patches, {
-                onHeader: (h) => { instance.headerCwd.textContent = h.cwd; instance.headerModel.textContent = h.model; },
-                onQuickReply: (text) => this._sendUserText(terminalId, text, null),
+            const patches = applyEvent(this.state, evt, { replay: true });
+            applyPatches(this.flow, patches, {
+                onHeader: (h) => { this.headerCwd.textContent = h.cwd; this.headerModel.textContent = h.model; },
+                onQuickReply: (text) => this.sendUserText(text, null),
             });
         }
-        instance.loadMoreBtn.classList.toggle('hidden', instance.transcriptStart === 0);
-    },
+        this.loadMoreBtn.classList.toggle('hidden', this.transcriptStart === 0);
+    }
 
-    async _renderMoreHistory(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance || instance.transcriptStart === 0) return;
-        const page = await this._fetchTranscriptPage(
-            terminalId, '?before=' + instance.transcriptStart + '&count=' + TAIL_CHUNK);
-        if (!page.lines.length) return;
-        instance.transcriptLines = page.lines.concat(instance.transcriptLines);
-        instance.transcriptStart = page.offset;
+    async renderMoreHistory() {
+        if (this.transcriptStart === 0) return;
+        const page = await this.fetchTranscriptPage(
+            '?before=' + this.transcriptStart + '&count=' + TAIL_CHUNK);
+        if (this.destroyed || !page.lines.length) return;
+        this.transcriptLines = page.lines.concat(this.transcriptLines);
+        this.transcriptStart = page.offset;
         // Reading earlier history: don't let content-growth re-pins snap the
         // list back to the bottom.
-        instance.sticky.disengage();
-        this._renderBuffer(terminalId);
+        this.sticky.disengage();
+        this.renderBuffer();
+    }
+
+    destroy() {
+        this.destroyed = true;
+        this.socket?.close();
+        this.sticky.destroy();
+    }
+
+    focus() {
+        this.focusInput?.();
+    }
+}
+
+// ChatManager — factory + registry for the live ChatView instances, keyed by
+// terminalId.
+export const ChatManager = {
+    instances: {}, // terminalId -> ChatView
+
+    create(terminalId, containerEl) {
+        if (this.instances[terminalId]) this.destroy(terminalId);
+        const view = new ChatView(terminalId, containerEl);
+        this.instances[terminalId] = view;
+        view.start();
+        return view;
     },
 
     destroy(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-        instance.socket?.close();
-        instance.sticky.destroy();
+        const view = this.instances[terminalId];
+        if (!view) return;
+        view.destroy();
         delete this.instances[terminalId];
     },
 
@@ -279,14 +288,10 @@ export const ChatManager = {
     },
 
     focus(terminalId) {
-        this.instances[terminalId]?.focusInput?.();
+        this.instances[terminalId]?.focus();
     },
 };
 
-// requestModeSwitch kills terminalId and respawns its conversation as
-// targetKind, returning the new session name (or null on failure). Called
-// from both surfaces' mode-switch buttons via tabs.js's delegated
-// 'mode-switch' action handler, which opens the resulting session.
 // init resets ChatManager's instance map (module-level state) so tests get a
 // clean slate; there are no window-level listeners to install for chat (each
 // instance owns its own SessionSocket and DOM, unlike terminal.js's shared
@@ -295,6 +300,10 @@ export function init() {
     ChatManager.instances = {};
 }
 
+// requestModeSwitch kills terminalId and respawns its conversation as
+// targetKind, returning the new session name (or null on failure). Called from
+// both surfaces' mode-switch buttons via tabs.js's delegated 'mode-switch'
+// action handler, which opens the resulting session.
 export async function requestModeSwitch(terminalId, targetKind) {
     try {
         const res = await fetch(sessionModePath(terminalId), {
