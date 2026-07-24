@@ -317,11 +317,9 @@ export const LogsManager = {
     get() { return this.instance; },
 };
 
-// init boots the logs view when the /logs page is served (its markup is
-// present). No import-time side effects; resets the singleton for tests.
+// init resets the singleton. surface.js owns create/destroy per view switch
+// (the logs surface is one of two always-mounted surfaces), so init no longer
+// auto-creates. No import-time side effects.
 export function init() {
     LogsManager.instance = null;
-    if (typeof document === 'undefined') return;
-    const main = document.querySelector('.main--logs');
-    if (main && main.querySelector('.lz-list')) LogsManager.create(main);
 }

@@ -40,7 +40,7 @@
             <div class="mark"><span>&gt;_</span></div>
             <div>
                 <span class="title">CLAUDE<em>.</em>SANDBOX</span>
-                <span class="sub">{{if .Logs}}logs{{else}}dashboard{{end}}</span>
+                <span class="sub" id="surfaceSub">{{if .Logs}}logs{{else}}dashboard{{end}}</span>
             </div>
         </a>
 
@@ -71,18 +71,18 @@
                 <button class="iconbtn" id="sidebarToggle" data-action="toggle-sidebar" aria-label="Toggle sidebar" aria-expanded="false">
                     <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
-                <span class="kick">{{if .Logs}}Logs{{else}}Sessions{{end}}</span>
-                {{if not .Logs}}<button class="btn btn-primary btn-square btn-new" data-action="new-session"><span>+ NEW</span></button>{{end}}
+                <span class="kick" id="sideKick">{{if .Logs}}Logs{{else}}Sessions{{end}}</span>
+                <button class="btn btn-primary btn-square btn-new{{if .Logs}} hidden{{end}}" data-action="new-session"><span>+ NEW</span></button>
             </div>
-            {{if .Logs}}
-            <div class="list">
+            <!-- Both sidebar bodies mount; surface.js toggles .hidden. -->
+            <div id="session-list" class="list{{if .Logs}} hidden{{end}}" hx-get="/fragments/sessions" hx-trigger="sse:{{sseEvent}}" hx-swap="innerHTML">
+                {{template "sessions" .}}
+            </div>
+            {{if not .HideLogs}}
+            <div id="logs-side" class="list{{if not .Logs}} hidden{{end}}">
                 <!-- Logs-context body. Sessions are dashboard content and are not
                      shown here (separation); logs-specific menus land here later. -->
                 <div class="lz-side-hint">Log menus land here</div>
-            </div>
-            {{else}}
-            <div id="session-list" class="list" hx-get="/fragments/sessions" hx-trigger="sse:{{sseEvent}}" hx-swap="innerHTML">
-                {{template "sessions" .}}
             </div>
             {{end}}
             <!-- Pinned peer-surface nav: Dashboard / Logs are routes; Settings opens
@@ -104,10 +104,10 @@
         </aside>
 
         <!-- ===== MAIN ===== -->
+        <!-- Both surfaces mount in one shell; surface.js toggles .hidden on
+             client-side Dashboard/Logs nav so the session WS never drops. -->
         <main class="main{{if .Logs}} main--logs{{end}}">
-        {{if .Logs}}
-            {{template "logsView" .}}
-        {{else}}
+            <div id="surface-dashboard" class="surface{{if .Logs}} hidden{{end}}">
 
             <!-- Desktop terminal controls; tabs.js toggles .hidden -->
             <div id="singleControls" class="ctrlbar hidden">
@@ -153,7 +153,12 @@
                 </div>
             </div>
 
-        {{end}}
+            </div><!-- /#surface-dashboard -->
+            {{if not .HideLogs}}
+            <div id="surface-logs" class="surface{{if not .Logs}} hidden{{end}}">
+                {{template "logsView" .}}
+            </div>
+            {{end}}
         </main>
     </div>
 </div>

@@ -13,6 +13,7 @@ import { init as initTheme } from './theme.js';
 import { init as initSettings } from './settings.js';
 import { init as initShare } from './share.js';
 import { init as initLogs } from './logs.js';
+import { init as initSurface } from './surface.js';
 import { init as initApp } from './app-init.js';
 
 function boot() {
@@ -30,6 +31,7 @@ function boot() {
     initSettings();
     initShare();
     initLogs();
+    initSurface(); // after initLogs (resets the singleton) — owns logs create/destroy
     initApp();
 }
 
