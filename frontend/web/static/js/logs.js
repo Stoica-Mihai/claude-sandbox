@@ -3,19 +3,23 @@
 // Terminal/Chat manager shape (create/destroy/get) so main.js can boot it per
 // route. There is a single logs view, so the manager holds one instance.
 //
+// Ordering: NEWEST-FIRST, newest at the TOP (the query API's order). Live-tail
+// prepends new lines at the top; scrolling toward the bottom lazily loads older
+// history; the jump pill returns to the newest (top).
+//
 // Data comes from the logd sidecar via the frontend's guarded proxy:
 //   GET /api/logs?service&level&q&until&limit   — query + scroll-load older
 //   GET /api/logs/stream?service&level&q         — SSE live-tail
 //   GET /api/status  + /api/status/stream        — status strip
 // Filters mirror the query API exactly (logs-events.matchesFilter).
 
-import { createStickyScroll } from './chat-scroll.js';
 import { matchesFilter, recordKey } from './logs-events.js';
 import { appendRow, prependRow, clearRows, showNote, renderStatus } from './logs-render.js';
 import { logsPath, logsStreamPath, statusPath, statusStreamPath } from './routes.js';
 
 const PAGE_LIMIT = 300;          // records per query / scroll-load page
-const LOAD_OLDER_PX = 240;       // scroll-from-top distance that triggers a load
+const LOAD_OLDER_PX = 240;       // scroll-from-bottom distance that triggers a load
+const FOLLOW_PX = 40;            // within this of the top = "following" the newest
 const STATUS_TICK_MS = 2000;     // re-render the strip so relative times stay fresh
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -50,21 +54,21 @@ export const LogsManager = {
             unavailable: false,
             logStream: null, statusStream: null,
             lastStatuses: [], statusTimer: null, searchTimer: null,
-            sticky: null, destroyed: false,
+            destroyed: false,
         };
         this.instance = inst;
 
-        inst.sticky = createStickyScroll(list, flow, {
-            onFollowChange: () => this._updateLive(inst),
-        });
-
         this._wireControls(inst);
-
         this._reload(inst);
         this._connectStatus(inst);
         inst.statusTimer = setInterval(() => this._renderStatus(inst), STATUS_TICK_MS);
 
         return inst;
+    },
+
+    // _following reports whether the view is pinned to the newest (top) line.
+    _following(inst) {
+        return inst.list.scrollTop <= FOLLOW_PX;
     },
 
     _wireControls(inst) {
@@ -103,10 +107,15 @@ export const LogsManager = {
             });
         }
 
-        if (inst.jump) inst.jump.addEventListener('click', () => inst.sticky.engage());
+        // Jump pill returns to the newest line (top).
+        if (inst.jump) inst.jump.addEventListener('click', () => { inst.list.scrollTop = 0; this._updateLive(inst); });
 
         inst.list.addEventListener('scroll', () => {
-            if (inst.list.scrollTop <= LOAD_OLDER_PX) this._loadOlder(inst);
+            // Older lines live toward the bottom (newest-first), so load near the bottom.
+            if (inst.list.scrollHeight - inst.list.scrollTop - inst.list.clientHeight <= LOAD_OLDER_PX) {
+                this._loadOlder(inst);
+            }
+            this._updateLive(inst);
         });
     },
 
@@ -146,19 +155,20 @@ export const LogsManager = {
         }
         if (inst.destroyed) return;
 
-        // Query returns newest-first; render chronological (oldest→newest, bottom = newest).
-        const chrono = (Array.isArray(recs) ? recs : []).slice().reverse();
-        for (const rec of chrono) {
+        // Query returns newest-first; render as-is → newest at top, oldest at bottom.
+        const arr = Array.isArray(recs) ? recs : [];
+        for (const rec of arr) {
             const k = recordKey(rec);
             if (inst.seen.has(k)) continue;
             inst.seen.add(k);
             inst.records.push(rec);
             appendRow(inst.flow, rec);
         }
-        inst.oldestTs = inst.records.length ? inst.records[0].ts : null;
+        inst.oldestTs = inst.records.length ? inst.records[inst.records.length - 1].ts : null;
         if (!inst.records.length) showNote(inst.flow, 'No log lines match.', false);
+        inst.list.scrollTop = 0; // pin to the newest (top)
         this._updateCounts(inst);
-        inst.sticky.engage();
+        this._updateLive(inst);
 
         this._connectLog(inst);
     },
@@ -176,10 +186,19 @@ export const LogsManager = {
             if (!matchesFilter(rec, inst.filter)) return; // guard (server already filters)
             if (inst.unavailable) { inst.unavailable = false; clearRows(inst.flow); }
             inst.seen.add(k);
-            inst.records.push(rec);
-            if (!inst.oldestTs) inst.oldestTs = rec.ts;
-            appendRow(inst.flow, rec);
+            inst.records.unshift(rec); // newest to the front
+
+            // Prepend at the top. If the user is following (at the top), keep the
+            // newest in view; otherwise anchor their scroll so the inserted row
+            // above doesn't shift what they're reading.
+            const following = this._following(inst);
+            const before = inst.list.scrollHeight;
+            prependRow(inst.flow, rec);
+            if (following) inst.list.scrollTop = 0;
+            else inst.list.scrollTop += inst.list.scrollHeight - before;
+
             this._updateCounts(inst);
+            this._updateLive(inst);
         };
         es.onerror = () => { /* EventSource auto-reconnects; the query fetch owns the unavailable note */ };
         inst.logStream = es;
@@ -187,7 +206,7 @@ export const LogsManager = {
     },
 
     // _loadOlder fetches the page just older than the oldest shown line and
-    // prepends it (no pager; scroll-up history).
+    // appends it at the bottom (no pager; scroll-down history).
     async _loadOlder(inst) {
         if (inst.loadingOlder || !inst.hasMoreOlder || !inst.oldestTs || inst.unavailable) return;
         inst.loadingOlder = true;
@@ -206,19 +225,19 @@ export const LogsManager = {
         }
         if (inst.destroyed) { inst.loadingOlder = false; return; }
 
-        // Newest-first; prepend newest→oldest so the top ends up oldest.
+        // Newest-first, all older than oldestTs; append newest→oldest at the
+        // bottom so the list stays newest-first end to end.
         const arr = Array.isArray(recs) ? recs : [];
         let added = 0;
-        inst.sticky.disengage(); // reading history — don't snap back to the bottom
         for (const rec of arr) {
             const k = recordKey(rec);
             if (inst.seen.has(k)) continue;
             inst.seen.add(k);
-            inst.records.unshift(rec);
-            prependRow(inst.flow, rec);
+            inst.records.push(rec);
+            appendRow(inst.flow, rec);
             added++;
         }
-        if (added) inst.oldestTs = inst.records[0].ts;
+        if (added) inst.oldestTs = inst.records[inst.records.length - 1].ts;
         if (added === 0 || arr.length < PAGE_LIMIT) inst.hasMoreOlder = false;
         this._updateCounts(inst);
         inst.loadingOlder = false;
@@ -250,17 +269,19 @@ export const LogsManager = {
             inst.tailToggle.classList.toggle('on', on);
             inst.tailToggle.setAttribute('aria-checked', on ? 'true' : 'false');
         }
-        if (on) { this._connectLog(inst); inst.sticky.engage(); }
+        if (on) { this._connectLog(inst); inst.list.scrollTop = 0; } // resume → jump to newest
         else if (inst.logStream) { inst.logStream.close(); inst.logStream = null; }
         this._updateLive(inst);
     },
 
-    // _updateLive reflects the live/paused footer indicator + jump pill.
+    // _updateLive reflects the live/paused footer indicator + the jump pill,
+    // which shows only when scrolled away from the newest (top).
     _updateLive(inst) {
-        const following = inst.sticky ? inst.sticky.isFollowing() : true;
+        const following = this._following(inst);
         const live = inst.live && following;
         if (inst.liveInd) inst.liveInd.classList.toggle('paused', !live);
         if (inst.liveLabel) inst.liveLabel.textContent = live ? 'live' : 'paused';
+        if (inst.jump) inst.jump.classList.toggle('hidden', following);
     },
 
     _updateCounts(inst) {
@@ -270,10 +291,10 @@ export const LogsManager = {
         if (inst.countFoot) inst.countFoot.textContent = lines + this._span(inst);
     },
 
-    // _span renders " · last Nm" from the oldest shown line to now.
+    // _span renders " · last Nm" from the oldest shown line (bottom) to now.
     _span(inst) {
         if (!inst.records.length) return '';
-        const oldest = new Date(inst.records[0].ts).getTime();
+        const oldest = new Date(inst.records[inst.records.length - 1].ts).getTime();
         if (isNaN(oldest)) return '';
         const s = Math.max(0, Math.round((Date.now() - oldest) / 1000));
         if (s < 60) return ' · last ' + s + 's';
@@ -290,7 +311,6 @@ export const LogsManager = {
         clearInterval(inst.statusTimer);
         inst.logStream?.close();
         inst.statusStream?.close();
-        inst.sticky?.destroy();
         this.instance = null;
     },
 

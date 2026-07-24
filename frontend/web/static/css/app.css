@@ -780,7 +780,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .lz-live.paused .dot{background:var(--muted)}
 
 @media (max-width:640px){
-  .lz-row{grid-template-columns:76px 1fr;grid-template-areas:"time msg" "svc msg";row-gap:2px}
+  /* col1 = max-content so the HH:MM:SS.mmm timestamp fits instead of
+     overflowing a fixed track and colliding with the message. */
+  .lz-row{grid-template-columns:max-content 1fr;grid-template-areas:"time msg" "svc msg";row-gap:2px}
   .lz-time{grid-area:time}
   .lz-svc{grid-area:svc}
   .lz-lvl{display:none}
