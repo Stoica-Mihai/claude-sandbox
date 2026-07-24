@@ -794,6 +794,11 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .lz-live.paused .dot{background:var(--muted)}
 
 @media (max-width:640px){
+  /* Half-width sidebar (50vw): tighten the expanded header so the kick label
+     doesn't eat the row and the +NEW button isn't glued to the right edge. */
+  .side.expanded .shead{padding:12px 12px 10px;gap:6px}
+  .side.expanded .shead .kick{letter-spacing:1px;font-size:10px}
+  .side.expanded .shead .btn-new{padding:6px 10px}
   /* col1 = max-content so the HH:MM:SS.mmm timestamp fits instead of
      overflowing a fixed track and colliding with the message. */
   .lz-row{grid-template-columns:max-content 1fr;grid-template-areas:"time msg" "svc msg";row-gap:2px}
