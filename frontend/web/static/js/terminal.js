@@ -1,6 +1,7 @@
-// Terminal manager: owns the xterm.js instances and coordinates their concerns
-// (theme, socket relay, clipboard, mobile touch), each of which lives in a
-// sibling terminal-*.js module.
+// Terminal surface: TerminalView owns one xterm.js instance and its concerns
+// (theme, socket relay, clipboard, mobile touch — each in a sibling
+// terminal-*.js module); TerminalManager is the factory + registry keyed by
+// terminalId, exposing create/get/destroy/resize/rethemeAll for the callers.
 
 import { isMobile } from './ui-utils.js';
 import { getTerminalTheme, syncTerminalBgVar, terminalThemes } from './terminal-theme.js';
@@ -17,20 +18,21 @@ export { terminalThemes, getTerminalTheme, syncTerminalBgVar };
 // One encoder for every keystroke (allocating one per input is pure waste).
 const textEncoder = new TextEncoder();
 
-// TerminalManager — manages multiple xterm.js instances and their sockets.
-export const TerminalManager = {
-    instances: {}, // terminalId -> { term, socket, fitAddon, webLinksAddon, webglAddon, containerId, needsRefresh }
-
-    create(terminalId, containerEl) {
-        if (this.instances[terminalId]) {
-            this.destroy(terminalId);
-        }
-
-        const fitAddon = new FitAddon.FitAddon();
-        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+// TerminalView owns a single xterm.js terminal + its SessionSocket relay. The
+// constructor builds the terminal, opens it into containerEl, wires clipboard/
+// touch/input, and connects the socket; this.destroyed guards async callbacks
+// against a disposed view.
+export class TerminalView {
+    constructor(terminalId, containerEl) {
+        this.terminalId = terminalId;
+        this.containerId = containerEl.id;
+        this.needsRefresh = false; // set when another viewer resized us; display is garbled until next input
+        this.destroyed = false;
 
         const mobile = isMobile();
-        const term = new Terminal({
+        this.fitAddon = new FitAddon.FitAddon();
+        this.webLinksAddon = new WebLinksAddon.WebLinksAddon();
+        const term = this.term = new Terminal({
             cursorBlink: true,
             rightClickSelectsWord: !mobile,
             // Smaller on mobile so more columns fit per line on a narrow screen.
@@ -41,23 +43,23 @@ export const TerminalManager = {
             allowProposedApi: true,
         });
 
-        term.loadAddon(fitAddon);
-        term.loadAddon(webLinksAddon);
+        term.loadAddon(this.fitAddon);
+        term.loadAddon(this.webLinksAddon);
 
         // GPU-accelerated rendering (desktop only — saves battery on mobile).
-        let webglAddon = null;
+        this.webglAddon = null;
         if (!mobile && typeof WebglAddon !== 'undefined') {
             try {
-                webglAddon = new WebglAddon.WebglAddon();
+                const webglAddon = new WebglAddon.WebglAddon();
                 webglAddon.onContextLoss(() => {
-                    // Clear the instance's ref (set below), not just this local,
-                    // so a later destroy() can't dispose the addon a second time.
-                    instance.webglAddon?.dispose();
-                    instance.webglAddon = null;
+                    // Clear our ref so a later destroy() can't dispose it twice.
+                    this.webglAddon?.dispose();
+                    this.webglAddon = null;
                 });
                 term.loadAddon(webglAddon);
+                this.webglAddon = webglAddon;
             } catch (e) {
-                webglAddon = null;
+                this.webglAddon = null;
             }
         }
 
@@ -83,7 +85,7 @@ export const TerminalManager = {
 
         term.open(containerEl);
 
-        wireClipboard(containerEl, term, terminalId, this, mobile);
+        wireClipboard(containerEl, term, terminalId, TerminalManager, mobile);
         if (mobile) {
             wireTouchScroll(containerEl, term);
         }
@@ -91,23 +93,12 @@ export const TerminalManager = {
         // Fit after opening (needs a frame for container dimensions).
         requestAnimationFrame(() => {
             try {
-                fitAddon.fit();
+                this.fitAddon.fit();
             } catch (e) { /* container may not be visible yet */ }
         });
 
-        const instance = {
-            term,
-            socket: null,
-            fitAddon,
-            webLinksAddon,
-            webglAddon,
-            containerId: containerEl.id,
-            needsRefresh: false, // set when another viewer resized us; our display is garbled until next input
-        };
-        this.instances[terminalId] = instance;
-
         let scrollRafPending = false;
-        const socket = new SessionSocket(terminalId, {
+        const socket = this.socket = new SessionSocket(terminalId, {
             onData: (data) => {
                 const buf = term.buffer.active;
                 const atBottom = buf.baseY <= buf.viewportY + 5;
@@ -115,14 +106,14 @@ export const TerminalManager = {
                 if (atBottom && !scrollRafPending) {
                     scrollRafPending = true;
                     requestAnimationFrame(() => {
-                        // Skip if the terminal was disposed/replaced before this frame ran.
-                        if (this.instances[terminalId]?.term === term) term.scrollToBottom();
+                        // Skip if the view was disposed before this frame ran.
+                        if (!this.destroyed) term.scrollToBottom();
                         scrollRafPending = false;
                     });
                 }
             },
             onControl: (msg) => {
-                if (msg.type === wsControl().DEACTIVATED) instance.needsRefresh = true;
+                if (msg.type === wsControl().DEACTIVATED) this.needsRefresh = true;
             },
             onStatus: (status, info) => {
                 if (status === 'open') {
@@ -142,7 +133,6 @@ export const TerminalManager = {
                 }
             },
         });
-        instance.socket = socket;
         socket.connect();
 
         // Focusing a suspended terminal takes the live view back WITHOUT typing:
@@ -150,8 +140,8 @@ export const TerminalManager = {
         // This is the passive counterpart to the input-driven takeover below —
         // it injects nothing into the session.
         containerEl.addEventListener('focusin', () => {
-            if (socket.status === 'open' && instance.needsRefresh) {
-                instance.needsRefresh = false;
+            if (socket.status === 'open' && this.needsRefresh) {
+                this.needsRefresh = false;
                 socket.sendControl({ type: wsControl().REACTIVATE });
             }
         });
@@ -165,8 +155,8 @@ export const TerminalManager = {
             // If another viewer resized the session, clear our garbled display.
             // The input triggers the active-viewer takeover on the server, which
             // resizes the PTY back to us; the redraw arrives via broadcast.
-            if (socket.status === 'open' && instance.needsRefresh) {
-                instance.needsRefresh = false;
+            if (socket.status === 'open' && this.needsRefresh) {
+                this.needsRefresh = false;
                 term.clear();
             }
             socket.send(textEncoder.encode(data));
@@ -180,34 +170,57 @@ export const TerminalManager = {
         term.onResize(({ cols, rows }) => {
             socket.sendResize(cols, rows);
         });
+    }
 
-        return term;
+    resize() {
+        try {
+            this.fitAddon.fit();
+            this.term.scrollToBottom();
+        } catch (e) { /* container may not be visible */ }
+    }
+
+    retheme(theme) {
+        this.term.options.theme = theme;
+    }
+
+    destroy() {
+        this.destroyed = true;
+        this.socket?.close(); // intentional: no reconnect
+        if (this.webglAddon) {
+            this.webglAddon.dispose();
+        }
+        this.term.dispose();
+    }
+}
+
+// TerminalManager — factory + registry for the live TerminalView instances,
+// keyed by terminalId.
+export const TerminalManager = {
+    instances: {}, // terminalId -> TerminalView
+
+    create(terminalId, containerEl) {
+        if (this.instances[terminalId]) {
+            this.destroy(terminalId);
+        }
+        const view = new TerminalView(terminalId, containerEl);
+        this.instances[terminalId] = view;
+        return view;
     },
 
     destroy(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-
-        instance.socket?.close(); // intentional: no reconnect
-        if (instance.webglAddon) {
-            instance.webglAddon.dispose();
-        }
-        instance.term.dispose();
+        const view = this.instances[terminalId];
+        if (!view) return;
+        view.destroy();
         delete this.instances[terminalId];
     },
 
     resize(terminalId) {
-        const instance = this.instances[terminalId];
-        if (!instance) return;
-        try {
-            instance.fitAddon.fit();
-            instance.term.scrollToBottom();
-        } catch (e) { /* container may not be visible */ }
+        this.instances[terminalId]?.resize();
     },
 
     resizeAll() {
-        for (const terminalId of Object.keys(this.instances)) {
-            this.resize(terminalId);
+        for (const view of Object.values(this.instances)) {
+            view.resize();
         }
     },
 
@@ -218,18 +231,9 @@ export const TerminalManager = {
     rethemeAll() {
         const theme = getTerminalTheme();
         syncTerminalBgVar();
-        for (const instance of Object.values(this.instances)) {
-            instance.term.options.theme = theme;
+        for (const view of Object.values(this.instances)) {
+            view.retheme(theme);
         }
-    },
-
-    getByContainer(containerId) {
-        for (const [id, instance] of Object.entries(this.instances)) {
-            if (instance.containerId === containerId) {
-                return { terminalId: id, ...instance };
-            }
-        }
-        return null;
     },
 };
 
