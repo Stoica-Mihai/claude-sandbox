@@ -789,4 +789,10 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
      scroll it horizontally instead of clipping off-screen buttons or pushing
      the body (kit "contain wide content with overflow-x:auto" rule). */
   .lz-filters .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Status strip: 4 full-width stacked chips ate ~half the phone viewport and
+     pushed the logs below the fold. Make it a single horizontal-scroll row of
+     compact chips (border only, no offset bulk) so logs stay above the fold. */
+  .lz-status{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:8px;padding:8px 12px}
+  .svc{flex:none;padding:5px 9px;gap:7px;box-shadow:none}
+  .svc-name{font-size:12px}
 }
