@@ -20,70 +20,101 @@ export async function uploadFile(terminalId, file) {
     return data.path;
 }
 
-// createInputBar builds the input bar DOM and wires send/attach. onSend(text,
-// filePath) fires on submit; onStop() fires when the button is clicked while
-// a turn is running (see setRunning in the return value).
-export function createInputBar({ onSend, onStop, terminalId }) {
-    const wrap = document.createElement('div');
-    wrap.className = 'chat-input-bar';
+// InputBar builds the input bar DOM and wires send/attach. onSend(text,
+// filePath) fires on submit; onStop() fires when the button is clicked while a
+// turn is running. `focus`/`setRunning` are bound arrow fields so a caller can
+// hold and invoke them detached from the instance (ChatView does).
+export class InputBar {
+    constructor({ onSend, onStop, terminalId }) {
+        this.onSend = onSend;
+        this.onStop = onStop;
+        this.terminalId = terminalId;
+        this.pendingFilePath = null;
+        this.pendingUpload = null; // in-flight upload promise, or null
+        this.running = false;
 
-    // Attachment chip (own line, above the controls via flex-wrap): shows the
-    // selected file and its upload state so the attachment is visible before
-    // send — a silent button tint was easy to miss, especially on mobile.
-    const chip = document.createElement('div');
-    chip.className = 'chat-input-chip hidden';
+        const wrap = this.el = document.createElement('div');
+        wrap.className = 'chat-input-bar';
 
-    const textarea = document.createElement('textarea');
-    textarea.className = 'chat-input-text';
-    // Long placeholder wraps and clips at phone width — keep the /clear hint
-    // desktop-only (title tooltip carries it everywhere).
-    const compact = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:640px)').matches;
-    textarea.placeholder = compact ? 'Message…' : 'Message… (/clear resets context, same folder)';
-    textarea.title = '/clear resets context, same folder';
-    textarea.rows = 1;
+        // Attachment chip (own line, above the controls via flex-wrap): shows
+        // the selected file and its upload state so the attachment is visible
+        // before send — a silent button tint was easy to miss, especially on
+        // mobile.
+        const chip = this.chip = document.createElement('div');
+        chip.className = 'chat-input-chip hidden';
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.className = 'chat-input-file hidden'; // no accept filter — any file
+        const textarea = this.textarea = document.createElement('textarea');
+        textarea.className = 'chat-input-text';
+        // Long placeholder wraps and clips at phone width — keep the /clear hint
+        // desktop-only (title tooltip carries it everywhere).
+        const compact = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+        textarea.placeholder = compact ? 'Message…' : 'Message… (/clear resets context, same folder)';
+        textarea.title = '/clear resets context, same folder';
+        textarea.rows = 1;
 
-    const attachBtn = document.createElement('button');
-    attachBtn.type = 'button';
-    attachBtn.className = 'chat-input-attach';
-    attachBtn.title = 'Attach file';
-    attachBtn.setAttribute('aria-label', 'Attach file');
-    attachBtn.textContent = '+';
+        const fileInput = this.fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.className = 'chat-input-file hidden'; // no accept filter — any file
 
-    const sendBtn = document.createElement('button');
-    sendBtn.type = 'button';
-    sendBtn.className = 'chat-input-send';
-    sendBtn.textContent = 'Send';
+        const attachBtn = document.createElement('button');
+        attachBtn.type = 'button';
+        attachBtn.className = 'chat-input-attach';
+        attachBtn.title = 'Attach file';
+        attachBtn.setAttribute('aria-label', 'Attach file');
+        attachBtn.textContent = '+';
 
-    wrap.appendChild(chip);
-    wrap.appendChild(attachBtn);
-    wrap.appendChild(textarea);
-    wrap.appendChild(fileInput);
-    wrap.appendChild(sendBtn);
+        const sendBtn = this.sendBtn = document.createElement('button');
+        sendBtn.type = 'button';
+        sendBtn.className = 'chat-input-send';
+        sendBtn.textContent = 'Send';
 
-    let pendingFilePath = null;
-    let pendingUpload = null; // in-flight upload promise, or null
-    let running = false;
+        wrap.appendChild(chip);
+        wrap.appendChild(attachBtn);
+        wrap.appendChild(textarea);
+        wrap.appendChild(fileInput);
+        wrap.appendChild(sendBtn);
+
+        attachBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files && fileInput.files[0];
+            fileInput.value = '';
+            if (!file) return;
+            this.pendingFilePath = null;
+            this.renderChip(file.name, 'uploading');
+            this.pendingUpload = uploadFile(this.terminalId, file)
+                .then((path) => { this.pendingFilePath = path; this.renderChip(file.name, 'ready'); })
+                .catch((err) => { this.renderChip(file.name, 'failed', err && err.message); })
+                .finally(() => { this.pendingUpload = null; });
+        });
+
+        sendBtn.addEventListener('click', () => {
+            if (this.running) this.onStop?.();
+            else this.doSend();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!this.running) this.doSend();
+            }
+        });
+    }
 
     // renderChip reflects the attachment state; status: uploading|ready|failed
     // or null to hide. A ready chip carries a remove control.
-    function renderChip(name, status, detail) {
-        chip.textContent = '';
-        if (!name) { chip.classList.add('hidden'); return; }
-        chip.classList.remove('hidden');
+    renderChip(name, status, detail) {
+        this.chip.textContent = '';
+        if (!name) { this.chip.classList.add('hidden'); return; }
+        this.chip.classList.remove('hidden');
         const icon = document.createElement('span');
         icon.className = 'chat-attach-icon'; // masked paperclip in currentColor, not an emoji
-        chip.appendChild(icon);
+        this.chip.appendChild(icon);
         const label = document.createElement('span');
         label.className = 'chat-chip-name';
         let suffix = '';
         if (status === 'uploading') suffix = ' · uploading…';
         else if (status === 'failed') suffix = ' · failed' + (detail ? ' (' + detail + ')' : '');
         label.textContent = name + suffix;
-        chip.appendChild(label);
+        this.chip.appendChild(label);
         if (status === 'ready') {
             const rm = document.createElement('button');
             rm.type = 'button';
@@ -91,58 +122,38 @@ export function createInputBar({ onSend, onStop, terminalId }) {
             rm.title = 'Remove attachment';
             rm.setAttribute('aria-label', 'Remove attachment');
             rm.textContent = '✕';
-            rm.addEventListener('click', clearAttachment);
-            chip.appendChild(rm);
+            rm.addEventListener('click', this.clearAttachment);
+            this.chip.appendChild(rm);
         }
     }
 
-    function clearAttachment() {
-        pendingFilePath = null;
-        pendingUpload = null;
-        renderChip(null);
-    }
+    clearAttachment = () => {
+        this.pendingFilePath = null;
+        this.pendingUpload = null;
+        this.renderChip(null);
+    };
 
-    async function doSend() {
-        const text = textarea.value.trim();
+    async doSend() {
+        const text = this.textarea.value.trim();
         // Wait out an in-flight upload so a fast send can't drop the file.
-        if (pendingUpload) { try { await pendingUpload; } catch (e) { /* failure already shown on the chip */ } }
-        if (!text && !pendingFilePath) return;
-        onSend(text, pendingFilePath);
-        textarea.value = '';
-        clearAttachment();
+        if (this.pendingUpload) { try { await this.pendingUpload; } catch (e) { /* failure already shown on the chip */ } }
+        if (!text && !this.pendingFilePath) return;
+        this.onSend(text, this.pendingFilePath);
+        this.textarea.value = '';
+        this.clearAttachment();
     }
 
     // setRunning toggles the primary button between Send and Stop. While
     // running, the button interrupts the turn (onStop) and Enter does not send.
-    function setRunning(on) {
-        running = on;
-        sendBtn.textContent = on ? 'Stop' : 'Send';
-        sendBtn.classList.toggle('chat-input-stop', on);
-    }
+    setRunning = (on) => {
+        this.running = on;
+        this.sendBtn.textContent = on ? 'Stop' : 'Send';
+        this.sendBtn.classList.toggle('chat-input-stop', on);
+    };
 
-    attachBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', () => {
-        const file = fileInput.files && fileInput.files[0];
-        fileInput.value = '';
-        if (!file) return;
-        pendingFilePath = null;
-        renderChip(file.name, 'uploading');
-        pendingUpload = uploadFile(terminalId, file)
-            .then((path) => { pendingFilePath = path; renderChip(file.name, 'ready'); })
-            .catch((err) => { renderChip(file.name, 'failed', err && err.message); })
-            .finally(() => { pendingUpload = null; });
-    });
+    focus = () => this.textarea.focus();
+}
 
-    sendBtn.addEventListener('click', () => {
-        if (running) onStop?.();
-        else doSend();
-    });
-    textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (!running) doSend();
-        }
-    });
-
-    return { el: wrap, focus: () => textarea.focus(), setRunning };
+export function createInputBar(opts) {
+    return new InputBar(opts);
 }
