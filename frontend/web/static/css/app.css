@@ -443,6 +443,11 @@ input.err-flash{outline:3px solid var(--accent)}
 .share-actions .hint{font-size:11px;color:var(--muted);font-family:var(--mono);min-width:0}
 .share-actions .hint.err{color:var(--accent)}
 
+/* Log-share toggle: its own band between the connection string and the
+   GO PRIVATE row (divider above; .share-actions supplies the one below). */
+.share-logs-row{margin-top:14px;padding-top:14px;border-top:2px solid var(--line)}
+#shareLogsHint{margin-top:6px;font-size:11px;color:var(--muted);font-family:var(--mono)}
+
 /* D17: ambient "you're broadcasting" cue — when the tunnel is public the logo
    mark gains an accent glow (a soft pulse) instead of a dedicated header glyph.
    Same-hue accent, so law 4 holds; reduced-motion drops the pulse to a static
