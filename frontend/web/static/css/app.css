@@ -347,10 +347,6 @@ input.err-flash{outline:3px solid var(--accent)}
 .hdr .title,.hdr .sub{display:none}
 .ctrlbar{display:none}
 .themewrap span{display:none}
-/* The session count is a status readout, not a control — drop it on mobile so
-   the six header items (mark + accent/share/settings/theme) stop crowding the
-   logo. The sidebar still lists sessions. Restored at the desktop breakpoint. */
-.statpill{display:none}
 .hdr .right{gap:10px}
 .hdr{padding:0 12px}
 /* Touch: rail chips + hamburger ≥40px (mobile-first default is touch). */
@@ -367,7 +363,6 @@ input.err-flash{outline:3px solid var(--accent)}
   .hdr .title,.hdr .sub{display:inline}
   .ctrlbar{display:flex}
   .themewrap span{display:inline}
-  .statpill{display:flex}
   .hdr .right{gap:16px}
   .hdr{padding:0 18px}
   #mobileInputBar{display:none}
@@ -697,7 +692,13 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 
    D23: .lz-list is a TABLE, not cards — dense hairline-separated mono rows with
    no per-row offset shadow (a shadow per line would be visual noise at log
-   density). The single accent moment per row is the ERROR inset left-edge. */
+   density). The single accent moment per row is the ERROR inset left-edge.
+
+   D24: mobile .toggle geometry is 52x26, not the kit's 80x40. The kit's
+   touch enlargement reads oversized in the dense header (theme switch) and
+   filter bar (live-tail); 52x26 keeps a slight touch bump over the 48x24
+   desktop base without dominating. Geometry stays coupled per the kit rule
+   (knob = height - 2*border; .on left = width - height). */
 
 /* Brand logo is now a home link; strip anchor chrome, keep the kit layout. */
 .brand-home{text-decoration:none;color:inherit;cursor:pointer;border-bottom:none}
@@ -797,4 +798,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   .lz-status{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:8px;padding:8px 12px}
   .svc{flex:none;padding:5px 9px;gap:7px;box-shadow:none}
   .svc-name{font-size:12px}
+  /* Global (not logs-only): shrink the kit's oversized 80x40 mobile toggle to
+     52x26 for the theme switch + live-tail control. Ledger D24. */
+  .toggle{width:52px;height:26px}
+  .toggle>i{width:22px;height:22px}
+  .toggle.on>i{left:26px}
 }
