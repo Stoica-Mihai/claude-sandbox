@@ -30,6 +30,8 @@ const (
 	RouteHealthz           = "/healthz"
 	RouteLogs              = "/api/logs"
 	RouteLogsStream        = "/api/logs/stream"
+	RouteStatus            = "/api/status"
+	RouteStatusStream      = "/api/status/stream"
 )
 
 // SSEEventUpdate is the Server-Sent-Event name the backend emits on a session

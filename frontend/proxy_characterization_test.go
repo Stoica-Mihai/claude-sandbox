@@ -51,7 +51,6 @@ func TestProxyPassthroughForwardsVerbatim(t *testing.T) {
 		{"settings-put", "PUT", "/api/settings", true},
 		{"uiprefs-get", "GET", "/api/ui-prefs", false},
 		{"uiprefs-put", "PUT", "/api/ui-prefs", true},
-		{"healthz", "GET", "/healthz", false},
 		{"create-dir", "POST", "/api/directories", true},
 		{"upload", "POST", "/api/sessions/claude-x/upload", true},
 	}
@@ -440,6 +439,65 @@ func TestLogsRoutesToLogdNotBackend(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHealthzServedLocally locks that GET /healthz is served by the frontend
+// itself (200), NOT proxied to backend — so it reports frontend liveness and
+// can't cascade when backend is down.
+func TestHealthzServedLocally(t *testing.T) {
+	backendHit := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendHit = true
+	}))
+	defer backend.Close()
+
+	mux := newMuxServer(t, backend.URL, noHolesail)
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if backendHit {
+		t.Error("/healthz reached the backend; must be served locally by the frontend")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if rb, _ := io.ReadAll(rec.Result().Body); !strings.Contains(string(rb), `"status":"ok"`) {
+		t.Errorf("body = %q, want frontend's own ok", rb)
+	}
+}
+
+// TestStatusRoutesToLogdGuarded locks that /api/status (bare and slashed) is
+// proxied to logd, not the backend catch-all, and 403'd for tunnel visitors.
+func TestStatusRoutesToLogdGuarded(t *testing.T) {
+	for _, path := range []string{"/api/status", "/api/status/stream"} {
+		t.Run("lan "+path, func(t *testing.T) {
+			backendHit := false
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { backendHit = true }))
+			defer backend.Close()
+			logdHit := false
+			logd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { logdHit = true }))
+			defer logd.Close()
+
+			mux := newMuxServerFull(t, backend.URL, noHolesail, logd.URL)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+			if backendHit || !logdHit {
+				t.Errorf("%s: backendHit=%v logdHit=%v, want logd only", path, backendHit, logdHit)
+			}
+		})
+	}
+	t.Run("tunnel 403", func(t *testing.T) {
+		logdHit := false
+		logd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { logdHit = true }))
+		defer logd.Close()
+		mux := newMuxServerFull(t, "http://backend.invalid:8081", noHolesail, logd.URL)
+		rec := httptest.NewRecorder()
+		markTunnel(mux).ServeHTTP(rec, httptest.NewRequest("GET", "/api/status", nil))
+		if rec.Code != http.StatusForbidden || logdHit {
+			t.Errorf("tunnel GET /api/status: code=%d logdHit=%v, want 403 and no logd", rec.Code, logdHit)
+		}
+	})
 }
 
 // TestLogsTunnelForbiddenAllMethods locks that a tunnel-originated request to a

@@ -36,7 +36,10 @@ func main() {
 
 	go tail.Run(ctx, pollInterval, flushInterval)
 
-	srv := &server{store: st}
+	mon := newHealthMonitor(healthTargets(), nil, st)
+	go mon.Run(ctx)
+
+	srv := &server{store: st, mon: mon}
 	mux := http.NewServeMux()
 	srv.routes(mux)
 	httpServer := &http.Server{
@@ -67,4 +70,18 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// healthTargets is the fleet logd probes. Defaults match the compose service
+// names/ports; each is env-overridable.
+func healthTargets() []target {
+	return []target{
+		{"backend", api.URLFromEnv("BACKEND_HEALTH_URL", "http://backend:8081") + api.RouteHealthz},
+		{"frontend", api.URLFromEnv("FRONTEND_HEALTH_URL", "http://frontend:8080") + api.RouteHealthz},
+		// Host is the compose service name "sessions" (not the daemon name
+		// "sessiond"); the status label stays "sessiond" to match its log records.
+		{"sessiond", api.URLFromEnv("SESSIOND_HEALTH_URL", "http://sessions:"+api.SessiondHealthPort) + api.RouteHealthz},
+		{"holesail", api.URLFromEnv("HOLESAIL_HEALTH_URL", "http://holesail:9000") + api.RouteHealthz},
+		{"logd", api.URLFromEnv("LOGD_HEALTH_URL", "http://localhost:8082") + api.RouteHealthz},
+	}
 }

@@ -45,8 +45,7 @@ func main() {
 	}
 
 	if *ping {
-		resp, err := protocol.Do(sockDir, protocol.Request{Op: protocol.OpPing})
-		if err != nil || !resp.OK {
+		if err := pingControl(sockDir); err != nil {
 			fmt.Fprintf(os.Stderr, "ping failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -82,6 +81,11 @@ func main() {
 		os.Exit(0)
 	}()
 
-	slog.Info("sessiond listening", "control", protocol.ControlSock(sockDir))
+	// Internal health endpoint for logd's cross-service probe (sessiond's only
+	// TCP surface; the Docker healthcheck still uses `sessiond -ping`).
+	healthAddr := api.ListenAddr("SESSIOND_HEALTH_PORT", ":"+api.SessiondHealthPort)
+	go serveHealth(healthAddr, func() error { return pingControl(sockDir) })
+
+	slog.Info("sessiond listening", "control", protocol.ControlSock(sockDir), "health", healthAddr)
 	reg.serveControl(ln)
 }

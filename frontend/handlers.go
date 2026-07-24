@@ -118,12 +118,15 @@ func NewServer(backendURL, holesailURL, logdURL string, mux *http.ServeMux) (*Se
 	// through to the /api/ backend catch-all; the sidecar 404s unknown routes.
 	mux.HandleFunc("/api/share/", s.handleShareProxy)
 
-	// Log routes proxied to the logd sidecar (guarded). Both the bare path and
-	// the prefix are registered: the prefix pattern does not match the bare
-	// path, so without the exact route "/api/logs" would fall through to the
-	// /api/ backend catch-all and bypass the tunnel guard.
-	mux.HandleFunc(api.RouteLogs, s.handleLogsProxy)
-	mux.HandleFunc(api.RouteLogs+"/", s.handleLogsProxy)
+	// Log + status routes proxied to the logd sidecar (guarded). Both the bare
+	// path and the prefix are registered for each: the prefix pattern does not
+	// match the bare path, so without the exact route "/api/logs" (or
+	// "/api/status") would fall through to the /api/ backend catch-all and
+	// bypass the tunnel guard.
+	mux.HandleFunc(api.RouteLogs, s.handleGuardedLogd)
+	mux.HandleFunc(api.RouteLogs+"/", s.handleGuardedLogd)
+	mux.HandleFunc(api.RouteStatus, s.handleGuardedLogd)
+	mux.HandleFunc(api.RouteStatus+"/", s.handleGuardedLogd)
 
 	// Streaming proxy routes. SSE goes through the reverse proxy, which
 	// auto-flushes text/event-stream responses.
@@ -131,11 +134,13 @@ func NewServer(backendURL, holesailURL, logdURL string, mux *http.ServeMux) (*Se
 	mux.HandleFunc("GET "+api.RouteWSTerminal, s.handleWebSocketProxy)
 
 	// Catch-all: every other /api/ path (settings, ui-prefs, session history,
-	// upload, create-directory POST) and healthz is forwarded verbatim to the
-	// backend. The specific routes above win by precedence, so only genuine
-	// passthrough requests reach the proxy.
+	// upload, create-directory POST) is forwarded verbatim to the backend. The
+	// specific routes above win by precedence, so only genuine passthrough
+	// requests reach the proxy.
 	mux.Handle("/api/", s.backendProxy)
-	mux.Handle("GET /healthz", s.backendProxy)
+	// Frontend's own shallow liveness — served locally, NOT proxied to backend,
+	// so it reports the frontend's health (not backend's) and can't cascade.
+	mux.HandleFunc("GET "+api.RouteHealthz, s.handleHealthz)
 
 	// Static files. embed.FS files carry no modtime, so http.FileServer alone
 	// sends no ETag/Last-Modified and browsers re-download every asset on every
@@ -562,16 +567,23 @@ func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 	s.holesailProxy.ServeHTTP(w, r)
 }
 
-// handleLogsProxy proxies /api/logs* to the logd sidecar. Logs may contain
-// secrets, so — stricter than the share guard, which allows GET — every method
-// including GET is rejected for a tunnel-originated request. logd is otherwise
-// unauthenticated; the boundary is this guard plus the external auth proxy.
-func (s *Server) handleLogsProxy(w http.ResponseWriter, r *http.Request) {
+// handleGuardedLogd proxies /api/logs* and /api/status* to the logd sidecar.
+// Both may expose secrets or fleet topology, so — stricter than the share
+// guard, which allows GET — every method including GET is rejected for a
+// tunnel-originated request. logd is otherwise unauthenticated; the boundary is
+// this guard plus the external auth proxy.
+func (s *Server) handleGuardedLogd(w http.ResponseWriter, r *http.Request) {
 	if isTunnelRequest(r) {
-		http.Error(w, "logs are not available over the tunnel", http.StatusForbidden)
+		http.Error(w, "not available over the tunnel", http.StatusForbidden)
 		return
 	}
 	s.logdProxy.ServeHTTP(w, r)
+}
+
+// handleHealthz is the frontend's own shallow liveness endpoint.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 // --- Helpers ---

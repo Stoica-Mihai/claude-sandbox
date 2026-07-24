@@ -26,10 +26,11 @@ type store struct {
 	dir     string
 	ringCap int
 
-	mu     sync.Mutex
-	ring   []api.LogRecord
-	subs   map[int]*subscriber
-	nextID int
+	mu       sync.Mutex
+	ring     []api.LogRecord
+	subs     map[int]*subscriber
+	nextID   int
+	lastSeen map[string]time.Time // service → time logd last ingested a line
 }
 
 type subscriber struct {
@@ -41,7 +42,7 @@ func newStore(dir string, ringCap int) *store {
 	if ringCap <= 0 {
 		ringCap = defaultRingCap
 	}
-	return &store{dir: dir, ringCap: ringCap, subs: map[int]*subscriber{}}
+	return &store{dir: dir, ringCap: ringCap, subs: map[int]*subscriber{}, lastSeen: map[string]time.Time{}}
 }
 
 // add appends to the ring (bounded) and fans out to matching subscribers. A
@@ -52,6 +53,9 @@ func (s *store) add(rec api.LogRecord) {
 	s.ring = append(s.ring, rec)
 	if len(s.ring) > s.ringCap {
 		s.ring = s.ring[len(s.ring)-s.ringCap:]
+	}
+	if rec.Service != "" {
+		s.lastSeen[rec.Service] = time.Now()
 	}
 	subs := make([]*subscriber, 0, len(s.subs))
 	for _, sub := range s.subs {
@@ -92,6 +96,17 @@ func (s *store) unsubscribe(id int) {
 	s.mu.Lock()
 	delete(s.subs, id)
 	s.mu.Unlock()
+}
+
+// lastSeenSnapshot returns a copy of the per-service last-ingest times.
+func (s *store) lastSeenSnapshot() map[string]time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]time.Time, len(s.lastSeen))
+	for k, v := range s.lastSeen {
+		out[k] = v
+	}
+	return out
 }
 
 // Query returns up to q.Limit records matching the filters, newest-first, by

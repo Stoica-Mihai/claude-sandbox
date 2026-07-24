@@ -86,13 +86,18 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 			return
 		}
 		if resp != nil {
-			slog.Error("websocket dial to backend failed",
+			// Backend answered but rejected the upgrade (non-404) — a genuine
+			// per-request anomaly, but not the "backend down" flood.
+			slog.Warn("websocket dial to backend rejected",
 				"url", parsed.String(),
 				"status", resp.StatusCode,
 				"error", err,
 			)
 		} else {
-			slog.Error("websocket dial to backend failed",
+			// Backend unreachable — expected during a rebuild and self-healing
+			// via the client's reconnect. The logd status panel is the
+			// authoritative "backend down" signal, so this is debug detail.
+			slog.Debug("websocket dial to backend failed (backend unreachable)",
 				"url", parsed.String(),
 				"error", err,
 			)

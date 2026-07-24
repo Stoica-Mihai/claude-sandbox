@@ -67,8 +67,10 @@ services:
     environment:
       - HOME=/home/claude
       - LOG_DIR=/logs
+      - SESSIOND_HEALTH_PORT=${SESSIOND_HEALTH_PORT:-8083}
 
-    # No exposed ports — sessiond speaks unix sockets only
+    # No published ports — the control socket is unix-domain; the /healthz
+    # listener is internal-network only (logd probes it, not the host).
     networks:
       - claude-net
 

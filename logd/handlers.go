@@ -18,14 +18,46 @@ const (
 
 type server struct {
 	store *store
+	mon   *healthMonitor
 }
 
 func (s *server) routes(mux *http.ServeMux) {
-	// Most-specific wins in Go 1.22 ServeMux, so the stream path is not shadowed
-	// by the bare query path.
+	// Most-specific wins in Go 1.22 ServeMux, so the stream paths are not
+	// shadowed by the bare query paths.
 	mux.HandleFunc("GET "+api.RouteLogsStream, s.handleStream)
 	mux.HandleFunc("GET "+api.RouteLogs, s.handleQuery)
+	mux.HandleFunc("GET "+api.RouteStatusStream, s.handleStatusStream)
+	mux.HandleFunc("GET "+api.RouteStatus, s.handleStatus)
 	mux.HandleFunc("GET "+api.RouteHealthz, s.handleHealthz)
+}
+
+func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.mon.status())
+}
+
+func (s *server) handleStatusStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := startSSE(w)
+	if !ok {
+		return
+	}
+
+	id, ch := s.mon.subscribe()
+	defer s.mon.unsubscribe(id)
+
+	writeSSE(w, s.mon.status()) // snapshot on connect
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case snap := <-ch:
+			writeSSE(w, snap)
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
@@ -38,14 +70,10 @@ func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleStream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := startSSE(w)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 
 	id, ch, replay := s.store.subscribe(parseQuery(r))
 	defer s.store.unsubscribe(id)
@@ -72,8 +100,24 @@ func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-func writeSSE(w io.Writer, rec api.LogRecord) {
-	b, err := json.Marshal(rec)
+// startSSE asserts the writer can flush and sets the SSE response headers,
+// returning the flusher. ok is false (a 500 already written) when streaming is
+// unsupported.
+func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return nil, false
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	return flusher, true
+}
+
+// writeSSE marshals v and writes it as one SSE data frame.
+func writeSSE(w io.Writer, v any) {
+	b, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
