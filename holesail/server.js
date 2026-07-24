@@ -106,6 +106,7 @@ async function startTunnel() {
   if (state === 'public') return
   state = 'publishing'
   lastError = null
+  console.log('share: publishing tunnel -> ' + TARGET_HOST + ':' + TARGET_PORT)
   try {
     hs = new Holesail({
       server: true,
@@ -116,10 +117,14 @@ async function startTunnel() {
     })
     await withTimeout(hs.ready(), READY_TIMEOUT_MS, 'tunnel did not become ready in time')
     state = 'public'
+    // Security-significant: the dashboard is now reachable over the internet.
+    // Never log the key / connection string — it IS the credential.
+    console.log('share: went PUBLIC — dashboard exposed to the internet')
   } catch (err) {
     await closeInstance()
     state = 'error'
     lastError = err.message || String(err)
+    console.error('share: publish failed: ' + lastError)
     throw err
   }
 }
@@ -128,10 +133,12 @@ async function stopTunnel() {
   await closeInstance()
   state = 'private'
   lastError = null
+  console.log('share: went PRIVATE — tunnel closed')
 }
 
 async function regenerate() {
   const wasPublic = state === 'public'
+  console.log('share: key regenerated — previous connection string invalidated')
   await closeInstance()
   try {
     fs.unlinkSync(KEY_FILE)
