@@ -184,6 +184,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.holesail
+      args:
+        <<: *uidgid
     container_name: claude_holesail
     restart: unless-stopped
     develop:
@@ -197,11 +199,13 @@ services:
       # frontend can tell tunnel visitors from LAN users by socket, not by IP.
       - SHARE_TARGET_PORT=${TUNNEL_PORT:-8090}
       - SHARE_CONTROL_PORT=${SHARE_CONTROL_PORT:-9000}
+      - LOG_DIR=/logs
 
     volumes:
       # Persistent share key — the connection string is derived from it, so
       # the same key means the same string across restarts.
       - holesail-share-key:/data
+      - logs:/logs
 
     # No exposed ports — control API reachable only via internal network
     networks:

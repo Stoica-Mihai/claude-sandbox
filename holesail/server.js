@@ -20,6 +20,11 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const Holesail = require('holesail')
+const { initLogSink } = require('./logsink')
+
+// Feed the logd aggregator (JSON lines → /logs/holesail.log) + tee to console.
+// Must run before the first log line.
+initLogSink('holesail')
 
 const TARGET_HOST = process.env.SHARE_TARGET_HOST || 'frontend'
 // Default matches the frontend's TUNNEL LISTENER (8090), not the dashboard

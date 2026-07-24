@@ -12,7 +12,8 @@ import (
 func TestHealthTargetsUseComposeServiceNames(t *testing.T) {
 	wantHost := map[string]string{
 		"backend": "backend", "frontend": "frontend",
-		"sessiond": "sessions", "holesail": "holesail", "logd": "localhost",
+		"sessiond": "sessions", "holesail": "holesail",
+		// logd is intentionally absent — it does not probe itself.
 	}
 	for _, tg := range healthTargets() {
 		h, ok := wantHost[tg.service]

@@ -15,11 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
-COPY holesail/package.json holesail/server.js ./
+COPY holesail/package.json holesail/server.js holesail/logsink.js ./
 
-# Key volume mounts at /data; chown before first mount so the named volume
-# inherits node-writable ownership.
-RUN mkdir -p /data && chown node:node /data
-USER node
+# Run as the host UID/GID (matching the Go producers) so holesail can write the
+# shared, claude-owned logs volume. The /data (key) and /logs mountpoints are
+# chowned before first mount so the named volumes inherit that ownership.
+ARG UID
+ARG GID
+RUN mkdir -p /data /logs && chown ${UID}:${GID} /data /logs
+USER ${UID}:${GID}
 
 CMD ["node", "/app/server.js"]

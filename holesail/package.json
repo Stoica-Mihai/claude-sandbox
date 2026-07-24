@@ -4,6 +4,9 @@
   "description": "Control-API wrapper around holesail for on-demand P2P sharing of the dashboard",
   "license": "MIT",
   "main": "server.js",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "holesail": "2.4.1"
   }

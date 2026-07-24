@@ -82,6 +82,7 @@ func healthTargets() []target {
 		// "sessiond"); the status label stays "sessiond" to match its log records.
 		{"sessiond", api.URLFromEnv("SESSIOND_HEALTH_URL", "http://sessions:"+api.SessiondHealthPort) + api.RouteHealthz},
 		{"holesail", api.URLFromEnv("HOLESAIL_HEALTH_URL", "http://holesail:9000") + api.RouteHealthz},
-		{"logd", api.URLFromEnv("LOGD_HEALTH_URL", "http://localhost:8082") + api.RouteHealthz},
+		// logd does not probe itself: it serves /api/status, so if the status is
+		// reachable at all, logd is up — a self-chip carries no information.
 	}
 }
