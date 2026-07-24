@@ -73,61 +73,50 @@ func renderLogs(t *testing.T) string {
 	return renderNamed(t, "layout.html", DashboardData{Logs: true})
 }
 
-// TestLogsLayoutRendersLogsContext pins the logs surface: sub-label "logs", the
-// logs view markup (status strip + log list), the "Logs" sidebar kick, and NO
-// session content (no session-data payload, no + NEW, no session cards).
+// TestLogsLayoutRendersLogsContext pins the logs surface as the visible one on
+// /logs: sub-label "logs", the logs view markup, the "Logs" sidebar kick, and
+// the Logs nav current. Both surfaces mount in one shell (surface.js toggles
+// them client-side), so the dashboard surface + session list are present but
+// carry `hidden` — separation is visual, not by omission.
 func TestLogsLayoutRendersLogsContext(t *testing.T) {
 	out := renderLogs(t)
 
 	for _, want := range []string{
-		`<span class="sub">logs</span>`,
+		`<span class="sub" id="surfaceSub">logs</span>`,
 		`class="lz-status"`,
 		`class="lz-list"`,
 		`class="lz-filters"`,
-		`<span class="kick">Logs</span>`,
+		`<span class="kick" id="sideKick">Logs</span>`,
 		`class="lz-side-hint"`,
+		`id="surface-logs" class="surface"`,             // logs surface visible
+		`id="surface-dashboard" class="surface hidden"`, // dashboard mounted but hidden
+		`id="session-list" class="list hidden"`,         // session list mounted but hidden
+		`href="/logs" title="Logs" aria-current="page"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("logs layout missing %q", want)
 		}
 	}
-
-	for _, notWant := range []string{
-		`id="session-data"`,
-		`class="scard session-card"`,
-		`data-action="new-session"`,
-		`<span class="sub">dashboard</span>`,
-	} {
-		if strings.Contains(out, notWant) {
-			t.Errorf("logs layout should not contain %q (session surface leaked)", notWant)
-		}
-	}
-
-	// The Logs footer nav entry is the current surface.
-	if !strings.Contains(out, `href="/logs" title="Logs" aria-current="page"`) {
-		t.Error("logs layout: Logs nav entry not marked aria-current")
-	}
 }
 
-// TestDashboardLayoutUnchanged pins the dashboard surface: sub-label
-// "dashboard", session list present, Dashboard nav marked current, and the logs
-// view absent.
+// TestDashboardLayoutUnchanged pins the dashboard surface as the visible one on
+// /: sub-label "dashboard", session list visible, Dashboard nav current. The
+// logs surface also mounts (both surfaces share the shell) but carries `hidden`.
 func TestDashboardLayoutUnchanged(t *testing.T) {
 	out := renderLayout(t, []api.DisplaySession{{Name: "claude-abc12345", CWD: "/workspace/p", DisplayName: "p"}})
 
 	for _, want := range []string{
-		`<span class="sub">dashboard</span>`,
-		`id="session-list"`,
-		`<span class="kick">Sessions</span>`,
+		`<span class="sub" id="surfaceSub">dashboard</span>`,
+		`id="session-list" class="list"`,          // session list visible (no hidden)
+		`<span class="kick" id="sideKick">Sessions</span>`,
 		`data-action="new-session"`,
 		`href="/" title="Dashboard" aria-current="page"`,
+		`id="surface-dashboard" class="surface"`,     // dashboard surface visible
+		`id="surface-logs" class="surface hidden"`,   // logs surface mounted but hidden
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dashboard layout missing %q", want)
 		}
-	}
-	if strings.Contains(out, `class="lz-list"`) {
-		t.Error("dashboard layout should not contain the logs view")
 	}
 }
 
@@ -201,20 +190,16 @@ func TestLogsRouteServesLogsContext(t *testing.T) {
 		return rec.Body.String()
 	}
 
+	// Both surfaces mount in one shell; each route renders the correct one
+	// visible and the other hidden (surface.js toggles them client-side).
 	logs := get("/logs")
-	if !strings.Contains(logs, `<span class="sub">logs</span>`) || !strings.Contains(logs, `class="lz-list"`) {
-		t.Error("GET /logs did not render the logs context")
-	}
-	if strings.Contains(logs, `class="scard session-card"`) {
-		t.Error("GET /logs leaked session cards")
+	if !strings.Contains(logs, `id="surface-logs" class="surface"`) || !strings.Contains(logs, `id="surface-dashboard" class="surface hidden"`) {
+		t.Error("GET /logs did not render the logs surface as the visible one")
 	}
 
 	dash := get("/")
-	if !strings.Contains(dash, `<span class="sub">dashboard</span>`) || !strings.Contains(dash, `id="session-list"`) {
-		t.Error("GET / did not render the dashboard context")
-	}
-	if strings.Contains(dash, `class="lz-list"`) {
-		t.Error("GET / leaked the logs view")
+	if !strings.Contains(dash, `id="surface-dashboard" class="surface"`) || !strings.Contains(dash, `id="surface-logs" class="surface hidden"`) {
+		t.Error("GET / did not render the dashboard surface as the visible one")
 	}
 }
 
