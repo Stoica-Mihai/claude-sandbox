@@ -396,7 +396,7 @@ func (s *Server) renderSessions(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	s.renderTemplate(w, name, DashboardData{Sessions: sessions})
+	s.renderTemplate(w, name, DashboardData{Sessions: sessions, IsTunnel: isTunnelRequest(r)})
 }
 
 // --- Template-rendering routes ---
@@ -411,6 +411,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 // accurate — the logs view itself depends on logd, not the backend, so a
 // backend failure degrades to a zero count rather than a 500.
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	// Host-only surface: a tunnel visitor can't reach /logs at all (the Logs
+	// menu is also hidden for them, see the layout's IsTunnel guard). The log
+	// API stays separately opt-in-gated (shareLogsEnabled).
+	if isTunnelRequest(r) {
+		http.Error(w, "not available over the tunnel", http.StatusForbidden)
+		return
+	}
 	sessions, err := s.fetchSessions(r)
 	if err != nil {
 		slog.Debug("logs page: session count unavailable", "error", err)

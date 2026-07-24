@@ -131,6 +131,35 @@ func TestDashboardLayoutUnchanged(t *testing.T) {
 	}
 }
 
+// TestLogsSurfaceHostOnlyOverTunnel pins the host-only logs surface: a
+// tunnel-rendered shell omits the Logs footer item, and GET /logs over the
+// tunnel listener is 403'd. Host is unaffected.
+func TestLogsSurfaceHostOnlyOverTunnel(t *testing.T) {
+	host := renderNamed(t, "layout.html", DashboardData{})
+	if !strings.Contains(host, `href="/logs"`) {
+		t.Error("host layout should show the Logs nav item")
+	}
+	tunnel := renderNamed(t, "layout.html", DashboardData{IsTunnel: true})
+	if strings.Contains(tunnel, `href="/logs"`) {
+		t.Error("tunnel layout must omit the Logs nav item")
+	}
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(backend.Close)
+	mux := http.NewServeMux()
+	if _, err := NewServer(backend.URL, backend.URL, backend.URL, mux); err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	markTunnel(mux).ServeHTTP(rec, httptest.NewRequest("GET", "/logs", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("GET /logs over tunnel = %d, want 403", rec.Code)
+	}
+}
+
 // TestLogsRouteServesLogsContext exercises the real GET /logs handler end to
 // end (through the mux) with a stub backend, and confirms GET / still serves the
 // dashboard surface.
