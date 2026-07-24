@@ -362,7 +362,7 @@ input.err-flash{outline:3px solid var(--accent)}
 .body{padding-left:52px}
 .side:not(.expanded) .scard{width:40px;height:40px}
 #sidebarToggle{width:40px;height:40px}
-.side.expanded{width:86vw;max-width:320px}
+.side.expanded{width:50vw;min-width:200px;max-width:320px}
 
 @media (min-width:768px){
   :root{--is-mobile:0}
