@@ -259,6 +259,8 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .arow .at2{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
 .mfoot .hint{font-size:11px;color:var(--muted);font-family:var(--mono);max-width:60%}
 .mfoot .hint.err{color:var(--accent)}
+/* Rename modal has no hint; right-align its lone button group. */
+#renameModal .mfoot{justify-content:flex-end}
 .empty-state{padding:26px 18px;text-align:center;color:var(--muted);font-size:12px}
 
 /* views.js builds the modal start-new/previous rows as <button>s with an inline
