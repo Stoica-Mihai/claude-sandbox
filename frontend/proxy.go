@@ -75,6 +75,16 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 
 	backendConn, resp, err := backendDialer.Dial(parsed.String(), nil)
 	if err != nil {
+		// A 404 means the session is gone (sessiond no longer knows it) — a
+		// permanent condition. Close the client normally (1000) so it reports
+		// "[Session ended]" and stops, instead of the abnormal 1011 that would
+		// make it auto-reconnect a session that can never return (log flood).
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			slog.Info("backend session gone, ending client socket", "url", parsed.String())
+			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended")
+			_ = clientConn.WriteMessage(websocket.CloseMessage, msg)
+			return
+		}
 		if resp != nil {
 			slog.Error("websocket dial to backend failed",
 				"url", parsed.String(),
@@ -87,8 +97,9 @@ func wsProxy(w http.ResponseWriter, r *http.Request, backendURL string) {
 				"error", err,
 			)
 		}
-		// Already upgraded: signal failure via a close frame. Not code 1000,
-		// so the client treats it as abnormal and retries with backoff.
+		// Transient failure (backend unreachable / erroring): abnormal close
+		// (not 1000) so the client retries with backoff — correct here because
+		// the session may still exist and the backend recover (e.g. a rebuild).
 		msg := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "backend connection failed")
 		_ = clientConn.WriteMessage(websocket.CloseMessage, msg)
 		return
