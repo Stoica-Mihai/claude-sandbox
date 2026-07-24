@@ -23,7 +23,7 @@ function setNavCurrent(surface) {
     });
 }
 
-function switchTo(surface) {
+export function switchTo(surface) {
     const logs = el('surface-logs');
     if (surface === 'logs' && !logs) return; // no logs surface here
     const toLogs = surface === 'logs';
