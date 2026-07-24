@@ -205,6 +205,14 @@ html,body{height:100dvh;margin:0;overflow:hidden}
 .dp-crumb .seg.cur{color:var(--ink);cursor:default}
 .dp-crumb .sep{color:var(--muted)}
 
+/* New-session modal: cap the box (kit sets max-height) and scroll only the
+   picker body, so the pinned footer (LAUNCH) stays on-screen no matter how many
+   previous sessions a folder has. Without this the whole .modal scrolls and the
+   footer drops below the fold. */
+#newSessionModal .modal{display:flex;flex-direction:column;overflow:hidden}
+#newSessionModal .mhead,#newSessionModal .mode-choice,#newSessionModal .mfoot{flex:none}
+#newSessionModal #dir-picker{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
 /* ===== Folder list ===== */
 .folders{max-height:210px;overflow-y:auto}
 .frow{display:flex;align-items:stretch;border-bottom:2px solid var(--line);cursor:pointer;transition:background var(--fast)}
