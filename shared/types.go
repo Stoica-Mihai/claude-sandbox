@@ -123,6 +123,14 @@ type ShareStatus struct {
 	Error *string    `json:"error"`
 }
 
+// ShareLogsStatus is the envelope for GET/POST /api/share/logs: whether the
+// host has opted to expose /api/logs* and /api/status* over the share tunnel
+// for the current share session. Frontend-owned; the holesail sidecar is not
+// involved. Off by default and reset on every share lifecycle mutation.
+type ShareLogsStatus struct {
+	Enabled bool `json:"enabled"`
+}
+
 // CreateDirectoryRequest is the body for creating a new project folder under /workspace.
 type CreateDirectoryRequest struct {
 	Path    string `json:"path"`

@@ -7,12 +7,13 @@ import { makeTimers } from './timers.mjs';
 
 import * as share from '../share.js';
 
-function loadShare({ fetchResponses = [] } = {}) {
+function loadShare({ fetchResponses = [], shareLogsEnabled = false } = {}) {
     const document = new FakeDocument();
 
     // Sharing-panel elements share.js addresses by id.
     const ids = ['statePrivate', 'statePublishing', 'statePublic', 'connStr',
-        'regenBtn', 'goPublicBtn', 'goPrivateBtn', 'shareHint'];
+        'regenBtn', 'goPublicBtn', 'goPrivateBtn', 'shareHint',
+        'shareLogsToggle', 'shareLogsHint'];
     ids.forEach(id => document.register(id, new FakeElement('div')));
 
     const shareStatus = new FakeElement('div');
@@ -38,9 +39,21 @@ function loadShare({ fetchResponses = [] } = {}) {
     });
     document.register('qrCanvas', qrCanvas);
 
+    // The log-share flag lives on its own endpoint, refreshed whenever the
+    // public panel renders. Route it to a side channel so it neither consumes
+    // the scripted status queue nor shifts the fetchCalls sequence assertions.
+    let logsEnabled = shareLogsEnabled;
+    const shareLogsCalls = [];
+
     // Scripted fetch: shift the next response; record every call.
     const fetchCalls = [];
     const fetchImpl = (url, opts) => {
+        if (url === '/api/share/logs') {
+            const method = (opts && opts.method) || 'GET';
+            if (method === 'POST') logsEnabled = JSON.parse(opts.body).enabled;
+            shareLogsCalls.push({ method, enabled: logsEnabled });
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ enabled: logsEnabled }) });
+        }
         fetchCalls.push({ url, method: (opts && opts.method) || 'GET' });
         const next = fetchResponses.shift() ||
             { ok: true, status: 200, body: { state: 'private', url: null, error: null } };
@@ -94,7 +107,7 @@ function loadShare({ fetchResponses = [] } = {}) {
         for (let i = 0; i < 10; i++) await Promise.resolve();
     }
 
-    return { document, sandbox, fetchCalls, qrCalls, clipboardWrites, flushTimers: timers.flush, settle };
+    return { document, sandbox, fetchCalls, shareLogsCalls, qrCalls, clipboardWrites, flushTimers: timers.flush, settle };
 }
 
 export { loadShare };

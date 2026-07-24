@@ -63,6 +63,43 @@ export function renderShare(st) {
     if (pub) {
         shareEl('connStr').textContent = st.url;
         drawQR(st.url);
+        // Going public resets the flag server-side; reflect the real value.
+        refreshShareLogs();
+    }
+}
+
+// --- Log sharing over the tunnel (frontend-native flag, off by default) ---
+
+function setShareLogsToggle(on) {
+    const btn = shareEl('shareLogsToggle');
+    if (!btn) return;
+    btn.classList.toggle('on', !!on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+
+export async function refreshShareLogs() {
+    try {
+        const res = await fetch('/api/share/logs');
+        if (res.ok) setShareLogsToggle(!!(await res.json()).enabled);
+    } catch (e) { /* leave the toggle as-is; the guard still enforces the truth */ }
+}
+
+export async function toggleShareLogs(btn) {
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    const enabled = !btn.classList.contains('on');
+    setShareLogsToggle(enabled); // optimistic
+    try {
+        const res = await fetch('/api/share/logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        setShareLogsToggle(res.ok ? !!(await res.json()).enabled : !enabled);
+    } catch (e) {
+        setShareLogsToggle(!enabled); // revert
+    } finally {
+        delete btn.dataset.busy;
     }
 }
 
@@ -169,6 +206,7 @@ export function init() {
     register('share-regen', () => regenerateShareKey());
     register('share-go-public', () => goPublic());
     register('share-go-private', () => goPrivate());
+    register('share-logs-toggle', (el) => toggleShareLogs(el));
 
     // Reflect a live tunnel in the header after a reload/tab reopen.
     refreshShareStatus();

@@ -16,6 +16,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"claude-frontend/web"
@@ -37,6 +38,10 @@ type Server struct {
 	backendProxy  http.Handler // verbatim reverse proxy for passthrough /api routes + SSE
 	holesailProxy http.Handler // verbatim reverse proxy for /api/share/* (guarded)
 	logdProxy     http.Handler // verbatim reverse proxy for /api/logs* (guarded, SSE)
+
+	// shareLogsEnabled gates /api/logs* and /api/status* over the tunnel.
+	// Off by default; reset to false on every share lifecycle mutation.
+	shareLogsEnabled atomic.Bool
 }
 
 // newReverseProxy builds a reverse proxy that forwards verbatim to the target,
@@ -113,6 +118,11 @@ func NewServer(backendURL, holesailURL, logdURL string, mux *http.ServeMux) (*Se
 	mux.HandleFunc("DELETE "+api.RouteHistoryItem, s.handleDeleteHistoryProxy)
 	mux.HandleFunc("PUT "+api.RouteSessionName, s.handleSetSessionName)
 	mux.HandleFunc("GET "+api.RouteDirectories, s.handleDirectories)
+
+	// Frontend-native log-share toggle. Registered as specific patterns so they
+	// win over the /api/share/ prefix below (never forwarded to the sidecar).
+	mux.HandleFunc("GET "+api.RouteShareLogs, s.handleShareLogs)
+	mux.HandleFunc("POST "+api.RouteShareLogs, s.handleShareLogs)
 
 	// Share-tunnel routes proxied to the holesail sidecar (guarded). Registered
 	// method-blind on the whole prefix so no method/path variant can fall
@@ -573,25 +583,52 @@ func (s *Server) handleWebSocketProxy(w http.ResponseWriter, r *http.Request) {
 // controls; the read-only status GET is always allowed, so a client browsing
 // over the tunnel still sees the (necessarily public) sharing state.
 func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && isTunnelRequest(r) {
-		// Same ShareStatus shape the sidecar returns, so share.js's
-		// renderShare surfaces the message instead of dropping it.
-		msg := "Share controls are not available over the tunnel."
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_ = json.NewEncoder(w).Encode(api.ShareStatus{State: api.ShareError, Error: &msg})
-		return
+	if r.Method != http.MethodGet {
+		if isTunnelRequest(r) {
+			// Same ShareStatus shape the sidecar returns, so share.js's
+			// renderShare surfaces the message instead of dropping it.
+			msg := "Share controls are not available over the tunnel."
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(api.ShareStatus{State: api.ShareError, Error: &msg})
+			return
+		}
+		// A LAN lifecycle mutation (start/stop/regenerate) resets log sharing
+		// to off, so each publish starts fail-closed and re-sharing never
+		// silently re-exposes logs.
+		s.shareLogsEnabled.Store(false)
 	}
 	s.holesailProxy.ServeHTTP(w, r)
 }
 
+// handleShareLogs reads (GET) or sets (POST) the frontend's log-share flag,
+// which gates /api/logs* and /api/status* over the tunnel. GET is readable from
+// any origin; POST is rejected over the tunnel so a visitor cannot self-grant.
+func (s *Server) handleShareLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if isTunnelRequest(r) {
+			http.Error(w, "not available over the tunnel", http.StatusForbidden)
+			return
+		}
+		var req api.ShareLogsStatus
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxProxyJSONBody)).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		s.shareLogsEnabled.Store(req.Enabled)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(api.ShareLogsStatus{Enabled: s.shareLogsEnabled.Load()})
+}
+
 // handleGuardedLogd proxies /api/logs* and /api/status* to the logd sidecar.
-// Both may expose secrets or fleet topology, so — stricter than the share
-// guard, which allows GET — every method including GET is rejected for a
-// tunnel-originated request. logd is otherwise unauthenticated; the boundary is
+// Both may expose secrets or fleet topology, so a tunnel-originated request is
+// rejected — every method, including GET — unless the host has opted into log
+// sharing for this share session (shareLogsEnabled, off by default and reset on
+// every share mutation). logd is otherwise unauthenticated; the boundary is
 // this guard plus the external auth proxy.
 func (s *Server) handleGuardedLogd(w http.ResponseWriter, r *http.Request) {
-	if isTunnelRequest(r) {
+	if isTunnelRequest(r) && !s.shareLogsEnabled.Load() {
 		http.Error(w, "not available over the tunnel", http.StatusForbidden)
 		return
 	}

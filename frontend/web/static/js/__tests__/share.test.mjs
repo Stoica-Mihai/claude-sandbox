@@ -159,6 +159,33 @@ test('copy never fakes success: no Clipboard API and a failing execCommand', asy
     assert.equal(label.textContent, 'COPY MANUALLY');
 });
 
+test('going public reflects the server log-share flag on the toggle', async () => {
+    const env = loadShare({ fetchResponses: [PUBLIC], shareLogsEnabled: true });
+    await env.settle();
+
+    const btn = env.document.getElementById('shareLogsToggle');
+    assert.equal(btn.classList.contains('on'), true);
+    assert.equal(btn.getAttribute('aria-checked'), 'true');
+    // The public render triggered exactly one GET to read the flag.
+    assert.deepEqual(env.shareLogsCalls, [{ method: 'GET', enabled: true }]);
+});
+
+test('toggling share-logs POSTs the new value and flips the switch', async () => {
+    const env = loadShare({ fetchResponses: [PUBLIC] }); // starts off
+    await env.settle();
+
+    const btn = env.document.getElementById('shareLogsToggle');
+    assert.equal(btn.classList.contains('on'), false);
+
+    env.sandbox.toggleShareLogs(btn);
+    await env.settle();
+
+    assert.equal(btn.classList.contains('on'), true);
+    assert.equal(btn.getAttribute('aria-checked'), 'true');
+    const posts = env.shareLogsCalls.filter(c => c.method === 'POST');
+    assert.deepEqual(posts, [{ method: 'POST', enabled: true }]);
+});
+
 test('busy guard: a second goPublic while in flight issues no second POST', async () => {
     const env = loadShare({ fetchResponses: [PRIVATE] });
     await env.settle();

@@ -123,6 +123,25 @@ func TestShareStatusWireShape(t *testing.T) {
 	}
 }
 
+// TestShareLogsStatusWireShape pins the /api/share/logs envelope the frontend
+// serves and share.js consumes.
+func TestShareLogsStatusWireShape(t *testing.T) {
+	b, err := json.Marshal(ShareLogsStatus{Enabled: false})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got, want := string(b), `{"enabled":false}`; got != want {
+		t.Errorf("ShareLogsStatus = %s, want %s", got, want)
+	}
+	var got ShareLogsStatus
+	if err := json.Unmarshal([]byte(`{"enabled":true}`), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !got.Enabled {
+		t.Errorf("decoded Enabled = false, want true")
+	}
+}
+
 func TestCreateDirectoryResponseIncludesWarning(t *testing.T) {
 	b, err := json.Marshal(CreateDirectoryResponse{Path: "sub/proj", Warning: "git init failed"})
 	if err != nil {
