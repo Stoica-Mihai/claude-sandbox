@@ -28,3 +28,9 @@ export function historyItemPath(uuid) { return fill(routes().historyItem, 'uuid'
 export function wsTerminalPath(terminalId) { return fill(routes().wsTerminal, 'terminalId', terminalId); }
 export function sessionTranscriptPath(terminalId) { return fill(routes().sessionTranscript, 'terminalId', terminalId); }
 export function sessionModePath(terminalId) { return fill(routes().sessionMode, 'terminalId', terminalId); }
+
+// logd query/stream + status routes (proxied by the frontend to the logd sidecar).
+export function logsPath() { return routes().logs; }
+export function logsStreamPath() { return routes().logsStream; }
+export function statusPath() { return routes().status; }
+export function statusStreamPath() { return routes().statusStream; }

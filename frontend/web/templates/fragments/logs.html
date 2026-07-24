@@ -1,0 +1,36 @@
+{{define "logsView"}}
+<!-- Status strip: fleet health at a glance. Chips are rendered by logs.js from
+     GET /api/status (+ /api/status/stream). -->
+<section class="lz-status" aria-label="Service status"></section>
+
+<section class="lz-filters" aria-label="Filters">
+    <div class="seg" role="group" aria-label="Service" data-kind="service">
+        <button class="on" aria-pressed="true" data-val="all">ALL</button>
+        <button aria-pressed="false" data-val="sessiond">sessiond</button>
+        <button aria-pressed="false" data-val="backend">backend</button>
+        <button aria-pressed="false" data-val="frontend">frontend</button>
+        <button aria-pressed="false" data-val="holesail">holesail</button>
+    </div>
+    <div class="seg" role="group" aria-label="Level" data-kind="level">
+        <button class="on" aria-pressed="true" data-val="all">ALL</button>
+        <button aria-pressed="false" data-val="debug">DEBUG</button>
+        <button aria-pressed="false" data-val="info">INFO</button>
+        <button aria-pressed="false" data-val="error">ERROR</button>
+    </div>
+    <div class="grow"><input type="search" placeholder="search log text…" aria-label="Search logs"></div>
+    <span class="lz-spacer"></span>
+    <span class="lz-tail">Live tail <span class="toggle on" role="switch" aria-checked="true" aria-label="Live tail" tabindex="0"><i></i></span></span>
+    <span class="lz-count">0 lines</span>
+</section>
+
+<div class="lz-list" aria-label="Log lines" role="log" aria-live="off"><div class="lz-flow"></div></div>
+
+<!-- Jump-to-latest: shown only while follow is paused (scrolled up). Reuses the
+     chat surface's sticky-scroll pattern. -->
+<button class="lz-jump hidden" type="button" aria-label="Jump to latest">↓ latest</button>
+
+<footer class="lz-foot">
+    <span class="lz-count">0 lines</span>
+    <span class="lz-live"><i class="dot"></i> <span class="lz-live-label">live</span></span>
+</footer>
+{{end}}

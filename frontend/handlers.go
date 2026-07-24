@@ -106,6 +106,7 @@ func NewServer(backendURL, holesailURL, logdURL string, mux *http.ServeMux) (*Se
 	// proxies. Registered with specific patterns, so ServeMux precedence gives
 	// them priority over the /api/ catch-all below.
 	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /fragments/sessions", s.handleSessionsFragment)
 	mux.HandleFunc("POST "+api.RouteSessions, s.handleSpawn)
 	mux.HandleFunc("DELETE "+api.RouteSession, s.handleKill)
@@ -209,6 +210,10 @@ func templateFuncs() template.FuncMap {
 				"wsTerminal":        api.RouteWSTerminal,
 				"sessionTranscript": api.RouteSessionTranscript,
 				"sessionMode":       api.RouteSessionMode,
+				"logs":              api.RouteLogs,
+				"logsStream":        api.RouteLogsStream,
+				"status":            api.RouteStatus,
+				"statusStream":      api.RouteStatusStream,
 			})
 			return template.JS(b), err
 		},
@@ -389,6 +394,19 @@ func (s *Server) renderSessions(w http.ResponseWriter, r *http.Request, name str
 // handleIndex renders the full dashboard page with initial session data.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.renderSessions(w, r, "layout.html")
+}
+
+// handleLogs renders the dashboard shell with the logs surface active. The
+// session list is fetched best-effort only to keep the header session count
+// accurate — the logs view itself depends on logd, not the backend, so a
+// backend failure degrades to a zero count rather than a 500.
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	sessions, err := s.fetchSessions(r)
+	if err != nil {
+		slog.Debug("logs page: session count unavailable", "error", err)
+		sessions = nil
+	}
+	s.renderTemplate(w, "layout.html", DashboardData{Sessions: sessions, Logs: true})
 }
 
 // handleSessionsFragment renders the sessions list HTML fragment for HTMX.

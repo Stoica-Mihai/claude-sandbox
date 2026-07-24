@@ -672,3 +672,112 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   /* No room for the model id next to cwd + two buttons at phone width. */
   .chat-header-model{display:none}
 }
+
+/* ===== Logs surface (logs.js / logs-render.js / logs-events.js) =====
+   Second first-class surface on the /logs route. Shares the shell (header,
+   sidebar rail, footer nav) with the dashboard; the main area is a status
+   strip + filter bar + dense mono log table + footer.
+
+   D21: .side-foot — pinned peer-surface nav below the sidebar body. The kit
+   has no sidebar-footer nav component; this follows the rail's own collapse
+   rule (icon+label expanded, icon-only in the 48px rail — mirrors .shead
+   hiding its .kick/.btn-new) rather than inventing a new one. aria-current
+   fills an inset accent left-edge, matching the .seg/.nav-v "selected" idiom.
+
+   D22: .svc chip offset uses --chip-sh: var(--ink) (a per-theme-contrasting
+   ink offset), NOT the kit's --shadow-mute. shadow-mute is tuned to vanish on
+   the dark/carbon ground, but these chips sit on --bg in both themes and must
+   read as boxy offset cards on both — so the offset tracks --ink (which flips
+   per theme) to stay visible on light AND dark.
+
+   D23: .lz-list is a TABLE, not cards — dense hairline-separated mono rows with
+   no per-row offset shadow (a shadow per line would be visual noise at log
+   density). The single accent moment per row is the ERROR inset left-edge. */
+
+/* Brand logo is now a home link; strip anchor chrome, keep the kit layout. */
+.brand-home{text-decoration:none;color:inherit;cursor:pointer;border-bottom:none}
+
+/* D21: sidebar footer nav */
+.side-foot{border-top:3px solid var(--line);display:flex;flex-direction:column;padding:6px;gap:2px;flex:none}
+.navitem{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;background:none;border:none;
+  color:var(--muted);font:inherit;font-weight:700;font-size:13px;text-align:left;text-decoration:none;cursor:pointer}
+.navitem svg{width:20px;height:20px;flex:none}
+.navitem:hover{color:var(--ink);background:var(--field)}
+.navitem[aria-current="page"]{color:var(--ink);box-shadow:inset 3px 0 0 var(--accent)}
+.side:not(.expanded) .side-foot{padding:6px 0}
+.side:not(.expanded) .navitem{justify-content:center;padding:12px 0}
+.side:not(.expanded) .navitem span{display:none}
+
+/* Logs-context sidebar placeholder (logs-specific menus land here later). */
+.lz-side-hint{padding:14px;font-size:12px;font-style:italic;color:var(--muted);opacity:.6}
+.side:not(.expanded) .lz-side-hint{display:none}
+
+/* Main is a fixed-height column; the list scrolls, the strip/bar/footer don't.
+   position:relative anchors the jump pill. */
+.main--logs{position:relative}
+
+/* D22: status strip */
+.lz-status{display:flex;flex-wrap:wrap;gap:10px;padding:12px 18px;border-bottom:2px solid var(--line);background:var(--bg);flex:none}
+.svc{--chip-sh:var(--ink);display:flex;align-items:center;gap:9px;padding:7px 11px;
+  border:2px solid var(--line);background:var(--surf);box-shadow:4px 4px 0 var(--chip-sh)}
+.svc-dot{width:11px;height:11px;flex:none;background:var(--muted)}
+.svc.up .svc-dot{background:var(--ink)}
+.svc.down .svc-dot{background:var(--accent);animation:lz-blink 1s steps(2,start) infinite}
+@keyframes lz-blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){
+  .svc.down .svc-dot{animation:none;box-shadow:inset 0 0 0 2px var(--accent);background:var(--surf)}
+}
+.svc-name{font-weight:700;font-size:13px}
+.svc-meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.svc.down .svc-meta{color:var(--accent)}
+
+/* Filter bar */
+.lz-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 18px;
+  border-bottom:2px solid var(--line);background:var(--surf);flex:none}
+.lz-filters .grow{flex:1 1 200px;min-width:150px}
+.lz-filters input[type=search]{width:100%}
+.lz-spacer{flex:1}
+.lz-tail{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.lz-tail .toggle{cursor:pointer}
+.lz-count{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+
+/* D23: log table */
+.lz-list{flex:1;overflow:auto;background:var(--bg);font-family:var(--mono);font-variant-numeric:tabular-nums;
+  -webkit-overflow-scrolling:touch}
+.lz-row{display:grid;grid-template-columns:108px 84px 62px 1fr;gap:12px;align-items:baseline;
+  padding:5px 18px;border-bottom:1px solid var(--line);font-size:12.5px}
+.lz-row:hover{background:var(--field)}
+.lz-time{color:var(--muted)}
+.lz-svc{color:var(--ink);font-size:11px;letter-spacing:.04em}
+.lz-lvl{font-size:11px;font-weight:700;letter-spacing:.05em}
+.lvl-info .lz-lvl{color:var(--muted)}
+.lvl-debug .lz-lvl{color:var(--muted);opacity:.7}
+.lvl-error .lz-lvl{color:var(--accent)}
+.lz-row.err{box-shadow:inset 3px 0 0 var(--accent)}
+.lz-msg{color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.lz-attr{color:var(--muted)}
+
+/* Empty + logd-unavailable states */
+.lz-note{padding:26px 18px;font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center}
+.lz-note.err{color:var(--accent)}
+
+/* Jump-to-latest pill — floats above the footer, bottom-right of the list. */
+.lz-jump{position:absolute;right:24px;bottom:64px;z-index:5;padding:7px 12px;
+  background:var(--accent);color:var(--on-accent);border:2px solid var(--ink);box-shadow:4px 4px 0 var(--ink);
+  font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
+.lz-jump:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--ink)}
+
+/* Footer: summary + live/paused indicator (accent dot = live, per law 4). */
+.lz-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;
+  border-top:2px solid var(--line);background:var(--surf);flex:none}
+.lz-live{display:flex;align-items:center;gap:7px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.lz-live .dot{width:8px;height:8px;background:var(--accent)}
+.lz-live.paused .dot{background:var(--muted)}
+
+@media (max-width:640px){
+  .lz-row{grid-template-columns:76px 1fr;grid-template-areas:"time msg" "svc msg";row-gap:2px}
+  .lz-time{grid-area:time}
+  .lz-svc{grid-area:svc}
+  .lz-lvl{display:none}
+  .lz-msg{grid-area:msg}
+}

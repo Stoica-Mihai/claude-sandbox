@@ -14,6 +14,33 @@ import { subscribe, getSession } from './store.js';
 // (welcome screen).
 export let singleTerminalId = null;
 
+// Persist the shown session so navigating away (e.g. to /logs, a full page
+// load) and back to the dashboard reopens it — the process + scrollback survive
+// in sessiond, so reopening re-attaches and repaints from the snapshot.
+const ACTIVE_KEY = 'activeSession';
+let restored = false;
+
+function saveActive(id) {
+    try { localStorage.setItem(ACTIVE_KEY, id); } catch { /* storage disabled */ }
+}
+function clearActive() {
+    try { localStorage.removeItem(ACTIVE_KEY); } catch { /* storage disabled */ }
+}
+
+// restoreActive reopens the persisted session on dashboard load, once, if it is
+// still live. No-ops on /logs (no session surface) and once a session is shown.
+// Retried from the store subscription until the list has loaded.
+function restoreActive() {
+    if (restored || singleTerminalId) return;
+    if (!document.getElementById('singleWelcome')) return; // dashboard only
+    let saved;
+    try { saved = localStorage.getItem(ACTIVE_KEY); } catch { return; }
+    if (saved && getSession(saved)) {
+        restored = true;
+        openSession(saved);
+    }
+}
+
 // sessionKind resolves a session's kind from the client store, defaulting to
 // terminal for a session the store doesn't (yet) know about.
 function sessionKind(terminalId) {
@@ -41,6 +68,7 @@ export function openSession(terminalId, kindOverride) {
 
     const kind = kindOverride || sessionKind(terminalId);
     singleTerminalId = terminalId;
+    saveActive(terminalId);
 
     if (kind === 'chat') {
         const wrapper = document.getElementById('singleChat');
@@ -122,6 +150,7 @@ export function updateSessionCardStates() {
 export function cleanupKilledSession(terminalId) {
     if (terminalId !== singleTerminalId) return;
     teardownCurrent();
+    clearActive(); // back to welcome: don't reopen this session on return
     updateSingleWelcome(false);
     updateSessionCardStates();
 }
@@ -137,6 +166,7 @@ export function tickDurations() {
 
 export function init() {
     singleTerminalId = null;
+    restored = false;
 
     register('kill-cleanup', (el) => cleanupKilledSession(el.dataset.terminalId));
 
@@ -171,9 +201,18 @@ export function init() {
     });
 
     // Re-render on every session-list change (the store re-reads after each HTMX
-    // sidebar swap): active-card highlight and fresh cards' durations.
+    // sidebar swap): active-card highlight and fresh cards' durations. Also retry
+    // the one-shot restore until the session list has loaded.
     subscribe(() => {
+        restoreActive();
         updateSessionCardStates();
         tickDurations();
     });
+
+    // Reopen the last session AFTER the sync init sequence: TerminalManager /
+    // ChatManager reset their instance registries in their own init()s, which
+    // main.js runs after this one — a synchronous restore here would create the
+    // instance and then have it wiped. queueMicrotask runs it once main.js's
+    // init loop unwinds, with every manager ready.
+    queueMicrotask(restoreActive);
 }
