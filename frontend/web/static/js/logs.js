@@ -1,7 +1,9 @@
-// Logs surface manager: owns the /logs view — status strip, filter bar, the
-// dense log table, live-tail, and scroll-load history. Mirrors the
-// Terminal/Chat manager shape (create/destroy/get) so main.js can boot it per
-// route. There is a single logs view, so the manager holds one instance.
+// Logs surface: the /logs view — status strip, filter bar, the dense log table,
+// live-tail, and scroll-load history. LogsView is the per-view class (DOM refs,
+// buffer, filters, streams); LogsManager is the factory + registry that holds
+// the single view and exposes create/get/destroy (surface.js drives it per
+// route switch). Stateless work stays in the pure helpers (logs-events,
+// logs-render).
 //
 // Ordering: NEWEST-FIRST, newest at the TOP (the query API's order). Live-tail
 // prepends new lines at the top; scrolling toward the bottom lazily loads older
@@ -23,57 +25,56 @@ const FOLLOW_PX = 40;            // within this of the top = "following" the new
 const STATUS_TICK_MS = 2000;     // re-render the strip so relative times stay fresh
 const SEARCH_DEBOUNCE_MS = 200;
 
-export const LogsManager = {
-    instance: null,
-
-    // create wires the (server-rendered) logs view. containerEl is the .main
-    // element on the /logs page; the view markup is already inside it.
-    create(containerEl) {
-        if (this.instance) this.destroy();
-
+// LogsView owns one rendered logs surface. Constructed from server-rendered
+// markup (containerEl); start() wires controls + loads the first page + connects
+// the streams. Guarded by this.destroyed so an in-flight fetch/stream can't
+// touch a torn-down view.
+export class LogsView {
+    constructor(containerEl) {
         const q = (sel) => containerEl.querySelector(sel);
-        const strip = q('.lz-status');
-        const list = q('.lz-list');
-        const flow = q('.lz-flow');
-        const search = q('.lz-filters input[type=search]');
-        const tailToggle = q('.lz-tail .toggle');
-        const jump = q('.lz-jump');
-        const liveInd = q('.lz-foot .lz-live');
-        const liveLabel = q('.lz-live-label');
-        const countFilter = q('.lz-filters .lz-count');
-        const countFoot = q('.lz-foot .lz-count');
-        if (!list || !flow) return null;
+        this.containerEl = containerEl;
+        this.strip = q('.lz-status');
+        this.list = q('.lz-list');
+        this.flow = q('.lz-flow');
+        this.search = q('.lz-filters input[type=search]');
+        this.tailToggle = q('.lz-tail .toggle');
+        this.jump = q('.lz-jump');
+        this.liveInd = q('.lz-foot .lz-live');
+        this.liveLabel = q('.lz-live-label');
+        this.countFilter = q('.lz-filters .lz-count');
+        this.countFoot = q('.lz-foot .lz-count');
 
-        const inst = {
-            containerEl, strip, list, flow, search, tailToggle, jump,
-            liveInd, liveLabel, countFilter, countFoot,
-            filter: { service: 'all', level: 'all', q: '' },
-            live: true,
-            records: [], seen: new Set(),
-            oldestTs: null, hasMoreOlder: true, loadingOlder: false,
-            unavailable: false,
-            logStream: null, statusStream: null,
-            lastStatuses: [], statusTimer: null, searchTimer: null,
-            destroyed: false,
-        };
-        this.instance = inst;
+        this.filter = { service: 'all', level: 'all', q: '' };
+        this.live = true;
+        this.records = [];
+        this.seen = new Set();
+        this.oldestTs = null;
+        this.hasMoreOlder = true;
+        this.loadingOlder = false;
+        this.unavailable = false;
+        this.logStream = null;
+        this.statusStream = null;
+        this.lastStatuses = [];
+        this.statusTimer = null;
+        this.searchTimer = null;
+        this.destroyed = false;
+    }
 
-        this._wireControls(inst);
-        this._reload(inst);
-        this._connectStatus(inst);
-        inst.statusTimer = setInterval(() => this._renderStatus(inst), STATUS_TICK_MS);
+    start() {
+        this.wireControls();
+        this.reload();
+        this.connectStatus();
+        this.statusTimer = setInterval(() => this.renderStatus(), STATUS_TICK_MS);
+    }
 
-        return inst;
-    },
+    // following reports whether the view is pinned to the newest (top) line.
+    following() {
+        return this.list.scrollTop <= FOLLOW_PX;
+    }
 
-    // _following reports whether the view is pinned to the newest (top) line.
-    _following(inst) {
-        return inst.list.scrollTop <= FOLLOW_PX;
-    },
-
-    _wireControls(inst) {
+    wireControls() {
         // Segmented service/level filters.
-        inst.containerEl.querySelectorAll('.seg[data-kind]').forEach((seg) => {
+        this.containerEl.querySelectorAll('.seg[data-kind]').forEach((seg) => {
             const kind = seg.getAttribute('data-kind');
             seg.querySelectorAll('button').forEach((b) => {
                 b.addEventListener('click', () => {
@@ -83,62 +84,62 @@ export const LogsManager = {
                     });
                     b.classList.add('on');
                     b.setAttribute('aria-pressed', 'true');
-                    inst.filter[kind] = b.dataset.val;
-                    this._reload(inst);
+                    this.filter[kind] = b.dataset.val;
+                    this.reload();
                 });
             });
         });
 
-        if (inst.search) {
-            inst.search.addEventListener('input', () => {
-                clearTimeout(inst.searchTimer);
-                inst.searchTimer = setTimeout(() => {
-                    inst.filter.q = inst.search.value.trim();
-                    this._reload(inst);
+        if (this.search) {
+            this.search.addEventListener('input', () => {
+                clearTimeout(this.searchTimer);
+                this.searchTimer = setTimeout(() => {
+                    this.filter.q = this.search.value.trim();
+                    this.reload();
                 }, SEARCH_DEBOUNCE_MS);
             });
         }
 
-        if (inst.tailToggle) {
-            const flip = () => this._setLive(inst, !inst.live);
-            inst.tailToggle.addEventListener('click', flip);
-            inst.tailToggle.addEventListener('keydown', (e) => {
+        if (this.tailToggle) {
+            const flip = () => this.setLive(!this.live);
+            this.tailToggle.addEventListener('click', flip);
+            this.tailToggle.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
             });
         }
 
         // Jump pill returns to the newest line (top).
-        if (inst.jump) inst.jump.addEventListener('click', () => { inst.list.scrollTop = 0; this._updateLive(inst); });
+        if (this.jump) this.jump.addEventListener('click', () => { this.list.scrollTop = 0; this.updateLive(); });
 
-        inst.list.addEventListener('scroll', () => {
+        this.list.addEventListener('scroll', () => {
             // Older lines live toward the bottom (newest-first), so load near the bottom.
-            if (inst.list.scrollHeight - inst.list.scrollTop - inst.list.clientHeight <= LOAD_OLDER_PX) {
-                this._loadOlder(inst);
+            if (this.list.scrollHeight - this.list.scrollTop - this.list.clientHeight <= LOAD_OLDER_PX) {
+                this.loadOlder();
             }
-            this._updateLive(inst);
+            this.updateLive();
         });
-    },
+    }
 
-    // _query builds the shared filter query string (service/level/q).
-    _query(inst) {
+    // query builds the shared filter query string (service/level/q).
+    query() {
         const p = new URLSearchParams();
-        if (inst.filter.service && inst.filter.service !== 'all') p.set('service', inst.filter.service);
-        if (inst.filter.level && inst.filter.level !== 'all') p.set('level', inst.filter.level);
-        if (inst.filter.q) p.set('q', inst.filter.q);
+        if (this.filter.service && this.filter.service !== 'all') p.set('service', this.filter.service);
+        if (this.filter.level && this.filter.level !== 'all') p.set('level', this.filter.level);
+        if (this.filter.q) p.set('q', this.filter.q);
         return p;
-    },
+    }
 
-    // _reload clears the buffer and fetches the newest page for the current
+    // reload clears the buffer and fetches the newest page for the current
     // filters, then (re)connects the live stream. Called on open + filter change.
-    async _reload(inst) {
-        inst.records = [];
-        inst.seen = new Set();
-        inst.oldestTs = null;
-        inst.hasMoreOlder = true;
-        inst.unavailable = false;
-        clearRows(inst.flow);
+    async reload() {
+        this.records = [];
+        this.seen = new Set();
+        this.oldestTs = null;
+        this.hasMoreOlder = true;
+        this.unavailable = false;
+        clearRows(this.flow);
 
-        const p = this._query(inst);
+        const p = this.query();
         p.set('limit', String(PAGE_LIMIT));
         let recs;
         try {
@@ -146,72 +147,72 @@ export const LogsManager = {
             if (!res.ok) throw new Error('logd ' + res.status);
             recs = await res.json();
         } catch (e) {
-            if (inst.destroyed) return;
-            inst.unavailable = true;
-            showNote(inst.flow, 'Log service unavailable.', true);
-            this._updateCounts(inst);
-            this._connectLog(inst); // stream may still recover
+            if (this.destroyed) return;
+            this.unavailable = true;
+            showNote(this.flow, 'Log service unavailable.', true);
+            this.updateCounts();
+            this.connectLog(); // stream may still recover
             return;
         }
-        if (inst.destroyed) return;
+        if (this.destroyed) return;
 
         // Query returns newest-first; render as-is → newest at top, oldest at bottom.
         const arr = Array.isArray(recs) ? recs : [];
         for (const rec of arr) {
             const k = recordKey(rec);
-            if (inst.seen.has(k)) continue;
-            inst.seen.add(k);
-            inst.records.push(rec);
-            appendRow(inst.flow, rec);
+            if (this.seen.has(k)) continue;
+            this.seen.add(k);
+            this.records.push(rec);
+            appendRow(this.flow, rec);
         }
-        inst.oldestTs = inst.records.length ? inst.records[inst.records.length - 1].ts : null;
-        if (!inst.records.length) showNote(inst.flow, 'No log lines match.', false);
-        inst.list.scrollTop = 0; // pin to the newest (top)
-        this._updateCounts(inst);
-        this._updateLive(inst);
+        this.oldestTs = this.records.length ? this.records[this.records.length - 1].ts : null;
+        if (!this.records.length) showNote(this.flow, 'No log lines match.', false);
+        this.list.scrollTop = 0; // pin to the newest (top)
+        this.updateCounts();
+        this.updateLive();
 
-        this._connectLog(inst);
-    },
+        this.connectLog();
+    }
 
-    _connectLog(inst) {
-        if (inst.logStream) { inst.logStream.close(); inst.logStream = null; }
-        if (!inst.live || typeof EventSource === 'undefined') { this._updateLive(inst); return; }
-        const es = new EventSource(logsStreamPath() + '?' + this._query(inst).toString());
+    connectLog() {
+        if (this.logStream) { this.logStream.close(); this.logStream = null; }
+        if (!this.live || typeof EventSource === 'undefined') { this.updateLive(); return; }
+        const es = new EventSource(logsStreamPath() + '?' + this.query().toString());
         es.onmessage = (ev) => {
-            if (inst.destroyed) return;
+            if (this.destroyed) return;
             let rec;
             try { rec = JSON.parse(ev.data); } catch (e) { return; }
             const k = recordKey(rec);
-            if (inst.seen.has(k)) return;
-            if (!matchesFilter(rec, inst.filter)) return; // guard (server already filters)
-            if (inst.unavailable) { inst.unavailable = false; clearRows(inst.flow); }
-            inst.seen.add(k);
-            inst.records.unshift(rec); // newest to the front
+            if (this.seen.has(k)) return;
+            if (!matchesFilter(rec, this.filter)) return; // guard (server already filters)
+            if (this.unavailable) { this.unavailable = false; clearRows(this.flow); }
+            this.seen.add(k);
+            this.records.unshift(rec); // newest to the front
 
             // Prepend at the top. If the user is following (at the top), keep the
             // newest in view; otherwise anchor their scroll so the inserted row
             // above doesn't shift what they're reading.
-            const following = this._following(inst);
-            const before = inst.list.scrollHeight;
-            prependRow(inst.flow, rec);
-            if (following) inst.list.scrollTop = 0;
-            else inst.list.scrollTop += inst.list.scrollHeight - before;
+            const following = this.following();
+            const before = this.list.scrollHeight;
+            prependRow(this.flow, rec);
+            if (following) this.list.scrollTop = 0;
+            else this.list.scrollTop += this.list.scrollHeight - before;
 
-            this._updateCounts(inst);
-            this._updateLive(inst);
+            this.updateCounts();
+            this.updateLive();
         };
         es.onerror = () => { /* EventSource auto-reconnects; the query fetch owns the unavailable note */ };
-        inst.logStream = es;
-        this._updateLive(inst);
-    },
+        this.logStream = es;
+        this.updateLive();
+    }
 
-    // _loadOlder fetches the page just older than the oldest shown line and
+    // loadOlder fetches the page just older than the oldest shown line and
     // appends it at the bottom (no pager; scroll-down history).
-    async _loadOlder(inst) {
-        if (inst.loadingOlder || !inst.hasMoreOlder || !inst.oldestTs || inst.unavailable) return;
-        inst.loadingOlder = true;
-        const p = this._query(inst);
-        p.set('until', inst.oldestTs);
+    async loadOlder() {
+        if (this.loadingOlder || !this.hasMoreOlder || !this.oldestTs || this.unavailable) return;
+        this.loadingOlder = true;
+        const p = this.query();
+        p.set('until', this.oldestTs);
         p.set('limit', String(PAGE_LIMIT));
         let recs;
         try {
@@ -219,11 +220,11 @@ export const LogsManager = {
             if (!res.ok) throw new Error('logd ' + res.status);
             recs = await res.json();
         } catch (e) {
-            inst.hasMoreOlder = false;
-            inst.loadingOlder = false;
+            this.hasMoreOlder = false;
+            this.loadingOlder = false;
             return;
         }
-        if (inst.destroyed) { inst.loadingOlder = false; return; }
+        if (this.destroyed) { this.loadingOlder = false; return; }
 
         // Newest-first, all older than oldestTs; append newest→oldest at the
         // bottom so the list stays newest-first end to end.
@@ -231,86 +232,106 @@ export const LogsManager = {
         let added = 0;
         for (const rec of arr) {
             const k = recordKey(rec);
-            if (inst.seen.has(k)) continue;
-            inst.seen.add(k);
-            inst.records.push(rec);
-            appendRow(inst.flow, rec);
+            if (this.seen.has(k)) continue;
+            this.seen.add(k);
+            this.records.push(rec);
+            appendRow(this.flow, rec);
             added++;
         }
-        if (added) inst.oldestTs = inst.records[inst.records.length - 1].ts;
-        if (added === 0 || arr.length < PAGE_LIMIT) inst.hasMoreOlder = false;
-        this._updateCounts(inst);
-        inst.loadingOlder = false;
-    },
+        if (added) this.oldestTs = this.records[this.records.length - 1].ts;
+        if (added === 0 || arr.length < PAGE_LIMIT) this.hasMoreOlder = false;
+        this.updateCounts();
+        this.loadingOlder = false;
+    }
 
-    async _connectStatus(inst) {
+    async connectStatus() {
         try {
             const res = await fetch(statusPath());
-            if (res.ok) { inst.lastStatuses = await res.json(); this._renderStatus(inst); }
+            if (res.ok) { this.lastStatuses = await res.json(); this.renderStatus(); }
         } catch (e) { /* strip stays empty; logd unavailable */ }
-        if (inst.destroyed || typeof EventSource === 'undefined') return;
+        if (this.destroyed || typeof EventSource === 'undefined') return;
         const es = new EventSource(statusStreamPath());
         es.onmessage = (ev) => {
-            if (inst.destroyed) return;
-            try { inst.lastStatuses = JSON.parse(ev.data); } catch (e) { return; }
-            this._renderStatus(inst);
+            if (this.destroyed) return;
+            try { this.lastStatuses = JSON.parse(ev.data); } catch (e) { return; }
+            this.renderStatus();
         };
         es.onerror = () => { /* auto-reconnects */ };
-        inst.statusStream = es;
-    },
+        this.statusStream = es;
+    }
 
-    _renderStatus(inst) {
-        if (inst.strip && inst.lastStatuses.length) renderStatus(inst.strip, inst.lastStatuses, Date.now());
-    },
+    renderStatus() {
+        if (this.strip && this.lastStatuses.length) renderStatus(this.strip, this.lastStatuses, Date.now());
+    }
 
-    _setLive(inst, on) {
-        inst.live = on;
-        if (inst.tailToggle) {
-            inst.tailToggle.classList.toggle('on', on);
-            inst.tailToggle.setAttribute('aria-checked', on ? 'true' : 'false');
+    setLive(on) {
+        this.live = on;
+        if (this.tailToggle) {
+            this.tailToggle.classList.toggle('on', on);
+            this.tailToggle.setAttribute('aria-checked', on ? 'true' : 'false');
         }
-        if (on) { this._connectLog(inst); inst.list.scrollTop = 0; } // resume → jump to newest
-        else if (inst.logStream) { inst.logStream.close(); inst.logStream = null; }
-        this._updateLive(inst);
-    },
+        if (on) { this.connectLog(); this.list.scrollTop = 0; } // resume → jump to newest
+        else if (this.logStream) { this.logStream.close(); this.logStream = null; }
+        this.updateLive();
+    }
 
-    // _updateLive reflects the live/paused footer indicator + the jump pill,
+    // updateLive reflects the live/paused footer indicator + the jump pill,
     // which shows only when scrolled away from the newest (top).
-    _updateLive(inst) {
-        const following = this._following(inst);
-        const live = inst.live && following;
-        if (inst.liveInd) inst.liveInd.classList.toggle('paused', !live);
-        if (inst.liveLabel) inst.liveLabel.textContent = live ? 'live' : 'paused';
-        if (inst.jump) inst.jump.classList.toggle('hidden', following);
-    },
+    updateLive() {
+        const following = this.following();
+        const live = this.live && following;
+        if (this.liveInd) this.liveInd.classList.toggle('paused', !live);
+        if (this.liveLabel) this.liveLabel.textContent = live ? 'live' : 'paused';
+        if (this.jump) this.jump.classList.toggle('hidden', following);
+    }
 
-    _updateCounts(inst) {
-        const n = inst.records.length;
+    updateCounts() {
+        const n = this.records.length;
         const lines = n + ' line' + (n === 1 ? '' : 's');
-        if (inst.countFilter) inst.countFilter.textContent = lines;
-        if (inst.countFoot) inst.countFoot.textContent = lines + this._span(inst);
-    },
+        if (this.countFilter) this.countFilter.textContent = lines;
+        if (this.countFoot) this.countFoot.textContent = lines + this.span();
+    }
 
-    // _span renders " · last Nm" from the oldest shown line (bottom) to now.
-    _span(inst) {
-        if (!inst.records.length) return '';
-        const oldest = new Date(inst.records[inst.records.length - 1].ts).getTime();
+    // span renders " · last Nm" from the oldest shown line (bottom) to now.
+    span() {
+        if (!this.records.length) return '';
+        const oldest = new Date(this.records[this.records.length - 1].ts).getTime();
         if (isNaN(oldest)) return '';
         const s = Math.max(0, Math.round((Date.now() - oldest) / 1000));
         if (s < 60) return ' · last ' + s + 's';
         const m = Math.floor(s / 60);
         if (m < 60) return ' · last ' + m + 'm';
         return ' · last ' + Math.floor(m / 60) + 'h';
+    }
+
+    destroy() {
+        this.destroyed = true;
+        clearTimeout(this.searchTimer);
+        clearInterval(this.statusTimer);
+        this.logStream?.close();
+        this.statusStream?.close();
+    }
+}
+
+// LogsManager is the factory + registry for the single logs view. Callers
+// (surface.js) use create/get/destroy; there is one logs view at a time.
+export const LogsManager = {
+    instance: null,
+
+    // create wires a LogsView over the server-rendered markup in containerEl.
+    // Returns null (and creates nothing) if the log markup is absent.
+    create(containerEl) {
+        if (this.instance) this.destroy();
+        const view = new LogsView(containerEl);
+        if (!view.list || !view.flow) return null;
+        this.instance = view;
+        view.start();
+        return view;
     },
 
     destroy() {
-        const inst = this.instance;
-        if (!inst) return;
-        inst.destroyed = true;
-        clearTimeout(inst.searchTimer);
-        clearInterval(inst.statusTimer);
-        inst.logStream?.close();
-        inst.statusStream?.close();
+        if (!this.instance) return;
+        this.instance.destroy();
         this.instance = null;
     },
 
