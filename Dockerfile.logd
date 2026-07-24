@@ -1,0 +1,52 @@
+# ── Builder stage: compile the logd binary ──
+FROM debian:bookworm-slim AS builder
+
+# Supplied by the compose build arg (single-sourced in docker-compose.yml's
+# x-go-version anchor).
+ARG GO_VERSION
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libc6-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Shared API-contract module (resolved via logd's go.mod replace => ../shared).
+COPY shared/ /src/shared/
+
+# Pre-download Go modules (cached unless go.mod/go.sum change)
+COPY logd/go.mod logd/go.sum /src/logd/
+RUN cd /src/logd && go mod download
+
+# Copy source and build (busts cache on any source file change)
+COPY logd/ /src/logd/
+RUN cd /src/logd && go build -o /logd .
+
+# ── Runtime stage: slim log aggregator (no claude, no Go, no npm) ──
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Same UID/GID as the producers so the shared logs volume (read-only here) and
+# the state volume are accessible.
+ARG UID
+ARG GID
+RUN groupadd -g ${GID} claude && \
+    useradd -m -u ${UID} -g claude claude
+
+# Offset-checkpoint volume mountpoint, owned by claude so the volume inherits
+# that ownership on first creation.
+RUN mkdir -p /state && chown claude:claude /state
+
+USER claude
+
+COPY --from=builder /logd /home/claude/logd
+
+CMD ["/home/claude/logd"]

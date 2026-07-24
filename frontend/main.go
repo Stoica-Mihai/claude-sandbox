@@ -13,19 +13,21 @@ import (
 )
 
 func main() {
-	api.InitLogging()
+	api.InitLogging("frontend")
 
 	listenAddr := api.ListenAddr("DASHBOARD_PORT", ":8080")
 	// Backend API URL (where sessions, relays, SSE, WebSocket live).
 	backendURL := api.URLFromEnv("BACKEND_URL", "http://backend:8081")
 	// Holesail sidecar control URL (share tunnel).
 	holesailURL := api.URLFromEnv("HOLESAIL_URL", "http://holesail:9000")
+	// logd sidecar URL (aggregated logs query + live-tail).
+	logdURL := api.URLFromEnv("LOGD_URL", "http://logd:8082")
 
 	initAllowedWSOrigins()
 
 	mux := http.NewServeMux()
 
-	srv, err := NewServer(backendURL, holesailURL, mux)
+	srv, err := NewServer(backendURL, holesailURL, logdURL, mux)
 	if err != nil {
 		slog.Error("failed to create server", "error", err)
 		os.Exit(1)

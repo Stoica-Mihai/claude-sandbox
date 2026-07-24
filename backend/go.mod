@@ -9,6 +9,8 @@ require (
 
 require claude-sandbox-sessiond v0.0.0
 
+require golang.org/x/sys v0.47.0 // indirect
+
 replace claude-sandbox-api => ../shared
 
 replace claude-sandbox-sessiond => ../sessiond

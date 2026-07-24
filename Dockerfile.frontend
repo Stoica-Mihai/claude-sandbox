@@ -34,9 +34,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m frontend
-USER frontend
+# Same UID/GID as the other producers so the shared logs volume is writable by
+# the same user across containers.
+ARG UID
+ARG GID
+RUN groupadd -g ${GID} claude && \
+    useradd -m -u ${UID} -g claude claude
 
-COPY --from=builder /frontend-server /home/frontend/frontend-server
+# Shared logs volume mountpoint, owned by claude so the volume inherits that
+# ownership on first creation (this service writes /logs/frontend.log).
+RUN mkdir -p /logs && chown claude:claude /logs
 
-CMD ["/home/frontend/frontend-server"]
+USER claude
+
+COPY --from=builder /frontend-server /home/claude/frontend-server
+
+CMD ["/home/claude/frontend-server"]

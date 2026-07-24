@@ -36,6 +36,7 @@ type Server struct {
 	client        *http.Client
 	backendProxy  http.Handler // verbatim reverse proxy for passthrough /api routes + SSE
 	holesailProxy http.Handler // verbatim reverse proxy for /api/share/* (guarded)
+	logdProxy     http.Handler // verbatim reverse proxy for /api/logs* (guarded, SSE)
 }
 
 // newReverseProxy builds a reverse proxy that forwards verbatim to the target,
@@ -66,7 +67,7 @@ func newReverseProxy(targetURL string, errBody []byte) (http.Handler, error) {
 
 // NewServer creates a Server by parsing embedded templates and registering
 // all routes on the provided mux.
-func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, error) {
+func NewServer(backendURL, holesailURL, logdURL string, mux *http.ServeMux) (*Server, error) {
 	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
@@ -85,6 +86,10 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	if err != nil {
 		return nil, err
 	}
+	logdProxy, err := newReverseProxy(logdURL, logdDownBody())
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		templates:  tmpl,
@@ -94,6 +99,7 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 		},
 		backendProxy:  backendProxy,
 		holesailProxy: holesailProxy,
+		logdProxy:     logdProxy,
 	}
 
 	// Transform routes: translate the request or render HTML — not verbatim
@@ -111,6 +117,13 @@ func NewServer(backendURL, holesailURL string, mux *http.ServeMux) (*Server, err
 	// method-blind on the whole prefix so no method/path variant can fall
 	// through to the /api/ backend catch-all; the sidecar 404s unknown routes.
 	mux.HandleFunc("/api/share/", s.handleShareProxy)
+
+	// Log routes proxied to the logd sidecar (guarded). Both the bare path and
+	// the prefix are registered: the prefix pattern does not match the bare
+	// path, so without the exact route "/api/logs" would fall through to the
+	// /api/ backend catch-all and bypass the tunnel guard.
+	mux.HandleFunc(api.RouteLogs, s.handleLogsProxy)
+	mux.HandleFunc(api.RouteLogs+"/", s.handleLogsProxy)
 
 	// Streaming proxy routes. SSE goes through the reverse proxy, which
 	// auto-flushes text/event-stream responses.
@@ -319,6 +332,12 @@ func backendDownBody() []byte {
 func shareDownBody() []byte {
 	msg := "Share sidecar unreachable."
 	b, _ := json.Marshal(api.ShareStatus{State: api.ShareError, Error: &msg})
+	return b
+}
+
+// logdDownBody is the 502 JSON envelope for an unreachable logd sidecar.
+func logdDownBody() []byte {
+	b, _ := json.Marshal(map[string]string{"error": "log service unreachable"})
 	return b
 }
 
@@ -541,6 +560,18 @@ func (s *Server) handleShareProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.holesailProxy.ServeHTTP(w, r)
+}
+
+// handleLogsProxy proxies /api/logs* to the logd sidecar. Logs may contain
+// secrets, so — stricter than the share guard, which allows GET — every method
+// including GET is rejected for a tunnel-originated request. logd is otherwise
+// unauthenticated; the boundary is this guard plus the external auth proxy.
+func (s *Server) handleLogsProxy(w http.ResponseWriter, r *http.Request) {
+	if isTunnelRequest(r) {
+		http.Error(w, "logs are not available over the tunnel", http.StatusForbidden)
+		return
+	}
+	s.logdProxy.ServeHTTP(w, r)
 }
 
 // --- Helpers ---

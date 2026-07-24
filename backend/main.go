@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	api.InitLogging()
+	api.InitLogging("backend")
 	listenAddr := api.ListenAddr("BACKEND_PORT", ":8081")
 
 	if err := initPaths(); err != nil {

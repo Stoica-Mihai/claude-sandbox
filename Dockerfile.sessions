@@ -64,6 +64,11 @@ ARG UID
 ARG GID
 RUN groupadd -g ${GID} claude && \
     useradd -m -u ${UID} -g claude claude
+
+# Shared logs volume mountpoint, owned by claude so the volume inherits that
+# ownership on first creation (this service writes /logs/sessiond.log).
+RUN mkdir -p /logs && chown claude:claude /logs
+
 USER claude
 
 # sessiond socket storage (shared with the backend via a named volume)

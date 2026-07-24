@@ -36,7 +36,7 @@ func main() {
 	ping := flag.Bool("ping", false, "probe the control socket and exit (healthcheck)")
 	flag.Parse()
 
-	api.InitLogging()
+	api.InitLogging("sessiond")
 
 	sockDir, err := protocol.SockDir()
 	if err != nil {

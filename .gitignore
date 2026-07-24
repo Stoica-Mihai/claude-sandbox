@@ -11,3 +11,4 @@ docs/
 
 # Compiled Go binaries (built in-container; never commit)
 /claude-sandbox-backend
+logd/claude-sandbox-logd

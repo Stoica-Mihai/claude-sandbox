@@ -3,6 +3,7 @@ go 1.26.1
 use (
 	./backend
 	./frontend
+	./logd
 	./sessiond
 	./shared
 )

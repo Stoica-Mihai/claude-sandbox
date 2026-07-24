@@ -20,12 +20,18 @@ import (
 )
 
 const noHolesail = "http://holesail.invalid:9000"
+const noLogd = "http://logd.invalid:8082"
 
-// newMuxServer stands up the full frontend mux pointed at the given upstreams.
+// newMuxServer stands up the full frontend mux pointed at the given upstreams
+// (logd defaulted to an unreachable stub for tests that don't exercise it).
 func newMuxServer(t *testing.T, backendURL, holesailURL string) *http.ServeMux {
+	return newMuxServerFull(t, backendURL, holesailURL, noLogd)
+}
+
+func newMuxServerFull(t *testing.T, backendURL, holesailURL, logdURL string) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	if _, err := NewServer(backendURL, holesailURL, mux); err != nil {
+	if _, err := NewServer(backendURL, holesailURL, logdURL, mux); err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	return mux
@@ -397,6 +403,94 @@ func TestShareUnknownMethodStaysOnHolesail(t *testing.T) {
 	}
 	if holesailStatus != http.StatusNotFound || rec.Code != http.StatusNotFound {
 		t.Errorf("expected sidecar 404 passthrough, got %d (sidecar saw %d)", rec.Code, holesailStatus)
+	}
+}
+
+// TestLogsRoutesToLogdNotBackend locks that both the bare /api/logs query path
+// and the /api/logs/stream path route to the logd sidecar, never falling
+// through to the /api/ backend catch-all (which would bypass the guard).
+func TestLogsRoutesToLogdNotBackend(t *testing.T) {
+	for _, path := range []string{"/api/logs?service=backend", "/api/logs/stream"} {
+		t.Run(path, func(t *testing.T) {
+			backendHit := false
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				backendHit = true
+			}))
+			defer backend.Close()
+			var logdPath string
+			logd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				logdPath = r.URL.Path
+				io.WriteString(w, "LOGD-BODY")
+			}))
+			defer logd.Close()
+
+			mux := newMuxServerFull(t, backend.URL, noHolesail, logd.URL)
+			req := httptest.NewRequest("GET", path, nil)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			if backendHit {
+				t.Errorf("%s reached the backend; must go to logd", path)
+			}
+			if logdPath == "" {
+				t.Errorf("%s did not reach logd", path)
+			}
+			if rb, _ := io.ReadAll(rec.Result().Body); string(rb) != "LOGD-BODY" {
+				t.Errorf("body = %q, want LOGD-BODY", rb)
+			}
+		})
+	}
+}
+
+// TestLogsTunnelForbiddenAllMethods locks that a tunnel-originated request to a
+// logs route is 403'd for every method — including GET, stricter than share —
+// and never reaches logd.
+func TestLogsTunnelForbiddenAllMethods(t *testing.T) {
+	for _, method := range []string{"GET", "POST", "DELETE"} {
+		t.Run(method, func(t *testing.T) {
+			logdHit := false
+			logd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				logdHit = true
+			}))
+			defer logd.Close()
+
+			mux := newMuxServerFull(t, "http://backend.invalid:8081", noHolesail, logd.URL)
+			// markTunnel stamps every request as tunnel-originated, mirroring the
+			// dedicated tunnel listener in main.go.
+			handler := markTunnel(mux)
+			req := httptest.NewRequest(method, "/api/logs", nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("%s over tunnel: status = %d, want 403", method, rec.Code)
+			}
+			if logdHit {
+				t.Errorf("%s over tunnel reached logd; must be blocked", method)
+			}
+		})
+	}
+}
+
+// TestLogsLANRequestProxied locks that a non-tunnel GET reaches logd verbatim.
+func TestLogsLANRequestProxied(t *testing.T) {
+	var gotQuery string
+	logd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		io.WriteString(w, "OK")
+	}))
+	defer logd.Close()
+
+	mux := newMuxServerFull(t, "http://backend.invalid:8081", noHolesail, logd.URL)
+	req := httptest.NewRequest("GET", "/api/logs?service=backend&q=timeout", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if gotQuery != "service=backend&q=timeout" {
+		t.Errorf("logd query = %q, want service=backend&q=timeout", gotQuery)
 	}
 }
 

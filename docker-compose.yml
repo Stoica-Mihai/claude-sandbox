@@ -27,6 +27,7 @@ x-claude-volumes: &claude-volumes
   - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
   - ./container-settings.json:/home/claude/container-settings.json
   - claude-state:/home/claude/.local/state/claude
+  - logs:/logs
 
 services:
   sessions:
@@ -65,6 +66,7 @@ services:
 
     environment:
       - HOME=/home/claude
+      - LOG_DIR=/logs
 
     # No exposed ports — sessiond speaks unix sockets only
     networks:
@@ -110,6 +112,7 @@ services:
     environment:
       - HOME=/home/claude
       - BACKEND_PORT=${BACKEND_PORT:-8081}
+      - LOG_DIR=/logs
 
     # No exposed ports — only reachable via internal network
     networks:
@@ -131,6 +134,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
+        <<: *uidgid
         GO_VERSION: *go-version
     container_name: claude_frontend
     restart: unless-stopped
@@ -146,7 +150,12 @@ services:
       - TUNNEL_PORT=${TUNNEL_PORT:-8090}
       - BACKEND_URL=http://backend:${BACKEND_PORT:-8081}
       - HOLESAIL_URL=http://holesail:${SHARE_CONTROL_PORT:-9000}
+      - LOGD_URL=http://logd:${LOGD_PORT:-8082}
+      - LOG_DIR=/logs
       - ALLOWED_WS_ORIGINS=${ALLOWED_WS_ORIGINS:-}
+
+    volumes:
+      - logs:/logs
 
     ports:
       - "${DASHBOARD_PORT:-8080}:${DASHBOARD_PORT:-8080}"
@@ -154,6 +163,8 @@ services:
     networks:
       - claude-net
 
+    # No depends_on logd: it is non-critical, so the dashboard boots even if the
+    # log service is down (/api/logs 502s gracefully).
     depends_on:
       backend:
         condition: service_healthy
@@ -201,6 +212,44 @@ services:
 
     logging: *logging
 
+  logd:
+    build:
+      context: .
+      dockerfile: Dockerfile.logd
+      args:
+        <<: *uidgid
+        GO_VERSION: *go-version
+    container_name: claude_logd
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./logd/
+        - action: rebuild
+          path: ./shared/
+
+    environment:
+      - LOGS_DIR=/logs
+      - STATE_DIR=/state
+      - LOGD_PORT=${LOGD_PORT:-8082}
+
+    volumes:
+      # Read-only view of the shared logs (logd only tails; it never writes here)
+      # plus its own writable offset-checkpoint volume.
+      - logs:/logs:ro
+      - logd-state:/state
+
+    # No exposed ports — reachable only via the internal network (guarded proxy).
+    networks:
+      - claude-net
+
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:${LOGD_PORT:-8082}/healthz"]
+      start_period: 5s
+
+    logging: *logging
+
 networks:
   claude-net:
     driver: bridge
@@ -208,3 +257,5 @@ networks:
 volumes:
   claude-state:
   holesail-share-key:
+  logs:
+  logd-state:
