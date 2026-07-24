@@ -131,17 +131,15 @@ func TestDashboardLayoutUnchanged(t *testing.T) {
 	}
 }
 
-// TestLogsSurfaceHostOnlyOverTunnel pins the host-only logs surface: a
-// tunnel-rendered shell omits the Logs footer item, and GET /logs over the
-// tunnel listener is 403'd. Host is unaffected.
-func TestLogsSurfaceHostOnlyOverTunnel(t *testing.T) {
-	host := renderNamed(t, "layout.html", DashboardData{})
-	if !strings.Contains(host, `href="/logs"`) {
+// TestLogsSurfaceGatedByLogSharing pins the flow: sharing off ⇒ a tunnel
+// visitor gets no Logs menu and a 403 on /logs; the host enabling log sharing
+// ⇒ the tunnel gets the Logs menu + /logs. Host is always unaffected.
+func TestLogsSurfaceGatedByLogSharing(t *testing.T) {
+	if host := renderNamed(t, "layout.html", DashboardData{}); !strings.Contains(host, `href="/logs"`) {
 		t.Error("host layout should show the Logs nav item")
 	}
-	tunnel := renderNamed(t, "layout.html", DashboardData{IsTunnel: true})
-	if strings.Contains(tunnel, `href="/logs"`) {
-		t.Error("tunnel layout must omit the Logs nav item")
+	if hidden := renderNamed(t, "layout.html", DashboardData{HideLogs: true}); strings.Contains(hidden, `href="/logs"`) {
+		t.Error("HideLogs layout must omit the Logs nav item")
 	}
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,13 +148,31 @@ func TestLogsSurfaceHostOnlyOverTunnel(t *testing.T) {
 	}))
 	t.Cleanup(backend.Close)
 	mux := http.NewServeMux()
-	if _, err := NewServer(backend.URL, backend.URL, backend.URL, mux); err != nil {
+	srv, err := NewServer(backend.URL, backend.URL, backend.URL, mux)
+	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	rec := httptest.NewRecorder()
-	markTunnel(mux).ServeHTTP(rec, httptest.NewRequest("GET", "/logs", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("GET /logs over tunnel = %d, want 403", rec.Code)
+	tunnelGet := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		markTunnel(mux).ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		return rec
+	}
+
+	// Sharing off (default): tunnel /logs 403, tunnel shell omits the Logs nav.
+	if rec := tunnelGet("/logs"); rec.Code != http.StatusForbidden {
+		t.Errorf("tunnel /logs (sharing off) = %d, want 403", rec.Code)
+	}
+	if rec := tunnelGet("/"); strings.Contains(rec.Body.String(), `href="/logs"`) {
+		t.Error("tunnel dashboard (sharing off) must omit the Logs nav item")
+	}
+
+	// Host enables log sharing: the tunnel now gets the surface.
+	srv.shareLogsEnabled.Store(true)
+	if rec := tunnelGet("/logs"); rec.Code != http.StatusOK {
+		t.Errorf("tunnel /logs (sharing on) = %d, want 200", rec.Code)
+	}
+	if rec := tunnelGet("/"); !strings.Contains(rec.Body.String(), `href="/logs"`) {
+		t.Error("tunnel dashboard (sharing on) should show the Logs nav item")
 	}
 }
 
