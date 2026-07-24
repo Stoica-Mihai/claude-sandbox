@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { FakeDocument, FakeElement } from './dom-stub.mjs';
-import { applyPatches, appendSystemNotice, appendUserMessage, resetView, showPending } from '../chat-render.js';
+import { applyPatches, appendSystemNotice, setConnectionNotice, clearConnectionNotice, appendUserMessage, resetView, showPending } from '../chat-render.js';
 
 // Assistant boxes carry chrome (the turn-copy button) alongside block
 // elements, so address blocks by class rather than raw child index.
@@ -30,6 +30,26 @@ test('appendSystemNotice appends a system-role message', () => {
         assert.equal(list.children.length, 1);
         assert.ok(list.children[0].classList.contains('chat-msg-system'));
         assert.equal(list.children[0].textContent, '[Session ended]');
+    });
+});
+
+test('setConnectionNotice updates one notice in place instead of stacking', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        for (let i = 1; i <= 5; i++) setConnectionNotice(list, `[Reconnecting… (attempt ${i})]`);
+        assert.equal(list.children.length, 1);
+        assert.equal(list.children[0].textContent, '[Reconnecting… (attempt 5)]');
+        clearConnectionNotice(list);
+        assert.equal(list.children.length, 0);
+        assert.equal(list._chatConnNotice, null);
+    });
+});
+
+test('clearConnectionNotice is a no-op when no notice exists', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        clearConnectionNotice(list); // must not throw
+        assert.equal(list.children.length, 0);
     });
 });
 

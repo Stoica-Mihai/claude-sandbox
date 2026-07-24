@@ -4,7 +4,7 @@
 
 import { SessionSocket } from './session-socket.js';
 import { createChatState, applyEvent, composeUserInput } from './chat-events.js';
-import { applyPatches, appendUserMessage, appendSystemNotice, resetView, showPending, clearPending } from './chat-render.js';
+import { applyPatches, appendUserMessage, appendSystemNotice, setConnectionNotice, clearConnectionNotice, resetView, showPending, clearPending } from './chat-render.js';
 import { createStickyScroll } from './chat-scroll.js';
 import { createInputBar } from './chat-input.js';
 import { sessionTranscriptPath, sessionPath, sessionModePath } from './routes.js';
@@ -187,12 +187,13 @@ export const ChatManager = {
                     onQuickReply: (text) => this._sendUserText(terminalId, text, null),
                 });
             },
-            onStatus: (status) => {
+            onStatus: (status, info = {}) => {
                 clearPending(flow); // whatever happened, the turn is no longer just pending
                 if (status !== 'open') this._setRunning(terminalId, false);
-                if (status === 'ended') appendSystemNotice(flow, '[Session ended]');
-                else if (status === 'reconnecting') appendSystemNotice(flow, '[Reconnecting…]');
-                else if (status === 'lost') appendSystemNotice(flow, '[Connection lost — send a message to retry]');
+                if (status === 'open') clearConnectionNotice(flow); // reconnected: drop the transient notice
+                else if (status === 'reconnecting') setConnectionNotice(flow, `[Reconnecting… (attempt ${info.attempt})]`);
+                else if (status === 'lost') setConnectionNotice(flow, '[Connection lost — send a message to retry]');
+                else if (status === 'ended') { clearConnectionNotice(flow); appendSystemNotice(flow, '[Session ended]'); }
             },
         });
         instance.socket = socket;

@@ -333,6 +333,7 @@ export function resetView(listEl) {
     listEl.innerHTML = '';
     listEl._chatMessageEls = null;
     listEl._chatPending = null;
+    listEl._chatConnNotice = null;
 }
 
 // showPending/clearPending: the "thinking…" row between a user's send and the
@@ -417,6 +418,27 @@ export function appendSystemNotice(listEl, text) {
     el.className = 'chat-msg chat-msg-system';
     el.textContent = text;
     listEl.appendChild(el);
+}
+
+// setConnectionNotice shows a single connection-status line (reconnecting /
+// lost) that updates in place, so repeated reconnect attempts refresh one
+// notice instead of stacking a new box each time. clearConnectionNotice
+// removes it (on reconnect, or before a terminal [Session ended]).
+export function setConnectionNotice(listEl, text) {
+    let el = listEl._chatConnNotice;
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'chat-msg chat-msg-system';
+        listEl._chatConnNotice = el;
+        listEl.appendChild(el);
+    }
+    el.textContent = text;
+}
+
+export function clearConnectionNotice(listEl) {
+    if (!listEl._chatConnNotice) return;
+    listEl._chatConnNotice.remove();
+    listEl._chatConnNotice = null;
 }
 
 // appendUserMessage renders the user's own message optimistically on send —
