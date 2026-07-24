@@ -780,4 +780,8 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   .lz-svc{grid-area:svc}
   .lz-lvl{display:none}
   .lz-msg{grid-area:msg}
+  /* A welded seg (esp. the 5-button service filter) exceeds a phone's width;
+     scroll it horizontally instead of clipping off-screen buttons or pushing
+     the body (kit "contain wide content with overflow-x:auto" rule). */
+  .lz-filters .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
