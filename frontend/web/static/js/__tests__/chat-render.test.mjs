@@ -130,6 +130,20 @@ test('a tool block for Bash renders the command', () => {
     });
 });
 
+test('a tool row shows a one-line input preview in the collapsed header', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Bash', input: { command: 'git status\nsecond line' }, done: true } },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 1, block: { type: 'tool', toolName: 'Read', input: { file_path: '/workspace/app/main.go' }, done: true } },
+        ]);
+        const blocks = blocksOf(list.children[0]);
+        assert.equal(blocks[0].querySelector('.chat-tool-preview').textContent, 'git status'); // first line only
+        assert.equal(blocks[1].querySelector('.chat-tool-preview').textContent, '/workspace/app/main.go');
+    });
+});
+
 test('a tool-result patch appends the output excerpt to the existing tool block', () => {
     withDocument(() => {
         const list = new FakeElement('div');

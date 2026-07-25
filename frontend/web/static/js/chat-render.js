@@ -282,24 +282,62 @@ function renderEditDiff(input) {
     return wrap;
 }
 
-// renderToolBlock renders one collapsible tool-call row: Edit/Write as a
-// diff, Bash as command + output excerpt, everything else as name + raw
-// input/output.
+// toolPreview returns a short single-line summary of a tool call's key input
+// (command, file path, pattern, …) for the collapsed row, so a stack of tool
+// calls is scannable at a glance instead of a wall of identical "BASH" rows.
+function toolPreview(block) {
+    const inp = block.input;
+    if (!inp || typeof inp !== 'object') return '';
+    const first = (s) => String(s == null ? '' : s).split('\n')[0].trim();
+    switch (block.toolName) {
+        case 'Bash': return first(inp.command);
+        case 'Edit':
+        case 'Write':
+        case 'Read': return first(inp.file_path);
+        case 'NotebookEdit': return first(inp.notebook_path);
+        case 'Grep': return first(inp.pattern) + (inp.path ? '  ' + first(inp.path) : '');
+        case 'Glob': return first(inp.pattern);
+        case 'Task': return first(inp.description || inp.subagent_type);
+        case 'WebFetch': return first(inp.url);
+        case 'WebSearch': return first(inp.query);
+        case 'Skill': return first(inp.skill || inp.command);
+        default: {
+            // Fallback: the first non-empty string field.
+            const v = Object.values(inp).find((x) => typeof x === 'string' && x.trim());
+            return first(v);
+        }
+    }
+}
+
+// renderToolBlock renders one collapsible tool-call row: a header (name + a
+// one-line input preview) over a body — Edit/Write as a diff, Bash as command
+// + output excerpt, everything else as name + raw input/output.
 function renderToolBlock(el, block) {
     el.innerHTML = '';
     const header = document.createElement('button');
     header.type = 'button';
     header.className = 'chat-tool-toggle';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'chat-tool-name';
+    const previewEl = document.createElement('span');
+    previewEl.className = 'chat-tool-preview';
+    header.appendChild(nameEl);
+    header.appendChild(previewEl);
     // Open-state lives on the block (not the DOM) so a re-render on
     // tool-result arrival doesn't snap an opened body shut.
-    const label = () => (block.open ? '▾ ' : '▸ ') + (block.toolName || 'tool') + (block.done ? '' : '…');
-    header.textContent = label();
+    const renderHeader = () => {
+        nameEl.textContent = (block.open ? '▾ ' : '▸ ') + (block.toolName || 'tool') + (block.done ? '' : '…');
+        const pv = toolPreview(block);
+        previewEl.textContent = pv;
+        previewEl.classList.toggle('hidden', !pv);
+    };
+    renderHeader();
     const body = document.createElement('div');
     body.className = 'chat-tool-body' + (block.open ? '' : ' hidden');
     header.onclick = () => {
         block.open = !block.open;
         body.classList.toggle('hidden', !block.open);
-        header.textContent = label();
+        renderHeader();
     };
     el.appendChild(header);
     el.appendChild(body);

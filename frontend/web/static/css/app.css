@@ -645,6 +645,14 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
   color:var(--muted);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;
   padding:3px 0;cursor:pointer}
 .chat-thinking-toggle:hover,.chat-tool-toggle:hover{color:var(--ink)}
+/* Tool row: name + a one-line input preview. Name keeps the uppercase toggle
+   look; the preview is real-case mono, truncated to one line so a long command
+   never wraps the row. */
+.chat-tool-toggle{display:flex;align-items:baseline;gap:8px}
+.chat-tool-name{flex:none}
+.chat-tool-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-transform:none;letter-spacing:normal;opacity:.85}
+.chat-tool-preview.hidden{display:none}
 .chat-thinking-body{border-left:3px solid var(--line);background:transparent;color:var(--muted);
   padding:6px 10px;font-size:12px;white-space:pre-wrap}
 .chat-tool-body{border-left:3px solid var(--line);background:transparent;padding:6px 10px}
