@@ -656,6 +656,11 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-tool-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   text-transform:none;letter-spacing:normal;opacity:.85}
 .chat-tool-preview.hidden{display:none}
+/* Subagent (Agent/Task) card: description is the scannable label (prominent,
+   real-case prose), and the final report renders as markdown with an accent
+   edge so it reads as the subagent's outcome. */
+.chat-block-subagent .chat-tool-preview{opacity:1;color:var(--ink);text-transform:none;letter-spacing:normal;font-family:var(--font)}
+.chat-subagent-report{border-left:3px solid var(--accent);padding-left:10px}
 .chat-thinking-body{border-left:3px solid var(--line);background:transparent;color:var(--muted);
   padding:6px 10px;font-size:12px;white-space:pre-wrap}
 .chat-tool-body{border-left:3px solid var(--line);background:transparent;padding:6px 10px}

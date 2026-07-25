@@ -147,6 +147,21 @@ test('a tool row previews its input — Bash as an always-visible boxed command,
     });
 });
 
+test('an Agent (subagent) tool renders as a card: description label + markdown report, no raw output', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Agent', input: { subagent_type: 'general-purpose', description: 'Implement Task 1 peek core', prompt: 'do the thing' }, resultText: '## Done\nchanged src/x.rs', done: true } },
+        ]);
+        const blk = blocksOf(list.children[0])[0];
+        assert.ok(blk.classList.contains('chat-block-subagent'), 'subagent card class');
+        assert.equal(blk.querySelector('.chat-tool-preview').textContent, 'Implement Task 1 peek core');
+        assert.ok(blk.querySelector('.chat-subagent-report'), 'report rendered');
+        assert.equal(blk.querySelector('.chat-tool-output'), null, 'agent uses the report, not a raw output pre');
+    });
+});
+
 test('a tool-result patch appends the output excerpt to the existing tool block', () => {
     withDocument(() => {
         const list = new FakeElement('div');

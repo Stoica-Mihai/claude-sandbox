@@ -297,7 +297,8 @@ function toolPreview(block) {
         case 'NotebookEdit': return first(inp.notebook_path);
         case 'Grep': return first(inp.pattern) + (inp.path ? '  ' + first(inp.path) : '');
         case 'Glob': return first(inp.pattern);
-        case 'Task': return first(inp.description || inp.subagent_type);
+        case 'Task':
+        case 'Agent': return first(inp.description || inp.subagent_type);
         case 'WebFetch': return first(inp.url);
         case 'WebSearch': return first(inp.query);
         case 'Skill': return first(inp.skill || inp.command);
@@ -320,6 +321,11 @@ function renderToolBlock(el, block) {
     // syntax-highlighted snippet (the "preview in a box") rather than a one-line
     // header summary; file/other tools keep the compact header preview.
     const boxed = block.toolName === 'Bash' || block.toolName === 'Grep' || block.toolName === 'Glob';
+    // Subagent (Agent/Task): a first-class card. Its internal steps aren't in
+    // the stream — only the invocation (description/prompt) and the final report
+    // — so surface the description as a scannable label + the report as markdown.
+    const isAgent = block.toolName === 'Agent' || block.toolName === 'Task';
+    if (isAgent) el.classList.add('chat-block-subagent');
 
     const header = document.createElement('button');
     header.type = 'button';
@@ -366,7 +372,22 @@ function renderToolBlock(el, block) {
 
     // Collapsible detail: diff for Edit/Write, raw input for non-boxed tools,
     // and the result output for any tool.
-    if (block.toolName === 'Edit' || block.toolName === 'Write') {
+    if (isAgent) {
+        // The subagent's final report — the readable outcome — as markdown.
+        if (block.resultText) {
+            const report = document.createElement('div');
+            report.className = 'chat-subagent-report';
+            report.innerHTML = renderMarkdown(block.resultText);
+            body.appendChild(report);
+        }
+        // The task it was given (secondary, revealed with the row).
+        if (input && input.prompt) {
+            const pr = document.createElement('pre');
+            pr.className = 'chat-tool-input';
+            pr.textContent = input.prompt;
+            body.appendChild(pr);
+        }
+    } else if (block.toolName === 'Edit' || block.toolName === 'Write') {
         const diff = renderEditDiff(input);
         body.appendChild(diff);
         if (fileLang) for (const pane of diff.children) highlightCode(pane, fileLang);
@@ -377,7 +398,7 @@ function renderToolBlock(el, block) {
         body.appendChild(raw);
         if (block.done && input) highlightCode(raw, 'json');
     }
-    if (block.resultText) {
+    if (!isAgent && block.resultText) {
         const out = document.createElement('pre');
         out.className = 'chat-tool-output';
         out.textContent = block.resultText;
