@@ -678,6 +678,11 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-tool-cmd{color:var(--ink)}
 .chat-tool-output{color:var(--muted)}
 .chat-tool-toggle+.chat-tool-cmd{margin-top:4px}
+/* Tall command box: capped when the row is collapsed (▸ expands to full), with a
+   bottom fade to signal there's more. */
+.chat-tool-cmd--capped{max-height:6em;overflow:hidden;position:relative}
+.chat-tool-cmd--capped::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1.6em;
+  background:linear-gradient(rgba(0,0,0,0),var(--surf));pointer-events:none}
 .chat-tool-body>pre,.chat-tool-body>.chat-diff{margin-top:6px}
 
 /* Edit/Write diff: deletion/addition panes, distinguished by tint only (no

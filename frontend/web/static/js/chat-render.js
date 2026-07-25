@@ -349,6 +349,7 @@ function renderToolBlock(el, block) {
 
     // Always-visible boxed preview: the command (Bash) or pattern (Grep/Glob),
     // highlighted, so a stack of tool calls reads at a glance.
+    let capCmd = null; // caps a tall command box until the row is expanded
     if (boxed) {
         const cmd = document.createElement('pre');
         cmd.className = 'chat-tool-cmd';
@@ -358,6 +359,11 @@ function renderToolBlock(el, block) {
         if (cmd.textContent) {
             el.appendChild(cmd);
             if (block.done && block.toolName === 'Bash') highlightCode(cmd, 'bash');
+            // Cap a tall multi-line command when collapsed; the ▸ toggle reveals all.
+            if (cmd.textContent.split('\n').length > 6) {
+                capCmd = () => cmd.classList.toggle('chat-tool-cmd--capped', !block.open);
+                capCmd();
+            }
         }
     }
 
@@ -367,6 +373,7 @@ function renderToolBlock(el, block) {
         block.open = !block.open;
         body.classList.toggle('hidden', !block.open);
         renderHeader();
+        capCmd?.();
     };
     el.appendChild(body);
 

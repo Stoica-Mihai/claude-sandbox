@@ -162,6 +162,21 @@ test('an Agent (subagent) tool renders as a card: description label + markdown r
     });
 });
 
+test('a tall command box is capped when collapsed; a short one is not', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        const tall = Array.from({ length: 8 }, (_, i) => 'line ' + i).join('\n');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Bash', input: { command: tall }, done: true } },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 1, block: { type: 'tool', toolName: 'Bash', input: { command: 'ls' }, done: true } },
+        ]);
+        const blocks = blocksOf(list.children[0]);
+        assert.ok(blocks[0].querySelector('.chat-tool-cmd').classList.contains('chat-tool-cmd--capped'), 'tall command capped');
+        assert.equal(blocks[1].querySelector('.chat-tool-cmd').classList.contains('chat-tool-cmd--capped'), false, 'short command not capped');
+    });
+});
+
 test('a tool-result patch appends the output excerpt to the existing tool block', () => {
     withDocument(() => {
         const list = new FakeElement('div');
