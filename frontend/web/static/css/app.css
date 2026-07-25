@@ -616,9 +616,10 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-msg-assistant:hover .chat-turn-copy:not(.hidden){opacity:1}
 /* Code-copy is absolute (out of flow) — its reveal never reflows anything. */
 .chat-code{position:relative}
-/* Vertically centered (not top:6px) so it fits a one-line command box — where
-   the ~26px button is taller than the box — as well as tall output boxes. */
-.chat-code-copy{display:none;position:absolute;top:50%;right:6px;transform:translateY(-50%)}
+/* top:4px = corner-anchored on tall boxes, and it also happens to be the exact
+   centering for a one-line command box (~34px tall, ~26px button → (34-26)/2),
+   so the button fits short boxes without floating to the middle of tall ones. */
+.chat-code-copy{display:none;position:absolute;top:4px;right:6px}
 .chat-code:hover .chat-code-copy{display:inline-flex}
 @media (hover:none){
   .chat-turn-copy:not(.hidden){opacity:1}
