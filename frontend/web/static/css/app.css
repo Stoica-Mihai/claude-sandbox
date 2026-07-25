@@ -632,7 +632,12 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-quick-reply:hover{background:var(--ink);color:var(--bg)}
 
 /* ===== Blocks within an assistant message ===== */
-.chat-block+.chat-block{margin-top:8px}
+/* An empty block (e.g. a thinking block with no text yet, or a redacted one)
+   must not sit in the flow: at zero height it still poisons the flex-column
+   baseline the avatar aligns to, pushing the ✱ above the first real line.
+   Drop it from layout entirely; margins apply only between real blocks. */
+.chat-block:empty{display:none}
+.chat-block:not(:empty)+.chat-block:not(:empty){margin-top:8px}
 
 /* Toggles are borderless text rows and bodies hang off a left rule — full
    boxes here would nest borders inside the message box (boxes-in-boxes). */
