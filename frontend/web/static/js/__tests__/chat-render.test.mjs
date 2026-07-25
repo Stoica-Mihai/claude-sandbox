@@ -130,7 +130,7 @@ test('a tool block for Bash renders the command', () => {
     });
 });
 
-test('a tool row shows a one-line input preview in the collapsed header', () => {
+test('a tool row previews its input — Bash as an always-visible boxed command, Read as a header path', () => {
     withDocument(() => {
         const list = new FakeElement('div');
         applyPatches(list, [
@@ -139,7 +139,10 @@ test('a tool row shows a one-line input preview in the collapsed header', () => 
             { kind: 'finalize-block', messageId: 'm1', blockIndex: 1, block: { type: 'tool', toolName: 'Read', input: { file_path: '/workspace/app/main.go' }, done: true } },
         ]);
         const blocks = blocksOf(list.children[0]);
-        assert.equal(blocks[0].querySelector('.chat-tool-preview').textContent, 'git status'); // first line only
+        // Bash: full command in a boxed .chat-tool-cmd (not the header summary).
+        assert.equal(blocks[0].querySelector('.chat-tool-cmd').textContent, 'git status\nsecond line');
+        assert.equal(blocks[0].querySelector('.chat-tool-preview').textContent, '');
+        // Read: path in the compact header preview.
         assert.equal(blocks[1].querySelector('.chat-tool-preview').textContent, '/workspace/app/main.go');
     });
 });

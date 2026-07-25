@@ -662,9 +662,15 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
    the markdown code-block treatment and claude.ai's own behavior. */
 /* max-height caps a long tool result (a big Read/Bash output) so it scrolls
    inside its own box instead of becoming a giant row you page past. */
-.chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto;max-height:320px}
+/* Boxed like a code fence (border + surface bg), so the command/input/output
+   read as distinct highlighted blocks — the always-visible command box is the
+   tool's "preview". */
+.chat-tool-cmd,.chat-tool-input,.chat-tool-output{margin:0;font-family:var(--mono);font-size:12px;
+  white-space:pre;overflow:auto;max-height:320px;border:2px solid var(--line);background:var(--surf);padding:6px 8px}
 .chat-tool-cmd{color:var(--ink)}
-.chat-tool-output{margin-top:8px;padding-top:8px;border-top:2px solid var(--line);color:var(--muted)}
+.chat-tool-output{color:var(--muted)}
+.chat-tool-toggle+.chat-tool-cmd{margin-top:4px}
+.chat-tool-body>pre,.chat-tool-body>.chat-diff{margin-top:6px}
 
 /* Edit/Write diff: deletion/addition panes, distinguished by tint only (no
    red/green pair — the app's single-accent law rules out a second hue). */

@@ -314,6 +314,13 @@ function toolPreview(block) {
 // + output excerpt, everything else as name + raw input/output.
 function renderToolBlock(el, block) {
     el.innerHTML = '';
+    const input = block.input;
+    const fileLang = langFromPath(input?.file_path);
+    // Command-like tools show their key input as an always-visible, boxed,
+    // syntax-highlighted snippet (the "preview in a box") rather than a one-line
+    // header summary; file/other tools keep the compact header preview.
+    const boxed = block.toolName === 'Bash' || block.toolName === 'Grep' || block.toolName === 'Glob';
+
     const header = document.createElement('button');
     header.type = 'button';
     header.className = 'chat-tool-toggle';
@@ -327,11 +334,27 @@ function renderToolBlock(el, block) {
     // tool-result arrival doesn't snap an opened body shut.
     const renderHeader = () => {
         nameEl.textContent = (block.open ? '▾ ' : '▸ ') + (block.toolName || 'tool') + (block.done ? '' : '…');
-        const pv = toolPreview(block);
+        const pv = boxed ? '' : toolPreview(block); // boxed tools show input in the box below
         previewEl.textContent = pv;
         previewEl.classList.toggle('hidden', !pv);
     };
     renderHeader();
+    el.appendChild(header);
+
+    // Always-visible boxed preview: the command (Bash) or pattern (Grep/Glob),
+    // highlighted, so a stack of tool calls reads at a glance.
+    if (boxed) {
+        const cmd = document.createElement('pre');
+        cmd.className = 'chat-tool-cmd';
+        cmd.textContent = block.toolName === 'Bash'
+            ? ((input && input.command) || '')
+            : (input && input.pattern ? input.pattern + (input.path ? '   ' + input.path : '') : '');
+        if (cmd.textContent) {
+            el.appendChild(cmd);
+            if (block.done && block.toolName === 'Bash') highlightCode(cmd, 'bash');
+        }
+    }
+
     const body = document.createElement('div');
     body.className = 'chat-tool-body' + (block.open ? '' : ' hidden');
     header.onclick = () => {
@@ -339,22 +362,15 @@ function renderToolBlock(el, block) {
         body.classList.toggle('hidden', !block.open);
         renderHeader();
     };
-    el.appendChild(header);
     el.appendChild(body);
 
-    const input = block.input;
-    const fileLang = langFromPath(input?.file_path);
+    // Collapsible detail: diff for Edit/Write, raw input for non-boxed tools,
+    // and the result output for any tool.
     if (block.toolName === 'Edit' || block.toolName === 'Write') {
         const diff = renderEditDiff(input);
         body.appendChild(diff);
         if (fileLang) for (const pane of diff.children) highlightCode(pane, fileLang);
-    } else if (block.toolName === 'Bash') {
-        const cmd = document.createElement('pre');
-        cmd.className = 'chat-tool-cmd';
-        cmd.textContent = (input && input.command) || '';
-        body.appendChild(cmd);
-        if (block.done) highlightCode(cmd, 'bash');
-    } else {
+    } else if (!boxed) {
         const raw = document.createElement('pre');
         raw.className = 'chat-tool-input';
         raw.textContent = input ? JSON.stringify(input, null, 2) : (block.inputRaw || '');
@@ -370,9 +386,9 @@ function renderToolBlock(el, block) {
         // (auto-detect on arbitrary tool output guesses wrong too often).
         if (block.toolName === 'Read' && fileLang) highlightCode(out, fileLang);
     }
-    // Same copy affordance as markdown code fences — each pre (command, input,
-    // output, diff pane) gets a currentColor copy icon.
-    decorateCodeBlocks(body);
+    // Same copy affordance as markdown code fences. Decorate the whole block —
+    // the boxed command lives outside the collapsible body.
+    decorateCodeBlocks(el);
 }
 
 function renderBlock(msgEl, messageId, blockIndex, block) {
