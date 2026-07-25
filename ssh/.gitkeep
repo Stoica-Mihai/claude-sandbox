@@ -1,0 +1,4 @@
+# Drop a dedicated git-push SSH key here (this dir mounts into the container at
+# ~/.ssh). Keys are gitignored — never committed. Generate one with:
+#   make ssh-keygen
+# then add the printed public key to GitHub (a repo Deploy key is safest).

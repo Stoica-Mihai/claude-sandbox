@@ -26,6 +26,9 @@ x-claude-volumes: &claude-volumes
   - ${WORKSPACE_PATH:-../}:/workspace
   - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
   - ./container-settings.json:/home/claude/container-settings.json
+  # Optional git-push SSH key dir → ~/.ssh. Ships empty (ssh/.gitkeep); drop a
+  # dedicated key in ./ssh (host) to enable `git push` over SSH. Never committed.
+  - ./ssh:/home/claude/.ssh
   - claude-state:/home/claude/.local/state/claude
   - logs:/logs
 

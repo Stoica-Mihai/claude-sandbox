@@ -38,6 +38,7 @@ ARG GO_VERSION
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
+    openssh-client \
     curl \
     bubblewrap \
     qrencode \

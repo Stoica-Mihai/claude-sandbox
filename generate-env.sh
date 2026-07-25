@@ -5,6 +5,11 @@ set -eu
 # backend). Create it up front so Docker doesn't create it root-owned.
 mkdir -p "${HOME}/.claude-sandbox"
 
+# Optional git-push SSH key dir (ships in the repo as ssh/.gitkeep, mounts into
+# the container at ~/.ssh). Tighten perms for OpenSSH — git clones dirs 0755 and
+# SSH refuses a group/world-accessible key dir. Empty is fine; SSH is optional.
+mkdir -p ssh && chmod 700 ssh
+
 # Seed the (gitignored) container settings from the example on first run.
 # docker-compose bind-mounts this file (read-write — the in-dashboard settings
 # editor persists edits to it), so it must exist before `up`/`build`.

@@ -37,4 +37,23 @@ start_display() {
 }
 start_display || true
 
+# Optional git-push SSH key: if the user dropped a key in ./ssh (mounted at
+# ~/.ssh), fix perms + trust the forge host so `git push` over SSH works
+# non-interactively. Best-effort — an empty dir is fine, SSH stays unconfigured
+# and nothing fails.
+setup_ssh() {
+  SSH_DIR="$HOME/.ssh"
+  [ -d "$SSH_DIR" ] || return 0
+  chmod 700 "$SSH_DIR" 2>/dev/null || true
+  chmod 600 "$SSH_DIR"/id_* 2>/dev/null || true
+  chmod 644 "$SSH_DIR"/*.pub 2>/dev/null || true
+  # Only configure host trust when a private key is actually present.
+  ls "$SSH_DIR"/id_* >/dev/null 2>&1 || return 0
+  if [ ! -f "$SSH_DIR/config" ]; then
+    printf 'Host github.com gitlab.com\n  StrictHostKeyChecking accept-new\n' > "$SSH_DIR/config"
+    chmod 600 "$SSH_DIR/config" 2>/dev/null || true
+  fi
+}
+setup_ssh || true
+
 exec "$@"

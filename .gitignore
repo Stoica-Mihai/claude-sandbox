@@ -1,6 +1,11 @@
 .env
 mcp-config.json
 container-settings.json
+# Optional git-push SSH key dir (mounted into the container at ~/.ssh). Keep the
+# folder in the repo (.gitkeep) so the bind mount always has a source, but NEVER
+# commit keys/config dropped into it.
+/ssh/*
+!/ssh/.gitkeep
 node_modules/
 /package.json
 /package-lock.json
