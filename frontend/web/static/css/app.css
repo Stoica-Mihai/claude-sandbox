@@ -570,7 +570,10 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 /* Pending row: turn accepted, first content not yet streamed — same avatar. */
 .chat-pending{align-self:stretch;display:flex;align-items:baseline;column-gap:10px;
   color:var(--muted);font-style:italic;font-size:13px;line-height:1.5}
-.chat-pending .chat-msg-avatar{animation:var(--blink)}
+/* Working pulse: the pending row and the active turn's avatar blink while the
+   turn is running, so it never looks hung through wait/thinking/tool/stream. */
+.chat-pending .chat-msg-avatar,
+.chat-message-flow.is-turn-running .is-active-turn .chat-msg-avatar{animation:var(--blink)}
 /* Interrupt marker: a muted line indented under the turn it cut short. */
 .chat-interrupted{align-self:stretch;padding-left:26px;margin-top:-4px;
   color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em}

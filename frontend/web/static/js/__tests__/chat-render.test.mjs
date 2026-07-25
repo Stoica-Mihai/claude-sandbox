@@ -385,6 +385,22 @@ test('turn-copy copies only the prose, excluding thinking and tool blocks', () =
     });
 });
 
+test('the active assistant turn is marked (pulse target) and a new user turn clears it', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'append-text', messageId: 'm1', blockIndex: 0, block: { type: 'text', text: 'hi' } },
+        ]);
+        const msg = list.children.find(c => c.classList.contains('chat-msg-assistant'));
+        assert.ok(msg.classList.contains('is-active-turn'), 'active turn marked');
+        assert.equal(list._activeAssistantEl, msg);
+        appendUserMessage(list, 'next question', false, Date.now());
+        assert.equal(msg.classList.contains('is-active-turn'), false, 'cleared by the new user turn');
+        assert.equal(list._activeAssistantEl, null);
+    });
+});
+
 test('a tool-only turn keeps the copy button hidden (no prose to copy)', () => {
     withDocument(() => {
         const list = new FakeElement('div');

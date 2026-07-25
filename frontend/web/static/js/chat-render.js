@@ -132,6 +132,13 @@ function findOrCreateMessageEl(listEl, messageId, role) {
     el.className = 'chat-msg chat-msg-' + role;
     el.setAttribute('data-message-id', messageId);
     if (role === 'assistant') {
+        // Mark this as the active turn: its avatar pulses while the turn runs
+        // (CSS .is-turn-running .is-active-turn), giving continuous "working"
+        // feedback through every phase — wait, thinking, tools, streaming — so
+        // it never looks hung, regardless of first-block type or speed.
+        if (listEl._activeAssistantEl) listEl._activeAssistantEl.classList.remove('is-active-turn');
+        el.classList.add('is-active-turn');
+        listEl._activeAssistantEl = el;
         // Avatar + content column. The ✱ avatar is a flex item aligned to the
         // content's first-line baseline (CSS align-items:baseline), so it rides
         // the text at any font-size/line-height/first-block type — no
@@ -348,6 +355,7 @@ export function resetView(listEl) {
     listEl._chatMessageEls = null;
     listEl._chatPending = null;
     listEl._chatConnNotice = null;
+    listEl._activeAssistantEl = null;
 }
 
 // showPending/clearPending: the "thinking…" row between a user's send and the
@@ -467,6 +475,12 @@ export function clearConnectionNotice(listEl) {
 // chat-events.js applyUserEvent) to avoid a duplicate bubble.
 export function appendUserMessage(listEl, text, hasAttachment, ts, opts) {
     clearQuickReplies(listEl); // any pending chips are answered once the user speaks
+    // A new user turn ends the previous assistant turn — drop its active mark so
+    // its avatar stops pulsing (the next turn's message takes over).
+    if (listEl._activeAssistantEl) {
+        listEl._activeAssistantEl.classList.remove('is-active-turn');
+        listEl._activeAssistantEl = null;
+    }
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
     if (text) {

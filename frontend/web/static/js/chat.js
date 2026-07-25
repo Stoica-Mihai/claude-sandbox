@@ -136,6 +136,9 @@ export class ChatView {
     // safe if the input bar isn't ready yet.
     setRunningState(on) {
         this.setRunning?.(on);
+        // Pulse the active turn's avatar while the turn runs (CSS) — continuous
+        // "working" feedback from send to result, through every phase.
+        this.flow?.classList.toggle('is-turn-running', on);
     }
 
     // sendUserText is the single send path (input bar and quick-reply chips):
