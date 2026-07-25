@@ -310,9 +310,48 @@ function toolPreview(block) {
     }
 }
 
+// ELAPSED_MIN_MS hides the timer for quick tools — only a call that actually
+// takes a while is worth annotating.
+const ELAPSED_MIN_MS = 2000;
+
+function fmtElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + String(s % 60).padStart(2, '0') + 's';
+    return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+}
+
+// A single ticker updates every running tool's elapsed label. It reads the start
+// time from the DOM (data-started) rather than holding element refs, so a
+// re-render (tool-result arrival, expand/collapse) can't leave it stale. Runs
+// only while something is actually running.
+let elapsedTimer = null;
+function stopElapsedTicker() {
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+function tickElapsed() {
+    // No document (teardown / non-DOM host): stop rather than tick forever —
+    // a live interval would keep the process/event loop alive.
+    if (typeof document === 'undefined' || !document.querySelectorAll) { stopElapsedTicker(); return; }
+    const live = document.querySelectorAll('.chat-tool-elapsed[data-started]');
+    for (const el of live) {
+        const started = Number(el.getAttribute('data-started'));
+        const ms = Date.now() - started;
+        el.textContent = ms >= ELAPSED_MIN_MS ? '⏱ ' + fmtElapsed(ms) : '';
+    }
+    if (!live.length) stopElapsedTicker();
+}
+function ensureElapsedTicker() {
+    if (elapsedTimer || typeof setInterval === 'undefined') return;
+    elapsedTimer = setInterval(tickElapsed, 1000);
+    elapsedTimer.unref?.(); // Node: never hold the event loop open (browser: no-op)
+}
+
 // renderToolBlock renders one collapsible tool-call row: a header (name + a
-// one-line input preview) over a body — Edit/Write as a diff, Bash as command
-// + output excerpt, everything else as name + raw input/output.
+// one-line input preview + elapsed time while running) over a body — Edit/Write
+// as a diff, Bash as command + output excerpt, everything else as raw
+// input/output.
 function renderToolBlock(el, block) {
     el.innerHTML = '';
     const input = block.input;
@@ -336,6 +375,28 @@ function renderToolBlock(el, block) {
     previewEl.className = 'chat-tool-preview';
     header.appendChild(nameEl);
     header.appendChild(previewEl);
+
+    // Elapsed indicator. running = the call was issued but hasn't returned yet
+    // (block.done means only that its input finished streaming). We get no
+    // intermediate progress from the stream, so show elapsed time — honest —
+    // rather than a fake progress bar. Timestamps are client-side: a viewer who
+    // attaches mid-call counts from when IT first saw the call.
+    const running = !!block.done && !block.finished;
+    if (running && !block.startedAt) block.startedAt = Date.now();
+    if (block.finished && block.startedAt && !block.elapsedMs) block.elapsedMs = Date.now() - block.startedAt;
+    if (running || (block.elapsedMs || 0) >= ELAPSED_MIN_MS) {
+        const el = document.createElement('span');
+        el.className = 'chat-tool-elapsed';
+        if (running) {
+            el.setAttribute('data-started', String(block.startedAt));
+            const ms = Date.now() - block.startedAt;
+            el.textContent = ms >= ELAPSED_MIN_MS ? '⏱ ' + fmtElapsed(ms) : '';
+            ensureElapsedTicker();
+        } else {
+            el.textContent = '⏱ ' + fmtElapsed(block.elapsedMs); // final duration
+        }
+        header.appendChild(el);
+    }
     // Open-state lives on the block (not the DOM) so a re-render on
     // tool-result arrival doesn't snap an opened body shut.
     const renderHeader = () => {

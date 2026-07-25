@@ -162,6 +162,31 @@ test('an Agent (subagent) tool renders as a card: description label + markdown r
     });
 });
 
+test('a running tool shows a live elapsed marker; a finished one shows its final duration', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        // running = input finalized (done) but no result yet
+        const running = { type: 'tool', toolName: 'Bash', input: { command: 'nix develop' }, done: true };
+        running.startedAt = Date.now() - 5000; // pretend it started 5s ago
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: running },
+        ]);
+        let el = blocksOf(list.children[0])[0].querySelector('.chat-tool-elapsed');
+        assert.ok(el, 'running tool has an elapsed marker');
+        assert.match(el.textContent, /⏱ \d+s/);
+        assert.ok(el.attributes['data-started'], 'ticker anchor present while running');
+
+        // result arrives → finished: marker freezes to the final duration
+        running.finished = true;
+        running.resultText = 'ok';
+        applyPatches(list, [{ kind: 'tool-result', messageId: 'm1', blockIndex: 0, block: running }]);
+        el = blocksOf(list.children[0])[0].querySelector('.chat-tool-elapsed');
+        assert.match(el.textContent, /⏱ \d+s/);
+        assert.equal(el.attributes['data-started'], undefined, 'no longer ticking');
+    });
+});
+
 test('a tall command box is capped when collapsed; a short one is not', () => {
     withDocument(() => {
         const list = new FakeElement('div');

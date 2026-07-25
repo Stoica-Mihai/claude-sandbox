@@ -656,6 +656,10 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-tool-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   text-transform:none;letter-spacing:normal;opacity:.85}
 .chat-tool-preview.hidden{display:none}
+/* Elapsed time on a long-running tool call (live while running, final duration
+   after). Right-aligned, tabular so the digits don't jitter each tick. */
+.chat-tool-elapsed{flex:none;margin-left:auto;padding-left:10px;text-transform:none;letter-spacing:normal;
+  font-variant-numeric:tabular-nums;color:var(--muted);opacity:.9}
 /* Subagent (Agent/Task) card: description is the scannable label (prominent,
    real-case prose), and the final report renders as markdown with an accent
    edge so it reads as the subagent's outcome. */

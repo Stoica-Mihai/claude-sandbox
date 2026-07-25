@@ -213,6 +213,10 @@ function applyUserEvent(state, evt) {
         if (!found) continue;
         found.block.result = cb.content;
         found.block.resultText = toolResultText(cb.content);
+        // finished = the tool actually returned (distinct from `done`, which
+        // only means the call's input finished streaming). Drives the elapsed
+        // timer on long-running tools; an empty result is still finished.
+        found.block.finished = true;
         patches.push({ kind: 'tool-result', messageId: found.messageId, blockIndex: found.blockIndex, block: found.block });
     }
     if (patches.length) return patches;
