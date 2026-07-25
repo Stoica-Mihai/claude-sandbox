@@ -663,7 +663,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-subagent-report{border-left:3px solid var(--accent);padding-left:10px}
 .chat-thinking-body{border-left:3px solid var(--line);background:transparent;color:var(--muted);
   padding:6px 10px;font-size:12px;white-space:pre-wrap}
-.chat-tool-body{border-left:3px solid var(--line);background:transparent;padding:6px 10px}
+/* Plain container — the panes inside carry their own box borders, so no
+   left rail (that leftover created a lone left-edge line with no right match). */
+.chat-tool-body{background:transparent;margin-top:6px}
 .chat-tool-body.hidden{display:none}
 /* Code never wraps (a wrapped hex dump or long path is unreadable) — lines
    stay intact and each pre scrolls horizontally inside its own box, matching
@@ -683,7 +685,7 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-tool-cmd--capped{max-height:6em;overflow:hidden;position:relative}
 .chat-tool-cmd--capped::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1.6em;
   background:linear-gradient(rgba(0,0,0,0),var(--surf));pointer-events:none}
-.chat-tool-body>pre,.chat-tool-body>.chat-diff{margin-top:6px}
+.chat-tool-body>*+*{margin-top:6px}
 
 /* Edit/Write diff: deletion/addition panes, distinguished by tint only (no
    red/green pair — the app's single-accent law rules out a second hue). */

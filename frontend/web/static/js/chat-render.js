@@ -367,8 +367,7 @@ function renderToolBlock(el, block) {
                 capCmd = () => {
                     const capped = !block.open;
                     cmd.classList.toggle('chat-tool-cmd--capped', capped);
-                    cmd.style.cursor = capped ? 'pointer' : '';
-                    cmd.title = capped ? 'Click to expand' : '';
+                    cmd.title = capped ? 'Click to expand' : 'Click to collapse';
                 };
                 capCmd();
             }
@@ -384,9 +383,12 @@ function renderToolBlock(el, block) {
         capCmd?.();
     };
     el.appendChild(body);
-    // A capped command box is itself clickable to expand — the fade signals
-    // "more", so clicking the box (not just the ▸ header) opens the row.
-    if (cappedCmdEl) cappedCmdEl.addEventListener('click', () => { if (!block.open) header.onclick(); });
+    // A tall command box is itself clickable to toggle (expand AND collapse) —
+    // the fade signals "more", so clicking the box works like the ▸ header.
+    if (cappedCmdEl) {
+        cappedCmdEl.style.cursor = 'pointer';
+        cappedCmdEl.addEventListener('click', () => header.onclick());
+    }
 
     // Collapsible detail: diff for Edit/Write, raw input for non-boxed tools,
     // and the result output for any tool.
