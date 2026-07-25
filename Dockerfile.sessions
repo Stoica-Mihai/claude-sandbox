@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     openssh-client \
+    xz-utils \
     curl \
     bubblewrap \
     qrencode \
@@ -136,6 +137,34 @@ USER claude
 ENV DISPLAY=:99
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
+
+# ── Nix (single-user, non-root): per-project dependencies without image bloat ──
+# Every project ships a flake.nix; a session runs `nix develop` and gets its
+# exact toolchain + system libs. This replaces hand-rolled prefixes (extracting
+# .debs into /tmp and wiring PKG_CONFIG_PATH/LD_LIBRARY_PATH by hand), which
+# broke and vanished whenever the container was recreated.
+#
+# /nix is a named volume in compose: Docker seeds it from this image layer on
+# first creation, then it persists across rebuilds, so installs stick. (A nix
+# version bump here therefore does NOT reach an existing volume — recreate the
+# volume to upgrade.)
+USER root
+RUN mkdir -m 0755 /nix && chown claude:claude /nix
+USER claude
+RUN curl -fsSL https://nixos.org/nix/install -o /tmp/nix-install.sh && \
+    sh /tmp/nix-install.sh --no-daemon --no-channel-add && \
+    rm -f /tmp/nix-install.sh
+# Flakes only — no channels.
+RUN mkdir -p /home/claude/.config/nix && \
+    printf 'experimental-features = nix-command flakes\n' > /home/claude/.config/nix/nix.conf
+# nix keeps its profile + GC roots in $XDG_STATE_HOME/nix (~/.local/state/nix),
+# which is container-local and wiped on every rebuild — `nix profile install`
+# would lose its GC root and be collected. Relocate that one state dir INTO
+# /nix (the persisted volume) and symlink it back, so profiles/GC roots persist
+# while nix keeps its normal layout.
+RUN mv /home/claude/.local/state/nix /nix/var/claude-nix-state && \
+    ln -sfn /nix/var/claude-nix-state /home/claude/.local/state/nix
+ENV PATH="/nix/var/claude-nix-state/profiles/profile/bin:${PATH}"
 
 # Shell function: direct CLI `claude` is disabled — sessions are created and
 # managed from the dashboard, which asks sessiond to spawn the real binary.

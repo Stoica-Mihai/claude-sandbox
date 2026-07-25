@@ -21,16 +21,17 @@ x-uidgid: &uidgid
 # The mounts the sessions and backend containers share: workspace, the scoped
 # Claude config dir, the read-write settings file, and the claude-state volume
 # (sessiond sockets + uploads). Both must agree on the claude-state mount, so
-# it lives here once.
+# it lives here once. Entries are individually anchored so sessions can reuse
+# them and add its own extra mounts (YAML can't append to an aliased sequence).
 x-claude-volumes: &claude-volumes
-  - ${WORKSPACE_PATH:-../}:/workspace
-  - ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
-  - ./container-settings.json:/home/claude/container-settings.json
+  - &vol-workspace ${WORKSPACE_PATH:-../}:/workspace
+  - &vol-claude-config ${HOME}/.claude-sandbox:/home/claude/.claude-sandbox
+  - &vol-settings ./container-settings.json:/home/claude/container-settings.json
   # Optional git-push SSH key dir → ~/.ssh. Ships empty (ssh/.gitkeep); drop a
   # dedicated key in ./ssh (host) to enable `git push` over SSH. Never committed.
-  - ./ssh:/home/claude/.ssh
-  - claude-state:/home/claude/.local/state/claude
-  - logs:/logs
+  - &vol-ssh ./ssh:/home/claude/.ssh
+  - &vol-claude-state claude-state:/home/claude/.local/state/claude
+  - &vol-logs logs:/logs
 
 services:
   sessions:
@@ -65,7 +66,18 @@ services:
       - net.ipv6.conf.all.disable_ipv6=1
       - net.ipv6.conf.default.disable_ipv6=1
 
-    volumes: *claude-volumes
+    volumes:
+      - *vol-workspace
+      - *vol-claude-config
+      - *vol-settings
+      - *vol-ssh
+      - *vol-claude-state
+      - *vol-logs
+      # Nix store — per-project deps (`nix develop`) + sticky tools
+      # (`nix profile install`). Sessions only: no other service runs project
+      # code. Seeded from the image's baked /nix on first creation, then it
+      # persists across rebuilds (what hand-rolled /tmp prefixes lacked).
+      - nix-store:/nix
 
     environment:
       - HOME=/home/claude
@@ -268,3 +280,7 @@ volumes:
   holesail-share-key:
   logs:
   logd-state:
+  # Nix store: per-project toolchains/system libs + sticky tool installs.
+  # Grows with use (a Rust + graphics devShell is multi-GB); reclaim with
+  # `nix-collect-garbage -d` in a session, or drop the volume to reset.
+  nix-store:
