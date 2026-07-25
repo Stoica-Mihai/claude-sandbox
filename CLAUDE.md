@@ -18,7 +18,7 @@ Five services, each its own container:
 
 Supporting files:
 
-- **Dockerfile.sessions** — Multi-stage. Builder compiles sessiond; runtime is the heavy session environment — Debian with bash, git, curl, bubblewrap, qrencode, npm, Go, gcc, uv, OpenSpec, and Claude Code + plugins. Non-root user `claude`. Rebuilding it ends running sessions, so it only watches `sessiond/`.
+- **Dockerfile.sessions** — Multi-stage. Builder compiles sessiond; runtime is the heavy session environment — Debian with bash, git, curl, bubblewrap, qrencode, npm, Go, gcc, uv, OpenSpec, and Claude Code + plugins. Also ships a **headless GUI-test stack** (Xvfb virtual display `:99`, Mesa/llvmpipe software OpenGL/EGL, fluxbox WM, `xdotool` + `scrot`) so Claude can drive native GUI apps itself — no VNC/streaming, no human viewer; `DISPLAY=:99` is exported to every session and the entrypoint starts Xvfb+fluxbox best-effort. Non-root user `claude`. Rebuilding it ends running sessions, so it only watches `sessiond/`.
 - **Dockerfile.backend** — Multi-stage; slim runtime (binary + curl + ca-certificates, same UID/GID user as sessions so the shared socket/upload volumes work). No claude, no dtach, no Go.
 - **Dockerfile.frontend** — Multi-stage; minimal runtime (no tmux/socat/claude), just the frontend binary.
 - **Dockerfile.holesail** — Multi-stage Node; builder runs `npm ci` against the committed lockfile (the supply-chain boundary), runtime is `node:22-bookworm-slim` + curl, non-root `node` user.
