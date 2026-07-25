@@ -383,7 +383,14 @@ function renderToolBlock(el, block) {
     // attaches mid-call counts from when IT first saw the call.
     const running = !!block.done && !block.finished;
     if (running && !block.startedAt) block.startedAt = Date.now();
-    if (block.finished && block.startedAt && !block.elapsedMs) block.elapsedMs = Date.now() - block.startedAt;
+    if (block.finished && !block.elapsedMs) {
+        // Prefer the record timestamps: same clock on both ends, and they're the
+        // only source on replay (history has no live interval to measure).
+        const a = block.tsStart ? Date.parse(block.tsStart) : NaN;
+        const b = block.tsEnd ? Date.parse(block.tsEnd) : NaN;
+        if (!isNaN(a) && !isNaN(b) && b >= a) block.elapsedMs = b - a;
+        else if (block.startedAt) block.elapsedMs = Date.now() - block.startedAt;
+    }
     if (running || (block.elapsedMs || 0) >= ELAPSED_MIN_MS) {
         const el = document.createElement('span');
         el.className = 'chat-tool-elapsed';

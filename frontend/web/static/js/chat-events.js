@@ -99,7 +99,7 @@ function applyStreamEvent(state, evt) {
             const cb = e.content_block || {};
             let block;
             if (cb.type === 'tool_use') {
-                block = newBlock('tool', { toolName: cb.name || '', toolUseId: cb.id || '', inputRaw: '' });
+                block = newBlock('tool', { toolName: cb.name || '', toolUseId: cb.id || '', inputRaw: '', tsStart: evt.timestamp || null });
             } else if (cb.type === 'thinking') {
                 block = newBlock('thinking', { collapsed: true });
             } else {
@@ -180,7 +180,10 @@ function applyFullMessage(state, evt, role, replay) {
         else if (existing.blocks[i] && existing.blocks[i].done) return; // already rendered via deltas
         let block;
         if (cb.type === 'tool_use') {
-            block = newBlock('tool', { toolName: cb.name || '', toolUseId: cb.id || '', input: cb.input, done: true });
+            // tsStart pairs with tsEnd (set when the tool_result arrives) to give
+            // a real duration — including on transcript replay, where the call and
+            // its result land together so there's no interval to measure.
+            block = newBlock('tool', { toolName: cb.name || '', toolUseId: cb.id || '', input: cb.input, done: true, tsStart: evt.timestamp || null });
         } else if (cb.type === 'thinking') {
             block = newBlock('thinking', { text: cb.thinking || '', collapsed: true, done: true });
         } else {
@@ -217,6 +220,7 @@ function applyUserEvent(state, evt) {
         // only means the call's input finished streaming). Drives the elapsed
         // timer on long-running tools; an empty result is still finished.
         found.block.finished = true;
+        found.block.tsEnd = evt.timestamp || null; // with tsStart → real duration
         patches.push({ kind: 'tool-result', messageId: found.messageId, blockIndex: found.blockIndex, block: found.block });
     }
     if (patches.length) return patches;

@@ -187,6 +187,25 @@ test('a running tool shows a live elapsed marker; a finished one shows its final
     });
 });
 
+test('a replayed tool shows its real duration from record timestamps', () => {
+    withDocument(() => {
+        const list = new FakeElement('div');
+        // Replay: call + result arrive together, so only the timestamps can tell
+        // how long it took (103s — like a cold `nix develop`).
+        const block = {
+            type: 'tool', toolName: 'Bash', input: { command: 'nix develop' }, done: true, finished: true,
+            resultText: 'ok', tsStart: '2026-07-25T11:50:00.000Z', tsEnd: '2026-07-25T11:51:43.000Z',
+        };
+        applyPatches(list, [
+            { kind: 'new-message', messageId: 'm1', role: 'assistant' },
+            { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block },
+        ]);
+        const el = blocksOf(list.children[0])[0].querySelector('.chat-tool-elapsed');
+        assert.ok(el, 'history row gets a duration');
+        assert.equal(el.textContent, '⏱ 1m 43s');
+    });
+});
+
 test('a tall command box is capped when collapsed; a short one is not', () => {
     withDocument(() => {
         const list = new FakeElement('div');
