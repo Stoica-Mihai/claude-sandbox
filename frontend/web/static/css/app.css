@@ -616,7 +616,9 @@ body.sharing-public .hdr .mark{animation:mark-broadcast 2s ease-in-out infinite}
 .chat-msg-assistant:hover .chat-turn-copy:not(.hidden){opacity:1}
 /* Code-copy is absolute (out of flow) — its reveal never reflows anything. */
 .chat-code{position:relative}
-.chat-code-copy{display:none;position:absolute;top:6px;right:6px}
+/* Vertically centered (not top:6px) so it fits a one-line command box — where
+   the ~26px button is taller than the box — as well as tall output boxes. */
+.chat-code-copy{display:none;position:absolute;top:50%;right:6px;transform:translateY(-50%)}
 .chat-code:hover .chat-code-copy{display:inline-flex}
 @media (hover:none){
   .chat-turn-copy:not(.hidden){opacity:1}
