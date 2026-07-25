@@ -133,9 +133,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 USER claude
 
-# Every session gets the virtual display; software GL forces llvmpipe (no GPU).
+# Every session gets the virtual display. GL is NOT forced to software: Mesa
+# already falls back to llvmpipe when no DRM device is present, and forcing it
+# (LIBGL_ALWAYS_SOFTWARE=1, which this used to set) suppressed the GPU whenever
+# a render node WAS passed in — Mesa then refused the device outright
+# ("Not allowed to force software rendering when API explicitly selects a
+# hardware device"). Without it, a passed-in render node gives real hardware GL.
 ENV DISPLAY=:99
-ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
 
 # ── Nix (single-user, non-root): per-project dependencies without image bloat ──
@@ -165,6 +169,12 @@ RUN mkdir -p /home/claude/.config/nix && \
 RUN mv /home/claude/.local/state/nix /nix/var/claude-nix-state && \
     ln -sfn /nix/var/claude-nix-state /home/claude/.local/state/nix
 ENV PATH="/nix/var/claude-nix-state/profiles/profile/bin:${PATH}"
+# A login shell (bash -l) rebuilds PATH from /etc/profile and drops the ENV
+# additions above, so `nix` disappears there; re-add it for login shells.
+USER root
+RUN printf 'PATH="/nix/var/claude-nix-state/profiles/profile/bin:$PATH"\n' \
+      > /etc/profile.d/00-nix-path.sh
+USER claude
 
 # Shell function: direct CLI `claude` is disabled — sessions are created and
 # managed from the dashboard, which asks sessiond to spawn the real binary.
