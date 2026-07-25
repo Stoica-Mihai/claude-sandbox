@@ -264,7 +264,13 @@ const ATTACHMENT_MARKER = /\s*\[Attached (?:file|image): [^\]]*\]/g;
 // icon instead, so no emoji ends up in the message string. Replay-only: live
 // user events carry only tool_results.
 export function transcriptUserText(evt) {
-    if (!evt || evt.type !== 'user' || evt.isMeta) return null;
+    // Drop synthetic injected turns so they never render as a user bubble (a
+    // Skill dumping its SKILL.md, engine notices, …); the Skill row itself
+    // still shows as its own collapsed tool step. The live stream and the
+    // persisted transcript flag these DIFFERENTLY, so check all three:
+    //   live stream-json → isSynthetic (verified against the pinned engine),
+    //   transcript replay → isMeta / sourceToolUseID.
+    if (!evt || evt.type !== 'user' || evt.isSynthetic || evt.isMeta || evt.sourceToolUseID) return null;
     const content = evt.message?.content;
     let raw;
     if (typeof content === 'string') raw = content;

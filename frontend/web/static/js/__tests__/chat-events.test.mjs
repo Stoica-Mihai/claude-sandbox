@@ -183,6 +183,11 @@ test('transcriptUserText rejects non-user, meta, and tool_result records', async
     const { transcriptUserText } = await import('../chat-events.js');
     assert.equal(transcriptUserText({ type: 'assistant', message: { content: [{ type: 'text', text: 'x' }] } }), null);
     assert.equal(transcriptUserText({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'x' }] } }), null);
+    // A Skill body (and other tool-injected turns) is synthetic, not a real
+    // send — must not render as a bubble. The LIVE stream flags it isSynthetic;
+    // the persisted transcript flags the same turn isMeta/sourceToolUseID.
+    assert.equal(transcriptUserText({ type: 'user', isSynthetic: true, message: { content: [{ type: 'text', text: 'Base directory for this skill: ...' }] } }), null);
+    assert.equal(transcriptUserText({ type: 'user', sourceToolUseID: 'toolu_1', message: { content: [{ type: 'text', text: 'Base directory for this skill: ...' }] } }), null);
     assert.equal(transcriptUserText({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }), null);
     assert.equal(transcriptUserText({ type: 'user', message: { content: [] } }), null);
     assert.equal(transcriptUserText(null), null);
