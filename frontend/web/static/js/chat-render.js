@@ -349,7 +349,8 @@ function renderToolBlock(el, block) {
 
     // Always-visible boxed preview: the command (Bash) or pattern (Grep/Glob),
     // highlighted, so a stack of tool calls reads at a glance.
-    let capCmd = null; // caps a tall command box until the row is expanded
+    let capCmd = null;       // caps a tall command box until the row is expanded
+    let cappedCmdEl = null;  // the capped box itself is clickable to expand
     if (boxed) {
         const cmd = document.createElement('pre');
         cmd.className = 'chat-tool-cmd';
@@ -359,9 +360,16 @@ function renderToolBlock(el, block) {
         if (cmd.textContent) {
             el.appendChild(cmd);
             if (block.done && block.toolName === 'Bash') highlightCode(cmd, 'bash');
-            // Cap a tall multi-line command when collapsed; the ▸ toggle reveals all.
+            // Cap a tall multi-line command when collapsed; expand from the ▸
+            // header OR by clicking the (faded) box itself.
             if (cmd.textContent.split('\n').length > 6) {
-                capCmd = () => cmd.classList.toggle('chat-tool-cmd--capped', !block.open);
+                cappedCmdEl = cmd;
+                capCmd = () => {
+                    const capped = !block.open;
+                    cmd.classList.toggle('chat-tool-cmd--capped', capped);
+                    cmd.style.cursor = capped ? 'pointer' : '';
+                    cmd.title = capped ? 'Click to expand' : '';
+                };
                 capCmd();
             }
         }
@@ -376,6 +384,9 @@ function renderToolBlock(el, block) {
         capCmd?.();
     };
     el.appendChild(body);
+    // A capped command box is itself clickable to expand — the fade signals
+    // "more", so clicking the box (not just the ▸ header) opens the row.
+    if (cappedCmdEl) cappedCmdEl.addEventListener('click', () => { if (!block.open) header.onclick(); });
 
     // Collapsible detail: diff for Edit/Write, raw input for non-boxed tools,
     // and the result output for any tool.
