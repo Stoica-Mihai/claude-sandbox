@@ -7,7 +7,7 @@ import { applyPatches, appendSystemNotice, setConnectionNotice, clearConnectionN
 
 // Assistant boxes carry chrome (the turn-copy button) alongside block
 // elements, so address blocks by class rather than raw child index.
-const blocksOf = (box) => [...box.children].filter((c) => c.classList.contains('chat-block'));
+const blocksOf = (box) => [...(box._body || box).children].filter((c) => c.classList.contains('chat-block'));
 const firstBlock = (box) => blocksOf(box)[0];
 
 function withDocument(fn) {
@@ -374,7 +374,7 @@ test('turn-copy copies only the prose, excluding thinking and tool blocks', () =
                 { kind: 'append-text', messageId: 'm1', blockIndex: 3, block: { type: 'text', text: 'Done.' } },
             ]);
             const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
-            const btn = box.children.find(c => c.classList.contains('chat-turn-copy'));
+            const btn = (box._body || box).children.find(c => c.classList.contains('chat-turn-copy'));
             assert.ok(btn, 'turn-copy button present');
             assert.equal(btn.classList.contains('hidden'), false); // revealed by prose
             btn.dispatch('click', { stopPropagation() {} });
@@ -393,7 +393,7 @@ test('a tool-only turn keeps the copy button hidden (no prose to copy)', () => {
             { kind: 'finalize-block', messageId: 'm1', blockIndex: 0, block: { type: 'tool', toolName: 'Bash', input: { command: 'ls' }, done: true } },
         ]);
         const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
-        const btn = box.children.find(c => c.classList.contains('chat-turn-copy'));
+        const btn = (box._body || box).children.find(c => c.classList.contains('chat-turn-copy'));
         assert.equal(btn.classList.contains('hidden'), true);
     });
 });
@@ -478,7 +478,7 @@ test('a merged assistant turn stamps the time once, not per engine message', () 
             { kind: 'new-message', messageId: 'm2', role: 'assistant', ts: '2026-07-23T15:25:30Z' },
         ]);
         const box = list.children.find(c => c.classList.contains('chat-msg-assistant'));
-        assert.equal([...box.children].filter(c => c.classList.contains('chat-time')).length, 1);
+        assert.equal([...(box._body || box).children].filter(c => c.classList.contains('chat-time')).length, 1);
     });
 });
 

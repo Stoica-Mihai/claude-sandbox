@@ -132,18 +132,32 @@ function findOrCreateMessageEl(listEl, messageId, role) {
     el.className = 'chat-msg chat-msg-' + role;
     el.setAttribute('data-message-id', messageId);
     if (role === 'assistant') {
+        // Avatar + content column. The ✱ avatar is a flex item aligned to the
+        // content's first-line baseline (CSS align-items:baseline), so it rides
+        // the text at any font-size/line-height/first-block type — no
+        // hand-tuned offset to drift. Blocks, timestamp, and copy button live
+        // in the column (el._body); the avatar is the left gutter.
+        const avatar = document.createElement('span');
+        avatar.className = 'chat-msg-avatar';
+        avatar.setAttribute('aria-hidden', 'true');
+        avatar.textContent = '✱';
+        el.appendChild(avatar);
+        const body = document.createElement('div');
+        body.className = 'chat-assist-body';
+        el.appendChild(body);
+        el._body = body;
         // Turn-copy: the prose only. Reads the markdown source stashed on each
         // text block (_src), so thinking and tool blocks are structurally
         // excluded rather than filtered by class-sniffing. Hidden until the
         // turn actually has prose (a tool-only turn has nothing to copy).
         const copyBtn = makeCopyButton('chat-turn-copy hidden', () =>
-            [...el.children]
+            [...body.children]
                 .filter((c) => c.classList?.contains('chat-block-text'))
                 .map((c) => c._src || '')
                 .filter(Boolean)
                 .join('\n\n'));
         el._turnCopyBtn = copyBtn;
-        el.appendChild(copyBtn);
+        body.appendChild(copyBtn);
     }
     listEl.appendChild(el);
     cache[messageId] = el;
@@ -159,7 +173,7 @@ function findOrCreateBlockEl(msgEl, blockKey, type) {
     const el = document.createElement('div');
     el.className = 'chat-block chat-block-' + type;
     el.setAttribute('data-block-index', String(blockKey));
-    msgEl.appendChild(el);
+    (msgEl._body || msgEl).appendChild(el);
     cache[blockKey] = el;
     return el;
 }
@@ -345,7 +359,14 @@ export function showPending(listEl) {
     if (listEl._chatPending) return;
     const el = document.createElement('div');
     el.className = 'chat-pending';
-    el.textContent = 'thinking…';
+    const avatar = document.createElement('span');
+    avatar.className = 'chat-msg-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = '✱';
+    const label = document.createElement('span');
+    label.textContent = 'thinking…';
+    el.appendChild(avatar);
+    el.appendChild(label);
     listEl.appendChild(el);
     listEl._chatPending = el;
 }
@@ -480,7 +501,7 @@ export function applyPatches(listEl, patches, callbacks = {}) {
                 const msgEl = findOrCreateMessageEl(listEl, p.messageId, p.role);
                 // First engine message of a (possibly merged) turn stamps the
                 // time once; later merged messages reuse the box, don't restamp.
-                if (!msgEl._timeSet) { msgEl.appendChild(timeEl(p.ts)); msgEl._timeSet = true; }
+                if (!msgEl._timeSet) { (msgEl._body || msgEl).appendChild(timeEl(p.ts)); msgEl._timeSet = true; }
                 break;
             }
             case 'new-block':
