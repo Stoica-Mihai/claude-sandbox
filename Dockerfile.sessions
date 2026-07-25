@@ -111,6 +111,31 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official && \
     claude plugin install opsx-ext@claude-skills && \
     claude plugin install caveman@caveman
 
+# Headless GUI testing: a virtual X display (Xvfb) so native GUI apps can open
+# windows, software OpenGL/EGL (Mesa llvmpipe) for GL apps, a tiny WM (fluxbox)
+# for sane window mapping, and the tools Claude drives them with — xdotool
+# (synthesize mouse/keyboard) + scrot (screenshot the display to a PNG Claude
+# reads). No VNC/streaming: Claude drives its own testing, no human viewer.
+# Root layer placed after the plugin installs so it doesn't bust their cache.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    x11-utils \
+    xdotool \
+    scrot \
+    fluxbox \
+    libgl1-mesa-dri \
+    libegl-mesa0 \
+    libgles2 \
+    mesa-utils \
+    && rm -rf /var/lib/apt/lists/*
+USER claude
+
+# Every session gets the virtual display; software GL forces llvmpipe (no GPU).
+ENV DISPLAY=:99
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
+
 # Shell function: direct CLI `claude` is disabled — sessions are created and
 # managed from the dashboard, which asks sessiond to spawn the real binary.
 RUN cat >> /home/claude/.bashrc <<'BASHEOF'
